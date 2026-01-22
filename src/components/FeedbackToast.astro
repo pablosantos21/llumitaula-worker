@@ -1,0 +1,71 @@
+---
+// A simple toast notification system
+---
+
+<div
+    id="toast-container"
+    class="fixed bottom-6 left-6 right-6 z-[60] flex flex-col gap-2 pointer-events-none"
+>
+    <!-- Toasts will be injected here -->
+</div>
+
+<template id="toast-template">
+    <div
+        class="toast transform transition-all duration-300 translate-y-8 opacity-0 bg-gray-900 text-white px-4 py-3 rounded-xl shadow-lg flex items-center gap-3 w-full max-w-sm mx-auto"
+    >
+        <div class="icon-container shrink-0"></div>
+        <p class="message text-sm font-medium flex-1"></p>
+    </div>
+</template>
+
+<script>
+    window.showToast = (message, type = "success") => {
+        const container = document.getElementById("toast-container");
+        const template = document.getElementById(
+            "toast-template",
+        ) as HTMLTemplateElement;
+
+        if (!container || !template) return;
+
+        const clone = template.content.cloneNode(true) as DocumentFragment;
+        const toastEl = clone.querySelector(".toast") as HTMLElement;
+        const msgEl = clone.querySelector(".message");
+        const iconEl = clone.querySelector(".icon-container");
+
+        if (msgEl) msgEl.textContent = message;
+
+        if (iconEl) {
+            if (type === "success") {
+                iconEl.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5 text-emerald-400"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clip-rule="evenodd" /></svg>`;
+            } else {
+                iconEl.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-5 h-5 text-amber-400"><path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625l6.28-10.875zM10 8.25a.75.75 0 01.75.75v3.75a.75.75 0 01-1.5 0V9a.75.75 0 01.75-.75zm0 8.25a.75.75 0 100-1.5.75.75 0 000 1.5z" clip-rule="evenodd" /></svg>`;
+            }
+        }
+
+        container.appendChild(toastEl);
+
+        // Animate in
+        requestAnimationFrame(() => {
+            toastEl.classList.remove("translate-y-8", "opacity-0");
+        });
+
+        // Remove after delay
+        setTimeout(() => {
+            toastEl.classList.add("translate-y-4", "opacity-0");
+            setTimeout(() => {
+                toastEl.remove();
+            }, 300);
+        }, 3000);
+    };
+
+    // Listen for save events to trigger toast
+    document.addEventListener("save-student-status", ((e: CustomEvent) => {
+        const isIncident = e.detail.status === "incident";
+        window.showToast(
+            isIncident
+                ? "Incidencia registrada"
+                : 'Marcado como "Ha comido bien"',
+            isIncident ? "warning" : "success",
+        );
+    }) as EventListener);
+</script>
