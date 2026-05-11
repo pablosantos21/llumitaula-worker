@@ -3,11 +3,31 @@ import MainLayout from "../layouts/MainLayout.astro";
 import StudentCard from "../components/StudentCard.astro";
 import IncidentModal from "../components/IncidentModal.astro";
 import FeedbackToast from "../components/FeedbackToast.astro";
-import { MOCK_STUDENTS, CURRENT_MONITOR } from "../lib/mocks";
+import {
+	getMonitorById,
+	getChildrenGroupedByClass,
+	type Monitor,
+} from "../lib/supabase";
 
-const classStudents = MOCK_STUDENTS.filter(
-	(s) => s.classGroup === CURRENT_MONITOR.assignedClass,
-);
+// Get monitor ID from cookie
+const monitorId = Astro.cookies.get("monitor_id")?.value;
+
+if (!monitorId) {
+	return Astro.redirect("/login");
+}
+
+// Fetch monitor and children data
+const monitor = await getMonitorById(monitorId);
+
+if (!monitor) {
+	return Astro.redirect("/login");
+}
+
+const childrenByClass = await getChildrenGroupedByClass(monitorId);
+
+// Get class names and children for display
+const classes = Object.values(childrenByClass);
+const monitorName = `${monitor.first_name} ${monitor.last_name}`;
 ---
 
 <MainLayout title="Mi Clase">
@@ -17,10 +37,10 @@ const classStudents = MOCK_STUDENTS.filter(
 	>
 		<div>
 			<h1 class="text-lg font-bold text-slate-900 leading-none">
-				{CURRENT_MONITOR.assignedClass}
+				Clases de {monitorName}
 			</h1>
 			<p class="text-xs text-slate-500 font-medium mt-1">
-				Comedor Principal • {classStudents.length} alumnos
+				{classes.length} clase{classes.length !== 1 ? "s" : ""}
 			</p>
 		</div>
 		<div class="flex items-center gap-2">
@@ -41,18 +61,52 @@ const classStudents = MOCK_STUDENTS.filter(
 				</svg>
 			</a>
 			<a
-				href="/login"
-				class="w-9 h-9 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 font-bold text-sm border-2 border-white shadow-sm"
+				href="/api/logout"
+				class="w-9 h-9 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 font-bold text-sm border-2 border-white shadow-sm hover:bg-emerald-200 transition-colors"
+				title="Cerrar sesión"
 			>
-				{CURRENT_MONITOR.name.substring(0, 2).toUpperCase()}
+				{monitorName.substring(0, 2).toUpperCase()}
 			</a>
 		</div>
 	</header>
 
-	<!-- Main List -->
-	<div class="p-4 pb-24 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-		{classStudents.map((student) => <StudentCard student={student} />)}
-	</div>
+	<!-- Classes with Students -->
+	{
+		classes.length > 0 ? (
+			<div class="p-4 pb-24 space-y-8">
+				{classes.map((classGroup) => (
+					<div>
+						<div class="mb-4">
+							<h2 class="text-xl font-bold text-slate-900">
+								{classGroup.class.name}
+							</h2>
+							<p class="text-sm text-slate-500">
+								{classGroup.children.length} alumno
+								{classGroup.children.length !== 1 ? "s" : ""}
+							</p>
+						</div>
+						<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+							{classGroup.children.map((child) => (
+								<StudentCard
+									student={{
+										id: child.id,
+										name: `${child.first_name} ${child.last_name}`,
+										classGroup: classGroup.class.name,
+									}}
+								/>
+							))}
+						</div>
+					</div>
+				))}
+			</div>
+		) : (
+			<div class="p-4 pb-24 text-center">
+				<p class="text-slate-500">
+					No hay clases asignadas o no hay alumnos registrados.
+				</p>
+			</div>
+		)
+	}
 
 	<!-- Shared Interactives -->
 	<IncidentModal />
