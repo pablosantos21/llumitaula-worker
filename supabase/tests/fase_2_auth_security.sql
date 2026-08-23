@@ -424,16 +424,20 @@ select throws_ok(
 select set_config(
   'request.jwt.claims',
   json_build_object(
-    'sub', '00000000-0000-4000-8000-000000000113',
+    'sub', '00000000-0000-4000-8000-000000000111',
     'role', 'authenticated'
   )::text,
   true
 );
 select is(
-  (select count(*) from public.devices
-   where school_id = '00000000-0000-4000-8000-000000000002'::uuid),
+  (with attempted as (
+     update public.meal_records
+        set notes = 'cross-tenant update'
+      where id = '00000000-0000-4000-8000-000000000621'::uuid
+      returning id
+   ) select count(*) from attempted),
   0::bigint,
-  'admin A cannot read devices from school B'
+  'worker A cannot update a meal record from school B'
 );
 
 select set_config(
