@@ -31,14 +31,16 @@ Crea la configuracion local a partir del ejemplo:
 cp .env.example .env
 ```
 
-`.env` debe contener solo variables publicas para el cliente del navegador:
+Obtén la URL y la clave pública desde el dashboard del proyecto Supabase, en `Project Settings > API`. Usa la `publishable key` recomendada o la `legacy anon key` si el proyecto todavía la utiliza. Nunca uses la `service_role key`.
+
+Coloca esos valores en `.env` como variables públicas para el cliente del navegador:
 
 ```dotenv
-PUBLIC_SUPABASE_URL=http://127.0.0.1:54321
-PUBLIC_SUPABASE_ANON_KEY=<publishable-o-anon-key-local>
+PUBLIC_SUPABASE_URL=<project-url>
+PUBLIC_SUPABASE_ANON_KEY=<publishable-o-legacy-anon-key>
 ```
 
-Nunca pongas una `service_role` key, una clave secreta ni ningun token con privilegios elevados en `.env`, en el frontend o en variables `PUBLIC_*`. La service-role key omite las politicas RLS y solo puede usarse en un entorno backend protegido cuando una tarea futura lo requiera.
+Para desarrollo local, sustituye `PUBLIC_SUPABASE_URL` por `http://127.0.0.1:54321` y usa la clave pública/anon que proporcione la instancia local. Nunca pongas una `service_role` key, una clave secreta ni ningún token con privilegios elevados en `.env`, en el frontend o en variables `PUBLIC_*`. La service-role key omite las políticas RLS y solo puede usarse en un entorno backend protegido cuando una tarea futura lo requiera.
 
 ## Supabase local
 
