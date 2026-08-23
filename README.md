@@ -36,6 +36,11 @@ All commands are run from the root of the project, from a terminal:
 | `npm run build`           | Build your production site to `./dist/`          |
 | `npm run preview`         | Preview your build locally, before deploying     |
 | `npm run astro ...`       | Run CLI commands like `astro add`, `astro check` |
+| `npm run check`           | Check Astro and TypeScript diagnostics           |
+| `npm run lint`            | Check JavaScript, TypeScript and Astro files     |
+| `npm run lint:fix`        | Fix automatically fixable lint issues            |
+| `npm run format`          | Format the project with Prettier                 |
+| `npm run format:check`    | Check project formatting without changing files  |
 | `npm run astro -- --help` | Get help using the Astro CLI                     |
 
 ## 👀 Want to learn more?
