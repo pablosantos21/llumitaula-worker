@@ -41,6 +41,439 @@ begin
 end
 $$;
 
+create table if not exists public.devices (
+  id uuid primary key default gen_random_uuid(),
+  school_id uuid not null references public.schools(id),
+  name text not null,
+  identifier text not null unique,
+  active boolean not null default true,
+  created_at timestamptz not null default now(),
+  last_seen_at timestamptz
+);
+create table if not exists public.worker_classrooms (
+  worker_id uuid not null references public.users(id),
+  class_id uuid not null references public.classes(id),
+  created_at timestamptz not null default now(),
+  primary key (worker_id, class_id)
+);
+create table if not exists public.meal_types (
+  id uuid primary key default gen_random_uuid(),
+  school_id uuid not null references public.schools(id),
+  name text not null,
+  active boolean not null default true,
+  sort_order integer not null default 0,
+  created_at timestamptz not null default now(),
+  unique (school_id, name)
+);
+create table if not exists public.meal_records (
+  id uuid primary key default gen_random_uuid(),
+  child_id uuid not null references public.children(id),
+  meal_type_id uuid not null references public.meal_types(id),
+  recorded_by uuid not null references public.users(id),
+  recorded_at timestamptz not null default now(),
+  status public.meal_status not null,
+  notes text
+);
+
+-- Task 3: tenant-aware authorization. These helpers read the profile through
+-- the function owner, so policies never recurse through public.users.
+create or replace function public.current_user_id()
+returns uuid
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select auth.uid()
+$$;
+
+create or replace function public.current_school_id()
+returns uuid
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select u.school_id
+    from public.users u
+   where u.id = auth.uid()
+     and u.active
+$$;
+
+create or replace function public.current_user_role()
+returns public.user_role
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select u.role
+    from public.users u
+   where u.id = auth.uid()
+     and u.active
+$$;
+
+create or replace function public.current_user_active()
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select coalesce((select u.active from public.users u where u.id = auth.uid()), false)
+$$;
+
+revoke execute on function public.current_user_id() from public, anon;
+revoke execute on function public.current_school_id() from public, anon;
+revoke execute on function public.current_user_role() from public, anon;
+revoke execute on function public.current_user_active() from public, anon;
+grant execute on function public.current_user_id() to authenticated, service_role;
+grant execute on function public.current_school_id() to authenticated, service_role;
+grant execute on function public.current_user_role() to authenticated, service_role;
+grant execute on function public.current_user_active() to authenticated, service_role;
+
+create or replace function public.custom_access_token_hook(event jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  claims jsonb := coalesce(event->'claims', '{}'::jsonb);
+  profile_role public.user_role;
+  profile_school_id uuid;
+  profile_active boolean;
+begin
+  select u.role, u.school_id, u.active
+    into profile_role, profile_school_id, profile_active
+    from public.users u
+   where u.id = (event->>'user_id')::uuid;
+
+  claims := jsonb_set(claims, '{user_role}', coalesce(to_jsonb(profile_role), 'null'::jsonb), true);
+  claims := jsonb_set(claims, '{school_id}', coalesce(to_jsonb(profile_school_id), 'null'::jsonb), true);
+  claims := jsonb_set(claims, '{active}', coalesce(to_jsonb(profile_active), 'false'::jsonb), true);
+  return jsonb_set(event, '{claims}', claims, true);
+end;
+$$;
+
+revoke execute on function public.custom_access_token_hook(jsonb) from public, anon, authenticated;
+grant execute on function public.custom_access_token_hook(jsonb) to supabase_auth_admin;
+
+-- Remove every baseline policy before installing the complete policy set.
+drop policy if exists users_insert_own on public.users;
+drop policy if exists users_select on public.users;
+drop policy if exists users_update on public.users;
+drop policy if exists schools_select on public.schools;
+drop policy if exists schools_insert on public.schools;
+drop policy if exists schools_update on public.schools;
+drop policy if exists schools_delete on public.schools;
+drop policy if exists classes_select on public.classes;
+drop policy if exists classes_insert on public.classes;
+drop policy if exists classes_update on public.classes;
+drop policy if exists classes_delete on public.classes;
+drop policy if exists monitors_select on public.monitors;
+drop policy if exists monitors_insert on public.monitors;
+drop policy if exists monitors_update on public.monitors;
+drop policy if exists monitors_delete on public.monitors;
+drop policy if exists monitors_schools_select on public.monitors_schools;
+drop policy if exists monitors_schools_insert on public.monitors_schools;
+drop policy if exists monitors_schools_update on public.monitors_schools;
+drop policy if exists monitors_schools_delete on public.monitors_schools;
+drop policy if exists children_select on public.children;
+drop policy if exists children_insert on public.children;
+drop policy if exists children_update on public.children;
+drop policy if exists children_delete on public.children;
+drop policy if exists parents_children_select on public.parents_children;
+drop policy if exists parents_children_insert on public.parents_children;
+drop policy if exists parents_children_update on public.parents_children;
+drop policy if exists parents_children_delete on public.parents_children;
+drop policy if exists menus_select on public.menus;
+drop policy if exists menus_insert on public.menus;
+drop policy if exists menus_update on public.menus;
+drop policy if exists menus_delete on public.menus;
+drop policy if exists menus_schools_select on public.menus_schools;
+drop policy if exists menus_schools_insert on public.menus_schools;
+drop policy if exists menus_schools_update on public.menus_schools;
+drop policy if exists menus_schools_delete on public.menus_schools;
+drop policy if exists allergens_select on public.allergens;
+drop policy if exists allergens_insert on public.allergens;
+drop policy if exists allergens_update on public.allergens;
+drop policy if exists allergens_delete on public.allergens;
+drop policy if exists child_allergens_select on public.child_allergens;
+drop policy if exists child_allergens_insert on public.child_allergens;
+drop policy if exists child_allergens_update on public.child_allergens;
+drop policy if exists child_allergens_delete on public.child_allergens;
+drop policy if exists incidents_select on public.incidents;
+drop policy if exists incidents_insert on public.incidents;
+drop policy if exists incidents_update on public.incidents;
+drop policy if exists incidents_delete on public.incidents;
+
+-- The only authenticated user-management writes are same-tenant, non-admin
+-- profiles. An administrator cannot alter their own tenant or elevate anyone.
+create policy users_select_tenant on public.users for select to authenticated
+using (
+  public.current_user_active()
+  and (id = public.current_user_id()
+    or (public.current_user_role() = 'admin' and school_id = public.current_school_id())
+    or (public.current_user_role() in ('supervisor', 'worker') and school_id = public.current_school_id()))
+);
+create policy users_insert_tenant on public.users for insert to authenticated
+with check (
+  public.current_user_role() = 'admin'
+  and school_id = public.current_school_id()
+  and role <> 'admin'
+);
+create policy users_update_tenant on public.users for update to authenticated
+using (
+  public.current_user_role() = 'admin'
+  and id <> public.current_user_id()
+  and school_id = public.current_school_id()
+)
+with check (
+  public.current_user_role() = 'admin'
+  and id <> public.current_user_id()
+  and school_id = public.current_school_id()
+  and role <> 'admin'
+);
+
+create policy schools_select_tenant on public.schools for select to authenticated
+using (public.current_user_active() and id = public.current_school_id());
+create policy schools_insert_tenant on public.schools for insert to authenticated
+with check (false);
+create policy schools_update_tenant on public.schools for update to authenticated
+using (public.current_user_role() = 'admin' and id = public.current_school_id())
+with check (public.current_user_role() = 'admin' and id = public.current_school_id());
+create policy schools_delete_tenant on public.schools for delete to authenticated
+using (false);
+
+create policy classes_select_tenant on public.classes for select to authenticated
+using (
+  public.current_user_active() and school_id = public.current_school_id()
+  and (public.current_user_role() in ('admin', 'supervisor')
+    or (public.current_user_role() = 'worker' and exists (
+      select 1 from public.worker_classrooms wc
+       where wc.class_id = classes.id and wc.worker_id = public.current_user_id()
+    )))
+);
+create policy classes_admin_insert on public.classes for insert to authenticated
+with check (public.current_user_role() = 'admin' and school_id = public.current_school_id());
+create policy classes_admin_update on public.classes for update to authenticated
+using (public.current_user_role() = 'admin' and school_id = public.current_school_id())
+with check (public.current_user_role() = 'admin' and school_id = public.current_school_id());
+create policy classes_admin_delete on public.classes for delete to authenticated
+using (public.current_user_role() = 'admin' and school_id = public.current_school_id());
+
+create policy monitors_select_tenant on public.monitors for select to authenticated
+using (public.current_user_role() in ('admin', 'supervisor') and exists (
+  select 1 from public.monitors_schools ms
+   where ms.monitor_id = monitors.id and ms.school_id = public.current_school_id()
+));
+create policy monitors_admin_insert on public.monitors for insert to authenticated
+with check (public.current_user_role() = 'admin');
+create policy monitors_admin_update on public.monitors for update to authenticated
+using (public.current_user_role() = 'admin' and exists (
+  select 1 from public.monitors_schools ms where ms.monitor_id = monitors.id and ms.school_id = public.current_school_id()
+)) with check (public.current_user_role() = 'admin');
+create policy monitors_admin_delete on public.monitors for delete to authenticated
+using (public.current_user_role() = 'admin' and exists (
+  select 1 from public.monitors_schools ms where ms.monitor_id = monitors.id and ms.school_id = public.current_school_id()
+));
+
+create policy monitors_schools_select_tenant on public.monitors_schools for select to authenticated
+using (public.current_user_role() in ('admin', 'supervisor') and school_id = public.current_school_id());
+create policy monitors_schools_admin_insert on public.monitors_schools for insert to authenticated
+with check (public.current_user_role() = 'admin' and school_id = public.current_school_id());
+create policy monitors_schools_admin_update on public.monitors_schools for update to authenticated
+using (public.current_user_role() = 'admin' and school_id = public.current_school_id())
+with check (public.current_user_role() = 'admin' and school_id = public.current_school_id());
+create policy monitors_schools_admin_delete on public.monitors_schools for delete to authenticated
+using (public.current_user_role() = 'admin' and school_id = public.current_school_id());
+
+create policy children_select_tenant on public.children for select to authenticated
+using (
+  public.current_user_active() and exists (
+    select 1 from public.classes cl
+     where cl.id = children.class_id and cl.school_id = public.current_school_id()
+       and (public.current_user_role() in ('admin', 'supervisor') or exists (
+         select 1 from public.worker_classrooms wc
+          where wc.class_id = cl.id and wc.worker_id = public.current_user_id()
+       ) or exists (
+         select 1 from public.parents_children pc
+          where pc.child_id = children.id and pc.parent_id = public.current_user_id()
+       ))
+));
+create policy children_admin_insert on public.children for insert to authenticated
+with check (public.current_user_role() = 'admin' and exists (
+  select 1 from public.classes cl where cl.id = children.class_id and cl.school_id = public.current_school_id()
+));
+create policy children_admin_update on public.children for update to authenticated
+using (public.current_user_role() = 'admin' and exists (
+  select 1 from public.classes cl where cl.id = children.class_id and cl.school_id = public.current_school_id()
+)) with check (public.current_user_role() = 'admin' and exists (
+  select 1 from public.classes cl where cl.id = children.class_id and cl.school_id = public.current_school_id()
+));
+create policy children_admin_delete on public.children for delete to authenticated
+using (public.current_user_role() = 'admin' and exists (
+  select 1 from public.classes cl where cl.id = children.class_id and cl.school_id = public.current_school_id()
+));
+
+create policy parents_children_select_tenant on public.parents_children for select to authenticated
+using (
+  parent_id = public.current_user_id()
+  or (public.current_user_role() in ('admin', 'supervisor') and exists (
+    select 1 from public.children ch join public.classes cl on cl.id = ch.class_id
+     where ch.id = parents_children.child_id and cl.school_id = public.current_school_id()
+  ))
+);
+create policy parents_children_admin_insert on public.parents_children for insert to authenticated
+with check (public.current_user_role() = 'admin' and exists (
+  select 1 from public.users u join public.children ch on ch.id = parents_children.child_id join public.classes cl on cl.id = ch.class_id
+   where u.id = parents_children.parent_id and u.school_id = public.current_school_id() and cl.school_id = public.current_school_id()
+));
+create policy parents_children_admin_update on public.parents_children for update to authenticated
+using (public.current_user_role() = 'admin' and exists (
+  select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = parents_children.child_id and cl.school_id = public.current_school_id()
+)) with check (public.current_user_role() = 'admin' and exists (
+  select 1 from public.users u join public.children ch on ch.id = parents_children.child_id join public.classes cl on cl.id = ch.class_id
+   where u.id = parents_children.parent_id and u.school_id = public.current_school_id() and cl.school_id = public.current_school_id()
+));
+create policy parents_children_admin_delete on public.parents_children for delete to authenticated
+using (public.current_user_role() = 'admin' and exists (
+  select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = parents_children.child_id and cl.school_id = public.current_school_id()
+));
+
+create policy devices_select_tenant on public.devices for select to authenticated
+using (public.current_user_role() in ('admin', 'supervisor') and school_id = public.current_school_id());
+create policy devices_admin_insert on public.devices for insert to authenticated
+with check (public.current_user_role() = 'admin' and school_id = public.current_school_id());
+create policy devices_admin_update on public.devices for update to authenticated
+using (public.current_user_role() = 'admin' and school_id = public.current_school_id())
+with check (public.current_user_role() = 'admin' and school_id = public.current_school_id());
+create policy devices_admin_delete on public.devices for delete to authenticated
+using (public.current_user_role() = 'admin' and school_id = public.current_school_id());
+
+create policy worker_classrooms_select_tenant on public.worker_classrooms for select to authenticated
+using (public.current_user_active() and (
+  (public.current_user_role() in ('admin', 'supervisor') and exists (
+    select 1 from public.classes cl where cl.id = worker_classrooms.class_id and cl.school_id = public.current_school_id()
+  )) or worker_id = public.current_user_id()
+));
+create policy worker_classrooms_admin_insert on public.worker_classrooms for insert to authenticated
+with check (public.current_user_role() = 'admin' and exists (
+  select 1 from public.users u join public.classes cl on cl.id = worker_classrooms.class_id
+   where u.id = worker_classrooms.worker_id and u.school_id = public.current_school_id() and cl.school_id = public.current_school_id()
+));
+create policy worker_classrooms_admin_update on public.worker_classrooms for update to authenticated
+using (public.current_user_role() = 'admin' and exists (
+  select 1 from public.classes cl where cl.id = worker_classrooms.class_id and cl.school_id = public.current_school_id()
+)) with check (public.current_user_role() = 'admin' and exists (
+  select 1 from public.users u join public.classes cl on cl.id = worker_classrooms.class_id
+   where u.id = worker_classrooms.worker_id and u.school_id = public.current_school_id() and cl.school_id = public.current_school_id()
+));
+create policy worker_classrooms_admin_delete on public.worker_classrooms for delete to authenticated
+using (public.current_user_role() = 'admin' and exists (
+  select 1 from public.classes cl where cl.id = worker_classrooms.class_id and cl.school_id = public.current_school_id()
+));
+
+create policy meal_types_select_tenant on public.meal_types for select to authenticated
+using (public.current_user_role() in ('admin', 'supervisor') and school_id = public.current_school_id());
+create policy meal_types_admin_insert on public.meal_types for insert to authenticated
+with check (public.current_user_role() = 'admin' and school_id = public.current_school_id());
+create policy meal_types_admin_update on public.meal_types for update to authenticated
+using (public.current_user_role() = 'admin' and school_id = public.current_school_id())
+with check (public.current_user_role() = 'admin' and school_id = public.current_school_id());
+create policy meal_types_admin_delete on public.meal_types for delete to authenticated
+using (public.current_user_role() = 'admin' and school_id = public.current_school_id());
+
+create policy meal_records_select_tenant on public.meal_records for select to authenticated
+using (exists (
+  select 1 from public.children ch join public.classes cl on cl.id = ch.class_id
+   where ch.id = meal_records.child_id and cl.school_id = public.current_school_id()
+     and (public.current_user_role() in ('admin', 'supervisor') or exists (
+       select 1 from public.worker_classrooms wc where wc.class_id = cl.id and wc.worker_id = public.current_user_id()
+     ) or meal_records.recorded_by = public.current_user_id())
+));
+create policy meal_records_admin_supervisor_insert on public.meal_records for insert to authenticated
+with check (public.current_user_role() = 'admin' and exists (
+  select 1 from public.children ch join public.classes cl on cl.id = ch.class_id join public.meal_types mt on mt.id = meal_records.meal_type_id
+   where ch.id = meal_records.child_id and cl.school_id = public.current_school_id() and mt.school_id = cl.school_id
+));
+create policy meal_records_worker_insert on public.meal_records for insert to authenticated
+with check (public.current_user_role() = 'worker' and recorded_by = public.current_user_id() and exists (
+  select 1 from public.children ch join public.classes cl on cl.id = ch.class_id join public.worker_classrooms wc on wc.class_id = cl.id join public.meal_types mt on mt.id = meal_records.meal_type_id
+   where ch.id = meal_records.child_id and wc.worker_id = public.current_user_id() and cl.school_id = public.current_school_id() and mt.school_id = cl.school_id
+));
+create policy meal_records_admin_supervisor_update on public.meal_records for update to authenticated
+using (public.current_user_role() in ('admin', 'supervisor') and exists (
+  select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = meal_records.child_id and cl.school_id = public.current_school_id()
+)) with check (public.current_user_role() in ('admin', 'supervisor') and exists (
+  select 1 from public.children ch join public.classes cl on cl.id = ch.class_id join public.meal_types mt on mt.id = meal_records.meal_type_id where ch.id = meal_records.child_id and cl.school_id = public.current_school_id() and mt.school_id = cl.school_id
+));
+create policy meal_records_worker_update on public.meal_records for update to authenticated
+using (public.current_user_role() = 'worker' and recorded_by = public.current_user_id() and recorded_at >= now() - interval '24 hours')
+with check (public.current_user_role() = 'worker' and recorded_by = public.current_user_id() and recorded_at >= now() - interval '24 hours');
+
+-- Legacy entities without a direct tenant column derive it from their links.
+create policy menus_select_tenant on public.menus for select to authenticated using (exists (
+  select 1 from public.menus_schools ms where ms.menu_id = menus.id and ms.school_id = public.current_school_id()
+) and public.current_user_role() in ('admin', 'supervisor', 'padre'));
+create policy menus_admin_insert on public.menus for insert to authenticated with check (public.current_user_role() = 'admin');
+create policy menus_admin_update on public.menus for update to authenticated using (public.current_user_role() = 'admin' and exists (select 1 from public.menus_schools ms where ms.menu_id = menus.id and ms.school_id = public.current_school_id())) with check (public.current_user_role() = 'admin');
+create policy menus_admin_delete on public.menus for delete to authenticated using (public.current_user_role() = 'admin' and exists (select 1 from public.menus_schools ms where ms.menu_id = menus.id and ms.school_id = public.current_school_id()));
+create policy menus_schools_select_tenant on public.menus_schools for select to authenticated using (
+  school_id = public.current_school_id()
+  and (public.current_user_role() in ('admin', 'supervisor') or exists (
+    select 1 from public.children ch
+    join public.classes cl on cl.id = ch.class_id
+    join public.parents_children pc on pc.child_id = ch.id
+    where cl.school_id = menus_schools.school_id and pc.parent_id = public.current_user_id()
+  ))
+);
+create policy menus_schools_admin_insert on public.menus_schools for insert to authenticated with check (public.current_user_role() = 'admin' and school_id = public.current_school_id());
+create policy menus_schools_admin_update on public.menus_schools for update to authenticated using (public.current_user_role() = 'admin' and school_id = public.current_school_id()) with check (public.current_user_role() = 'admin' and school_id = public.current_school_id());
+create policy menus_schools_admin_delete on public.menus_schools for delete to authenticated using (public.current_user_role() = 'admin' and school_id = public.current_school_id());
+
+create policy allergens_select_tenant on public.allergens for select to authenticated using (
+  public.current_user_role() in ('admin', 'supervisor') and exists (select 1 from public.child_allergens ca join public.children ch on ch.id = ca.child_id join public.classes cl on cl.id = ch.class_id where ca.allergen_id = allergens.id and cl.school_id = public.current_school_id())
+  or public.current_user_role() in ('worker', 'padre') and exists (select 1 from public.child_allergens ca join public.children ch on ch.id = ca.child_id join public.classes cl on cl.id = ch.class_id where ca.allergen_id = allergens.id and cl.school_id = public.current_school_id())
+);
+create policy allergens_admin_insert on public.allergens for insert to authenticated with check (public.current_user_role() = 'admin');
+create policy allergens_admin_update on public.allergens for update to authenticated using (public.current_user_role() = 'admin' and exists (select 1 from public.child_allergens ca join public.children ch on ch.id = ca.child_id join public.classes cl on cl.id = ch.class_id where ca.allergen_id = allergens.id and cl.school_id = public.current_school_id())) with check (public.current_user_role() = 'admin');
+create policy allergens_admin_delete on public.allergens for delete to authenticated using (public.current_user_role() = 'admin' and exists (select 1 from public.child_allergens ca join public.children ch on ch.id = ca.child_id join public.classes cl on cl.id = ch.class_id where ca.allergen_id = allergens.id and cl.school_id = public.current_school_id()));
+create policy child_allergens_select_tenant on public.child_allergens for select to authenticated using (exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = child_allergens.child_id and cl.school_id = public.current_school_id() and (public.current_user_role() in ('admin', 'supervisor', 'worker') or exists (select 1 from public.parents_children pc where pc.child_id = ch.id and pc.parent_id = public.current_user_id()))));
+create policy child_allergens_admin_insert on public.child_allergens for insert to authenticated with check (public.current_user_role() = 'admin' and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = child_allergens.child_id and cl.school_id = public.current_school_id()));
+create policy child_allergens_admin_update on public.child_allergens for update to authenticated using (public.current_user_role() = 'admin' and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = child_allergens.child_id and cl.school_id = public.current_school_id())) with check (public.current_user_role() = 'admin' and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = child_allergens.child_id and cl.school_id = public.current_school_id()));
+create policy child_allergens_admin_delete on public.child_allergens for delete to authenticated using (public.current_user_role() = 'admin' and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = child_allergens.child_id and cl.school_id = public.current_school_id()));
+create policy incidents_select_tenant on public.incidents for select to authenticated using (exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = incidents.child_id and cl.school_id = public.current_school_id() and (public.current_user_role() in ('admin', 'supervisor') or exists (select 1 from public.parents_children pc where pc.child_id = ch.id and pc.parent_id = public.current_user_id()))));
+create policy incidents_admin_insert on public.incidents for insert to authenticated with check (public.current_user_role() = 'admin' and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = incidents.child_id and cl.school_id = public.current_school_id()));
+create policy incidents_admin_update on public.incidents for update to authenticated using (public.current_user_role() = 'admin' and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = incidents.child_id and cl.school_id = public.current_school_id())) with check (public.current_user_role() = 'admin' and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = incidents.child_id and cl.school_id = public.current_school_id()));
+create policy incidents_admin_delete on public.incidents for delete to authenticated using (public.current_user_role() = 'admin' and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = incidents.child_id and cl.school_id = public.current_school_id()));
+
+-- Keep API privileges no broader than the policy matrix. service_role is the
+-- separate backend path; anon receives no table access.
+revoke all privileges on all tables in schema public from anon, authenticated;
+grant select, insert, update on public.users to authenticated;
+grant select, update on public.schools, public.classes, public.monitors, public.monitors_schools, public.children, public.parents_children, public.menus, public.menus_schools, public.allergens, public.child_allergens, public.incidents, public.devices, public.worker_classrooms, public.meal_types, public.meal_records to authenticated;
+grant insert, update, delete on public.schools, public.classes, public.monitors, public.monitors_schools, public.children, public.parents_children, public.menus, public.menus_schools, public.allergens, public.child_allergens, public.incidents, public.devices, public.worker_classrooms, public.meal_types, public.meal_records to authenticated;
+grant all privileges on all tables in schema public to service_role;
+
+alter table public.users enable row level security;
+alter table public.schools enable row level security;
+alter table public.classes enable row level security;
+alter table public.monitors enable row level security;
+alter table public.monitors_schools enable row level security;
+alter table public.children enable row level security;
+alter table public.parents_children enable row level security;
+alter table public.menus enable row level security;
+alter table public.menus_schools enable row level security;
+alter table public.allergens enable row level security;
+alter table public.child_allergens enable row level security;
+alter table public.incidents enable row level security;
+alter table public.devices enable row level security;
+alter table public.worker_classrooms enable row level security;
+alter table public.meal_types enable row level security;
+alter table public.meal_records enable row level security;
+
 alter table public.users
   alter column school_id set not null;
 
@@ -72,7 +505,9 @@ alter table public.users
 
 create index users_school_id_idx on public.users (school_id);
 
-create table public.devices (
+-- These relations are declared before the policies so every policy can be
+-- created in the same migration transaction.
+create table if not exists public.devices (
   id uuid primary key default gen_random_uuid(),
   school_id uuid not null references public.schools(id),
   name text not null,
@@ -81,15 +516,13 @@ create table public.devices (
   created_at timestamptz not null default now(),
   last_seen_at timestamptz
 );
-
-create table public.worker_classrooms (
+create table if not exists public.worker_classrooms (
   worker_id uuid not null references public.users(id),
   class_id uuid not null references public.classes(id),
   created_at timestamptz not null default now(),
   primary key (worker_id, class_id)
 );
-
-create table public.meal_types (
+create table if not exists public.meal_types (
   id uuid primary key default gen_random_uuid(),
   school_id uuid not null references public.schools(id),
   name text not null,
@@ -98,8 +531,7 @@ create table public.meal_types (
   created_at timestamptz not null default now(),
   unique (school_id, name)
 );
-
-create table public.meal_records (
+create table if not exists public.meal_records (
   id uuid primary key default gen_random_uuid(),
   child_id uuid not null references public.children(id),
   meal_type_id uuid not null references public.meal_types(id),
@@ -109,12 +541,49 @@ create table public.meal_records (
   notes text
 );
 
-create index devices_school_id_idx on public.devices (school_id);
-create index worker_classrooms_class_id_idx on public.worker_classrooms (class_id);
-create index meal_records_child_id_idx on public.meal_records (child_id);
-create index meal_records_meal_type_id_idx on public.meal_records (meal_type_id);
-create index meal_records_recorded_by_idx on public.meal_records (recorded_by);
-create index meal_records_recorded_at_idx on public.meal_records (recorded_at);
+create table if not exists public.devices (
+  id uuid primary key default gen_random_uuid(),
+  school_id uuid not null references public.schools(id),
+  name text not null,
+  identifier text not null unique,
+  active boolean not null default true,
+  created_at timestamptz not null default now(),
+  last_seen_at timestamptz
+);
+
+create table if not exists public.worker_classrooms (
+  worker_id uuid not null references public.users(id),
+  class_id uuid not null references public.classes(id),
+  created_at timestamptz not null default now(),
+  primary key (worker_id, class_id)
+);
+
+create table if not exists public.meal_types (
+  id uuid primary key default gen_random_uuid(),
+  school_id uuid not null references public.schools(id),
+  name text not null,
+  active boolean not null default true,
+  sort_order integer not null default 0,
+  created_at timestamptz not null default now(),
+  unique (school_id, name)
+);
+
+create table if not exists public.meal_records (
+  id uuid primary key default gen_random_uuid(),
+  child_id uuid not null references public.children(id),
+  meal_type_id uuid not null references public.meal_types(id),
+  recorded_by uuid not null references public.users(id),
+  recorded_at timestamptz not null default now(),
+  status public.meal_status not null,
+  notes text
+);
+
+create index if not exists devices_school_id_idx on public.devices (school_id);
+create index if not exists worker_classrooms_class_id_idx on public.worker_classrooms (class_id);
+create index if not exists meal_records_child_id_idx on public.meal_records (child_id);
+create index if not exists meal_records_meal_type_id_idx on public.meal_records (meal_type_id);
+create index if not exists meal_records_recorded_by_idx on public.meal_records (recorded_by);
+create index if not exists meal_records_recorded_at_idx on public.meal_records (recorded_at);
 
 -- These checks run for direct SQL writes as well as API writes. They deliberately
 -- do not rely on RLS, which is added by Task 3.
