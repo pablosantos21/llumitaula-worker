@@ -70,6 +70,8 @@ alter table public.users
   add constraint users_auth_user_fkey
   foreign key (id) references auth.users(id) on delete cascade;
 
+create index users_school_id_idx on public.users (school_id);
+
 create table public.devices (
   id uuid primary key default gen_random_uuid(),
   school_id uuid not null references public.schools(id),
@@ -131,6 +133,9 @@ declare
   meal_type_school uuid;
   recorder_school uuid;
 begin
+  -- Serialize all tenant checks before taking row-level locks.
+  perform pg_advisory_xact_lock(2147483647, 42042);
+
   if tg_table_name = 'users' then
     if new.role is distinct from 'worker'::public.user_role
        and exists (
