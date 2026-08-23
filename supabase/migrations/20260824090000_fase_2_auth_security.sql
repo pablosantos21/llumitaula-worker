@@ -206,12 +206,32 @@ as $$
      )
 $$;
 
+create or replace function public.monitor_assignments_are_tenant_safe(
+  p_monitor_id uuid,
+  p_school_id uuid
+)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select not exists (
+    select 1
+      from public.monitors_schools ms
+     where ms.monitor_id = p_monitor_id
+       and ms.school_id <> p_school_id
+  )
+$$;
+
 revoke execute on function public.current_user_can_access_child(uuid) from public, anon;
 revoke execute on function public.current_user_has_assigned_child(uuid) from public, anon;
 revoke execute on function public.current_user_can_access_class(uuid) from public, anon;
+revoke execute on function public.monitor_assignments_are_tenant_safe(uuid, uuid) from public, anon;
 grant execute on function public.current_user_can_access_child(uuid) to authenticated, service_role;
 grant execute on function public.current_user_has_assigned_child(uuid) to authenticated, service_role;
 grant execute on function public.current_user_can_access_class(uuid) to authenticated, service_role;
+grant execute on function public.monitor_assignments_are_tenant_safe(uuid, uuid) to authenticated, service_role;
 
 create or replace function public.custom_access_token_hook(event jsonb)
 returns jsonb
@@ -360,10 +380,20 @@ using (public.current_user_active() and public.current_user_role() = 'admin' and
 create policy monitors_schools_select_tenant on public.monitors_schools for select to authenticated
 using (public.current_user_role() in ('admin', 'supervisor') and school_id = public.current_school_id());
 create policy monitors_schools_admin_insert on public.monitors_schools for insert to authenticated
-with check (public.current_user_role() = 'admin' and school_id = public.current_school_id());
+with check (
+  public.current_user_active()
+  and public.current_user_role() = 'admin'
+  and school_id = public.current_school_id()
+  and public.monitor_assignments_are_tenant_safe(monitor_id, public.current_school_id())
+);
 create policy monitors_schools_admin_update on public.monitors_schools for update to authenticated
-using (public.current_user_role() = 'admin' and school_id = public.current_school_id())
-with check (public.current_user_role() = 'admin' and school_id = public.current_school_id());
+using (public.current_user_active() and public.current_user_role() = 'admin' and school_id = public.current_school_id())
+with check (
+  public.current_user_active()
+  and public.current_user_role() = 'admin'
+  and school_id = public.current_school_id()
+  and public.monitor_assignments_are_tenant_safe(monitor_id, public.current_school_id())
+);
 create policy monitors_schools_admin_delete on public.monitors_schools for delete to authenticated
 using (public.current_user_role() = 'admin' and school_id = public.current_school_id());
 
