@@ -1,6 +1,6 @@
 begin;
 
-select plan(22);
+select plan(28);
 
 set local role postgres;
 
@@ -529,6 +529,110 @@ select throws_ok(
        'Orphan profile', 'worker')$$,
   '23503',
   'a profile without a matching auth user is rejected by the FK'
+);
+
+-- The role and allergy assertions require the authenticated Task 4 fixtures.
+-- Fail the precondition explicitly rather than turning missing fixtures into
+-- false-positive authorization results.
+select ok(
+  pg_temp.privileged_count_rows($query$
+    select count(*)
+      from (
+        select u.id
+          from public.users u
+         where u.id in (
+           '00000000-0000-4000-8000-000000000111'::uuid,
+           '00000000-0000-4000-8000-000000000112'::uuid,
+           '00000000-0000-4000-8000-000000000113'::uuid
+         )
+           and u.school_id = '00000000-0000-4000-8000-000000000001'::uuid
+           and u.active
+        union all
+        select c.id
+          from public.children c
+          join public.classes cl on cl.id = c.class_id
+         where (c.id, cl.school_id) in (
+           ('00000000-0000-4000-8000-000000000201'::uuid, '00000000-0000-4000-8000-000000000001'::uuid),
+           ('00000000-0000-4000-8000-000000000225'::uuid, '00000000-0000-4000-8000-000000000002'::uuid)
+         )
+      ) fixtures
+  $query$) = 5,
+  'role and cross-tenant allergy fixtures exist'
+);
+
+set local role postgres;
+insert into public.allergens (id, name)
+values ('00000000-0000-4000-8000-000000000498'::uuid, 'B-only test allergen'),
+       ('00000000-0000-4000-8000-000000000499'::uuid, 'Shared test allergen')
+on conflict (id) do nothing;
+insert into public.child_allergens (child_id, allergen_id)
+values
+  ('00000000-0000-4000-8000-000000000225'::uuid, '00000000-0000-4000-8000-000000000498'::uuid),
+  ('00000000-0000-4000-8000-000000000201'::uuid, '00000000-0000-4000-8000-000000000499'::uuid),
+  ('00000000-0000-4000-8000-000000000225'::uuid, '00000000-0000-4000-8000-000000000499'::uuid)
+on conflict (child_id, allergen_id) do nothing;
+
+set local role authenticated;
+select set_config(
+  'request.jwt.claims',
+  json_build_object(
+    'sub', '00000000-0000-4000-8000-000000000113',
+    'role', 'authenticated'
+  )::text,
+  true
+);
+select throws_ok(
+  $$update public.users
+       set role = 'admin'
+     where id = '00000000-0000-4000-8000-000000000112'::uuid$$,
+  '42501',
+  'admin cannot elevate a supervisor to admin'
+);
+
+select lives_ok(
+  $$update public.users
+       set role = 'worker'
+     where id = '00000000-0000-4000-8000-000000000112'::uuid$$,
+  'admin can safely demote a supervisor to worker'
+);
+
+select is(
+  pg_temp.count_rows($query$
+    update public.allergens
+       set name = 'shared allergen blocked'
+     where id = '00000000-0000-4000-8000-000000000499'
+     returning id
+  $query$),
+  0::bigint,
+  'admin cannot update an allergen shared with another school'
+);
+
+select is(
+  pg_temp.count_rows($query$
+    delete from public.allergens
+     where id = '00000000-0000-4000-8000-000000000499'
+     returning id
+  $query$),
+  0::bigint,
+  'admin cannot delete an allergen shared with another school'
+);
+
+set_config(
+  'request.jwt.claims',
+  json_build_object(
+    'sub', '00000000-0000-4000-8000-000000000111',
+    'role', 'authenticated'
+  )::text,
+  true
+);
+select is(
+  pg_temp.count_rows($query$
+    select count(*)
+      from public.allergens a
+     where a.id = '00000000-0000-4000-8000-000000000498'::uuid
+  $query$),
+  0::bigint,
+  'worker cannot read an allergen attached only to an unassigned class'
 );
 
 select * from finish();

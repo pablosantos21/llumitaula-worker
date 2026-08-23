@@ -250,9 +250,9 @@ as $$
      )
 $$;
 
-create or replace function public.user_role_is_unchanged(
+create or replace function public.user_role_change_is_safe(
   p_user_id uuid,
-  p_role text
+  p_new_role text
 )
 returns boolean
 language sql
@@ -264,7 +264,41 @@ as $$
     select 1
       from public.users u
      where u.id = p_user_id
-       and u.role::text = p_role
+       and case u.role::text
+             when 'admin' then 4
+             when 'supervisor' then 3
+             when 'worker' then 2
+             when 'monitor' then 1
+             when 'padre' then 1
+             else 0
+           end >= case p_new_role
+             when 'admin' then 4
+             when 'supervisor' then 3
+             when 'worker' then 2
+             when 'monitor' then 1
+             when 'padre' then 1
+             else 0
+           end
+  )
+$$;
+
+create or replace function public.allergen_is_tenant_private(
+  p_allergen_id uuid,
+  p_school_id uuid
+)
+returns boolean
+language sql
+stable
+security definer
+set search_path = pg_catalog, public, pg_temp
+as $$
+  select not exists (
+    select 1
+      from public.child_allergens ca
+      join public.children ch on ch.id = ca.child_id
+      join public.classes cl on cl.id = ch.class_id
+     where ca.allergen_id = p_allergen_id
+       and cl.school_id <> p_school_id
   )
 $$;
 
@@ -410,14 +444,16 @@ $$;
 alter function public.current_user_can_access_child(uuid) set schema private;
 alter function public.current_user_has_assigned_child(uuid) set schema private;
 alter function public.current_user_can_access_class(uuid) set schema private;
-alter function public.user_role_is_unchanged(uuid, text) set schema private;
+alter function public.user_role_change_is_safe(uuid, text) set schema private;
+alter function public.allergen_is_tenant_private(uuid, uuid) set schema private;
 alter function public.monitor_assignments_are_tenant_safe(uuid, uuid) set schema private;
 alter function public.incident_relations_are_tenant_safe(uuid, uuid) set schema private;
 
 revoke execute on function private.current_user_can_access_child(uuid) from public, anon;
 revoke execute on function private.current_user_has_assigned_child(uuid) from public, anon;
 revoke execute on function private.current_user_can_access_class(uuid) from public, anon;
-revoke execute on function private.user_role_is_unchanged(uuid, text) from public, anon;
+revoke execute on function private.user_role_change_is_safe(uuid, text) from public, anon;
+revoke execute on function private.allergen_is_tenant_private(uuid, uuid) from public, anon;
 revoke execute on function private.monitor_assignments_are_tenant_safe(uuid, uuid) from public, anon;
 revoke execute on function public.enforce_monitor_assignment_tenant() from public, anon, authenticated, service_role;
 revoke execute on function public.enforce_monitor_school_tenant() from public, anon, authenticated, service_role;
@@ -426,7 +462,8 @@ revoke execute on function public.enforce_incident_tenant() from public, anon, a
 grant execute on function private.current_user_can_access_child(uuid) to authenticated, service_role;
 grant execute on function private.current_user_has_assigned_child(uuid) to authenticated, service_role;
 grant execute on function private.current_user_can_access_class(uuid) to authenticated, service_role;
-grant execute on function private.user_role_is_unchanged(uuid, text) to authenticated, service_role;
+grant execute on function private.user_role_change_is_safe(uuid, text) to authenticated, service_role;
+grant execute on function private.allergen_is_tenant_private(uuid, uuid) to authenticated, service_role;
 grant execute on function private.monitor_assignments_are_tenant_safe(uuid, uuid) to authenticated, service_role;
 grant execute on function public.enforce_monitor_assignment_tenant() to postgres;
 grant execute on function public.enforce_monitor_school_tenant() to postgres;
@@ -545,7 +582,7 @@ with check (
   and public.current_user_role() = 'admin'
   and id <> public.current_user_id()
   and school_id = public.current_school_id()
-  and private.user_role_is_unchanged(id, role::text)
+  and private.user_role_change_is_safe(id, role::text)
 );
 create policy users_update_own on public.users for update to authenticated
 using (public.current_user_active() and id = public.current_user_id())
@@ -764,8 +801,8 @@ create policy allergens_select_tenant on public.allergens for select to authenti
   or public.current_user_role() = 'padre' and exists (select 1 from public.child_allergens ca join public.children ch on ch.id = ca.child_id where ca.allergen_id = allergens.id and private.current_user_can_access_child(ch.id))
 );
 create policy allergens_admin_insert on public.allergens for insert to authenticated with check (public.current_user_role() = 'admin');
-create policy allergens_admin_update on public.allergens for update to authenticated using (public.current_user_role() = 'admin' and exists (select 1 from public.child_allergens ca join public.children ch on ch.id = ca.child_id join public.classes cl on cl.id = ch.class_id where ca.allergen_id = allergens.id and cl.school_id = public.current_school_id())) with check (public.current_user_role() = 'admin');
-create policy allergens_admin_delete on public.allergens for delete to authenticated using (public.current_user_role() = 'admin' and exists (select 1 from public.child_allergens ca join public.children ch on ch.id = ca.child_id join public.classes cl on cl.id = ch.class_id where ca.allergen_id = allergens.id and cl.school_id = public.current_school_id()));
+create policy allergens_admin_update on public.allergens for update to authenticated using (public.current_user_active() and public.current_user_role() = 'admin' and private.allergen_is_tenant_private(allergens.id, public.current_school_id()) and exists (select 1 from public.child_allergens ca join public.children ch on ch.id = ca.child_id join public.classes cl on cl.id = ch.class_id where ca.allergen_id = allergens.id and cl.school_id = public.current_school_id())) with check (public.current_user_active() and public.current_user_role() = 'admin');
+create policy allergens_admin_delete on public.allergens for delete to authenticated using (public.current_user_active() and public.current_user_role() = 'admin' and private.allergen_is_tenant_private(allergens.id, public.current_school_id()) and exists (select 1 from public.child_allergens ca join public.children ch on ch.id = ca.child_id join public.classes cl on cl.id = ch.class_id where ca.allergen_id = allergens.id and cl.school_id = public.current_school_id()));
 create policy child_allergens_select_tenant on public.child_allergens for select to authenticated using (public.current_user_active() and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = child_allergens.child_id and cl.school_id = public.current_school_id() and (public.current_user_role() in ('admin', 'supervisor') or private.current_user_can_access_child(ch.id))));
 create policy child_allergens_admin_insert on public.child_allergens for insert to authenticated with check (public.current_user_role() = 'admin' and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = child_allergens.child_id and cl.school_id = public.current_school_id()));
 create policy child_allergens_admin_update on public.child_allergens for update to authenticated using (public.current_user_role() = 'admin' and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = child_allergens.child_id and cl.school_id = public.current_school_id())) with check (public.current_user_role() = 'admin' and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = child_allergens.child_id and cl.school_id = public.current_school_id()));
@@ -830,79 +867,6 @@ alter table public.users
   foreign key (id) references auth.users(id) on delete cascade;
 
 create index users_school_id_idx on public.users (school_id);
-
--- These relations are declared before the policies so every policy can be
--- created in the same migration transaction.
-create table if not exists public.devices (
-  id uuid primary key default gen_random_uuid(),
-  school_id uuid not null references public.schools(id),
-  name text not null,
-  identifier text not null unique,
-  active boolean not null default true,
-  created_at timestamptz not null default now(),
-  last_seen_at timestamptz
-);
-create table if not exists public.worker_classrooms (
-  worker_id uuid not null references public.users(id),
-  class_id uuid not null references public.classes(id),
-  created_at timestamptz not null default now(),
-  primary key (worker_id, class_id)
-);
-create table if not exists public.meal_types (
-  id uuid primary key default gen_random_uuid(),
-  school_id uuid not null references public.schools(id),
-  name text not null,
-  active boolean not null default true,
-  sort_order integer not null default 0,
-  created_at timestamptz not null default now(),
-  unique (school_id, name)
-);
-create table if not exists public.meal_records (
-  id uuid primary key default gen_random_uuid(),
-  child_id uuid not null references public.children(id),
-  meal_type_id uuid not null references public.meal_types(id),
-  recorded_by uuid not null references public.users(id),
-  recorded_at timestamptz not null default now(),
-  status public.meal_status not null,
-  notes text
-);
-
-create table if not exists public.devices (
-  id uuid primary key default gen_random_uuid(),
-  school_id uuid not null references public.schools(id),
-  name text not null,
-  identifier text not null unique,
-  active boolean not null default true,
-  created_at timestamptz not null default now(),
-  last_seen_at timestamptz
-);
-
-create table if not exists public.worker_classrooms (
-  worker_id uuid not null references public.users(id),
-  class_id uuid not null references public.classes(id),
-  created_at timestamptz not null default now(),
-  primary key (worker_id, class_id)
-);
-
-create table if not exists public.meal_types (
-  id uuid primary key default gen_random_uuid(),
-  school_id uuid not null references public.schools(id),
-  name text not null,
-  active boolean not null default true,
-  sort_order integer not null default 0,
-  created_at timestamptz not null default now(),
-  unique (school_id, name)
-);
-
-create table if not exists public.meal_records (
-  id uuid primary key default gen_random_uuid(),
-  child_id uuid not null references public.children(id),
-  meal_type_id uuid not null references public.meal_types(id),
-  recorded_by uuid not null references public.users(id),
-  recorded_at timestamptz not null default now(),
-  status public.meal_status not null,
-  notes text
-);
 
 create index if not exists devices_school_id_idx on public.devices (school_id);
 create index if not exists worker_classrooms_class_id_idx on public.worker_classrooms (class_id);
