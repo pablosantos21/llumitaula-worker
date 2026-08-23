@@ -1,253 +1,124 @@
--- Deterministic development data for the local Supabase database.
--- This file never creates auth.users or stores passwords. It does not remove or
--- update data outside this dataset.
+-- Deterministic local development data. All credentials in this file are for
+-- local tests only; no production or service_role secret belongs here.
 
--- A fixed UUID may already exist in a database restored from another source.
--- Abort before inserting in that case, rather than attaching demo relationships
--- to or overwriting an unrelated row. Matching demo rows make reruns safe.
+-- The same bcrypt password is used for every local account: password
+-- (development only). Auth rows must exist before public.users because the
+-- phase 2 migration adds a foreign key from public.users.id to auth.users.id.
+insert into auth.users (
+  id, instance_id, aud, role, email, encrypted_password,
+  email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
+  created_at, updated_at, confirmed_at
+)
+select account.id, '00000000-0000-0000-0000-000000000000'::uuid,
+       'authenticated', 'authenticated', account.email,
+       '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy',
+       timestamp '2026-01-01 00:00:00+00',
+       jsonb_build_object('provider', 'email', 'providers', jsonb_build_array('email')),
+       jsonb_build_object('full_name', account.full_name),
+       timestamp '2026-01-01 00:00:00+00', timestamp '2026-01-01 00:00:00+00',
+       timestamp '2026-01-01 00:00:00+00'
+  from (values
+    ('00000000-0000-4000-8000-000000000101'::uuid, 'parent.1@local.test', 'Parent One'),
+    ('00000000-0000-4000-8000-000000000102'::uuid, 'parent.2@local.test', 'Parent Two'),
+    ('00000000-0000-4000-8000-000000000103'::uuid, 'parent.3@local.test', 'Parent Three'),
+    ('00000000-0000-4000-8000-000000000104'::uuid, 'parent.4@local.test', 'Parent Four'),
+    ('00000000-0000-4000-8000-000000000111'::uuid, 'worker.a@local.test', 'Worker A'),
+    ('00000000-0000-4000-8000-000000000112'::uuid, 'supervisor.a@local.test', 'Supervisor A'),
+    ('00000000-0000-4000-8000-000000000113'::uuid, 'admin.a@local.test', 'Admin A'),
+    ('00000000-0000-4000-8000-000000000114'::uuid, 'worker.b@local.test', 'Worker B'),
+    ('00000000-0000-4000-8000-000000000115'::uuid, 'admin.b@local.test', 'Admin B'),
+    ('00000000-0000-4000-8000-000000000116'::uuid, 'worker.a2@local.test', 'Worker A Two')
+  ) as account(id, email, full_name)
+on conflict (id) do nothing;
+
 do $$
 begin
   if exists (
-    select 1 from public.users
-    where id = '00000000-0000-4000-8000-000000000101'
-      and role is distinct from 'padre'::public.user_role
-  ) or exists (
-    select 1 from public.users
-    where id = '00000000-0000-4000-8000-000000000102'
-      and role is distinct from 'padre'::public.user_role
-  ) or exists (
-    select 1 from public.users
-    where id = '00000000-0000-4000-8000-000000000103'
-      and role is distinct from 'padre'::public.user_role
-  ) or exists (
-    select 1 from public.users
-    where id = '00000000-0000-4000-8000-000000000104'
-      and role is distinct from 'padre'::public.user_role
-  ) then
-    raise exception 'seed UUID collision in public.users';
-  end if;
-
-  if exists (
-    select 1 from public.schools
-    where id = '00000000-0000-4000-8000-000000000001'
-      and name is distinct from 'Colegio Demo'
-  ) then
-    raise exception 'seed UUID collision in public.schools';
-  end if;
-
-  if exists (
     select 1
-    from public.schools
-    where name = 'Colegio Demo'
-      and id is distinct from '00000000-0000-4000-8000-000000000001'::uuid
+      from auth.users au
+      join (values
+        ('00000000-0000-4000-8000-000000000101'::uuid, 'parent.1@local.test'),
+        ('00000000-0000-4000-8000-000000000102'::uuid, 'parent.2@local.test'),
+        ('00000000-0000-4000-8000-000000000103'::uuid, 'parent.3@local.test'),
+        ('00000000-0000-4000-8000-000000000104'::uuid, 'parent.4@local.test'),
+        ('00000000-0000-4000-8000-000000000111'::uuid, 'worker.a@local.test'),
+        ('00000000-0000-4000-8000-000000000112'::uuid, 'supervisor.a@local.test'),
+        ('00000000-0000-4000-8000-000000000113'::uuid, 'admin.a@local.test'),
+        ('00000000-0000-4000-8000-000000000114'::uuid, 'worker.b@local.test'),
+        ('00000000-0000-4000-8000-000000000115'::uuid, 'admin.b@local.test'),
+        ('00000000-0000-4000-8000-000000000116'::uuid, 'worker.a2@local.test')
+      ) expected(id, email) on expected.id = au.id
+     where au.email is distinct from expected.email
   ) then
+    raise exception 'seed collision in auth.users';
+  end if;
+  if exists (select 1 from public.schools where id = '00000000-0000-4000-8000-000000000001' and name <> 'Colegio Demo')
+     or exists (select 1 from public.schools where id = '00000000-0000-4000-8000-000000000002' and name <> 'School B') then
+    raise exception 'seed collision in public.schools';
+  end if;
+  if exists (select 1 from public.schools where name in ('Colegio Demo', 'School B') group by name having count(*) > 1) then
     raise exception 'seed natural key collision in public.schools';
   end if;
-
-  if exists (
-    select 1 from public.classes
-    where id = '00000000-0000-4000-8000-000000000011'
-      and (name, school_id) is distinct from ('Clase Sol', '00000000-0000-4000-8000-000000000001'::uuid)
-  ) or exists (
-    select 1 from public.classes
-    where id = '00000000-0000-4000-8000-000000000012'
-      and (name, school_id) is distinct from ('Clase Luna', '00000000-0000-4000-8000-000000000001'::uuid)
-  ) then
-    raise exception 'seed UUID collision in public.classes';
-  end if;
-
   if exists (
     select 1
-    from (
-      values
-        ('Clase Sol', '00000000-0000-4000-8000-000000000001'::uuid, '00000000-0000-4000-8000-000000000011'::uuid),
-        ('Clase Luna', '00000000-0000-4000-8000-000000000001'::uuid, '00000000-0000-4000-8000-000000000012'::uuid)
-    ) as demo(name, school_id, expected_id)
-    join public.classes on classes.name = demo.name and classes.school_id = demo.school_id
-    where classes.id is distinct from demo.expected_id
+      from public.users u
+      join (values
+        ('00000000-0000-4000-8000-000000000101'::uuid, '00000000-0000-4000-8000-000000000001'::uuid, 'padre'::public.user_role),
+        ('00000000-0000-4000-8000-000000000102'::uuid, '00000000-0000-4000-8000-000000000001'::uuid, 'padre'::public.user_role),
+        ('00000000-0000-4000-8000-000000000103'::uuid, '00000000-0000-4000-8000-000000000001'::uuid, 'padre'::public.user_role),
+        ('00000000-0000-4000-8000-000000000104'::uuid, '00000000-0000-4000-8000-000000000001'::uuid, 'padre'::public.user_role),
+        ('00000000-0000-4000-8000-000000000111'::uuid, '00000000-0000-4000-8000-000000000001'::uuid, 'worker'::public.user_role),
+        ('00000000-0000-4000-8000-000000000112'::uuid, '00000000-0000-4000-8000-000000000001'::uuid, 'supervisor'::public.user_role),
+        ('00000000-0000-4000-8000-000000000113'::uuid, '00000000-0000-4000-8000-000000000001'::uuid, 'admin'::public.user_role),
+        ('00000000-0000-4000-8000-000000000114'::uuid, '00000000-0000-4000-8000-000000000002'::uuid, 'worker'::public.user_role),
+        ('00000000-0000-4000-8000-000000000115'::uuid, '00000000-0000-4000-8000-000000000002'::uuid, 'admin'::public.user_role),
+        ('00000000-0000-4000-8000-000000000116'::uuid, '00000000-0000-4000-8000-000000000001'::uuid, 'worker'::public.user_role)
+      ) expected(id, school_id, role) on expected.id = u.id
+     where (u.school_id, u.role) is distinct from (expected.school_id, expected.role)
   ) then
-    raise exception 'seed natural key collision in public.classes';
-  end if;
-
-  if exists (
-    select 1 from public.monitors
-    where id = '00000000-0000-4000-8000-000000000021'
-      and (first_name, last_name, code) is distinct from ('Ana', 'Serra', 101::smallint)
-  ) or exists (
-    select 1 from public.monitors
-    where id = '00000000-0000-4000-8000-000000000022'
-      and (first_name, last_name, code) is distinct from ('Bruno', 'Vidal', 102::smallint)
-  ) or exists (
-    select 1 from public.monitors
-    where id = '00000000-0000-4000-8000-000000000023'
-      and (first_name, last_name, code) is distinct from ('Carla', 'Moya', 103::smallint)
-  ) or exists (
-    select 1 from public.monitors
-    where id = '00000000-0000-4000-8000-000000000024'
-      and (first_name, last_name, code) is distinct from ('Diego', 'Roca', 104::smallint)
-  ) or exists (
-    select 1 from public.monitors
-    where id = '00000000-0000-4000-8000-000000000025'
-      and (first_name, last_name, code) is distinct from ('Elena', 'Costa', 105::smallint)
-  ) then
-    raise exception 'seed UUID collision in public.monitors';
-  end if;
-
-  if exists (
-    select 1
-    from (
-      values
-        (101::smallint, '00000000-0000-4000-8000-000000000021'::uuid),
-        (102::smallint, '00000000-0000-4000-8000-000000000022'::uuid),
-        (103::smallint, '00000000-0000-4000-8000-000000000023'::uuid),
-        (104::smallint, '00000000-0000-4000-8000-000000000024'::uuid),
-        (105::smallint, '00000000-0000-4000-8000-000000000025'::uuid)
-    ) as demo(code, expected_id)
-    join public.monitors on monitors.code = demo.code
-    where monitors.id is distinct from demo.expected_id
-  ) then
-    raise exception 'seed natural key collision in public.monitors';
-  end if;
-
-  if exists (
-    select 1 from public.children
-    where id between '00000000-0000-4000-8000-000000000201' and '00000000-0000-4000-8000-000000000224'
-      and (first_name, last_name, class_id) is distinct from (
-        case id
-          when '00000000-0000-4000-8000-000000000201'::uuid then 'Alba'
-          when '00000000-0000-4000-8000-000000000202'::uuid then 'Adrian'
-          when '00000000-0000-4000-8000-000000000203'::uuid then 'Berta'
-          when '00000000-0000-4000-8000-000000000204'::uuid then 'Bruno'
-          when '00000000-0000-4000-8000-000000000205'::uuid then 'Celia'
-          when '00000000-0000-4000-8000-000000000206'::uuid then 'Dario'
-          when '00000000-0000-4000-8000-000000000207'::uuid then 'Elsa'
-          when '00000000-0000-4000-8000-000000000208'::uuid then 'Eric'
-          when '00000000-0000-4000-8000-000000000209'::uuid then 'Fatima'
-          when '00000000-0000-4000-8000-000000000210'::uuid then 'Gael'
-          when '00000000-0000-4000-8000-000000000211'::uuid then 'Ines'
-          when '00000000-0000-4000-8000-000000000212'::uuid then 'Joel'
-          when '00000000-0000-4000-8000-000000000213'::uuid then 'Aina'
-          when '00000000-0000-4000-8000-000000000214'::uuid then 'Alex'
-          when '00000000-0000-4000-8000-000000000215'::uuid then 'Clara'
-          when '00000000-0000-4000-8000-000000000216'::uuid then 'Diana'
-          when '00000000-0000-4000-8000-000000000217'::uuid then 'Emma'
-          when '00000000-0000-4000-8000-000000000218'::uuid then 'Ferran'
-          when '00000000-0000-4000-8000-000000000219'::uuid then 'Gala'
-          when '00000000-0000-4000-8000-000000000220'::uuid then 'Hugo'
-          when '00000000-0000-4000-8000-000000000221'::uuid then 'Iris'
-          when '00000000-0000-4000-8000-000000000222'::uuid then 'Jan'
-          when '00000000-0000-4000-8000-000000000223'::uuid then 'Laia'
-          when '00000000-0000-4000-8000-000000000224'::uuid then 'Marc'
-        end,
-        case when id < '00000000-0000-4000-8000-000000000213'::uuid
-          then '00000000-0000-4000-8000-000000000011'::uuid
-          else '00000000-0000-4000-8000-000000000012'::uuid end
-      )
-  ) then
-    raise exception 'seed UUID collision in public.children';
-  end if;
-
-  if exists (
-    select 1 from public.menus
-    where id = '00000000-0000-4000-8000-000000000301'
-      and (first_course, second_course, side, salad, dessert, type) is distinct from ('Pan con tomate', 'Tortilla', 'Fruta', null, 'Plátano', 'Desayuno')
-  ) or exists (
-    select 1 from public.menus
-    where id = '00000000-0000-4000-8000-000000000302'
-      and (first_course, second_course, side, salad, dessert, type) is distinct from ('Lentejas', 'Pollo al horno', 'Arroz', 'Ensalada', 'Yogur', 'Comida')
-  ) or exists (
-    select 1 from public.menus
-    where id = '00000000-0000-4000-8000-000000000303'
-      and (first_course, second_course, side, salad, dessert, type) is distinct from ('Leche', 'Bocadillo de queso', null, null, 'Manzana', 'Merienda')
-  ) then
-    raise exception 'seed UUID collision in public.menus';
-  end if;
-
-  if exists (
-    select 1 from public.allergens
-    where id = '00000000-0000-4000-8000-000000000401' and name is distinct from 'Gluten'
-  ) or exists (
-    select 1 from public.allergens
-    where id = '00000000-0000-4000-8000-000000000402' and name is distinct from 'Lactosa'
-  ) or exists (
-    select 1 from public.allergens
-    where id = '00000000-0000-4000-8000-000000000403' and name is distinct from 'Frutos secos'
-  ) or exists (
-    select 1 from public.allergens
-    where id = '00000000-0000-4000-8000-000000000404' and name is distinct from 'Huevo'
-  ) then
-    raise exception 'seed UUID collision in public.allergens';
-  end if;
-
-  if exists (
-    select 1
-    from (
-      values
-        ('Gluten', '00000000-0000-4000-8000-000000000401'::uuid),
-        ('Lactosa', '00000000-0000-4000-8000-000000000402'::uuid),
-        ('Frutos secos', '00000000-0000-4000-8000-000000000403'::uuid),
-        ('Huevo', '00000000-0000-4000-8000-000000000404'::uuid)
-    ) as demo(name, expected_id)
-    join public.allergens on allergens.name = demo.name
-    where allergens.id is distinct from demo.expected_id
-  ) then
-    raise exception 'seed natural key collision in public.allergens';
-  end if;
-
-  if exists (
-    select 1 from public.incidents
-    where id = '00000000-0000-4000-8000-000000000501'
-      and (child_id, description, monitor_id, date, reviewed, requires_family_signature) is distinct from ('00000000-0000-4000-8000-000000000205'::uuid, 'Pequeno golpe durante el juego', '00000000-0000-4000-8000-000000000021'::uuid, '2026-09-01'::date, false, false)
-  ) or exists (
-    select 1 from public.incidents
-    where id = '00000000-0000-4000-8000-000000000502'
-      and (child_id, description, monitor_id, date, reviewed, requires_family_signature) is distinct from ('00000000-0000-4000-8000-000000000218'::uuid, 'Necesita revisar la merienda', '00000000-0000-4000-8000-000000000024'::uuid, '2026-09-01'::date, true, true)
-  ) then
-    raise exception 'seed UUID collision in public.incidents';
+    raise exception 'seed collision in public.users';
   end if;
 end
 $$;
 
--- Demo users are public profile rows only. They intentionally have no matching
--- auth.users rows; local authentication can be added separately when needed.
-insert into public.users (id, role)
-values
-  ('00000000-0000-4000-8000-000000000101', 'padre'),
-  ('00000000-0000-4000-8000-000000000102', 'padre'),
-  ('00000000-0000-4000-8000-000000000103', 'padre'),
-  ('00000000-0000-4000-8000-000000000104', 'padre')
+insert into public.schools (id, name) values
+  ('00000000-0000-4000-8000-000000000001', 'Colegio Demo'),
+  ('00000000-0000-4000-8000-000000000002', 'School B')
 on conflict (id) do nothing;
 
-insert into public.schools (id, name)
-values ('00000000-0000-4000-8000-000000000001', 'Colegio Demo')
+insert into public.users (id, school_id, full_name, role, active) values
+  ('00000000-0000-4000-8000-000000000101', '00000000-0000-4000-8000-000000000001', 'Parent One', 'padre', true),
+  ('00000000-0000-4000-8000-000000000102', '00000000-0000-4000-8000-000000000001', 'Parent Two', 'padre', true),
+  ('00000000-0000-4000-8000-000000000103', '00000000-0000-4000-8000-000000000001', 'Parent Three', 'padre', true),
+  ('00000000-0000-4000-8000-000000000104', '00000000-0000-4000-8000-000000000001', 'Parent Four', 'padre', true),
+  ('00000000-0000-4000-8000-000000000111', '00000000-0000-4000-8000-000000000001', 'Worker A', 'worker', true),
+  ('00000000-0000-4000-8000-000000000112', '00000000-0000-4000-8000-000000000001', 'Supervisor A', 'supervisor', true),
+  ('00000000-0000-4000-8000-000000000113', '00000000-0000-4000-8000-000000000001', 'Admin A', 'admin', true),
+  ('00000000-0000-4000-8000-000000000114', '00000000-0000-4000-8000-000000000002', 'Worker B', 'worker', true),
+  ('00000000-0000-4000-8000-000000000115', '00000000-0000-4000-8000-000000000002', 'Admin B', 'admin', true),
+  ('00000000-0000-4000-8000-000000000116', '00000000-0000-4000-8000-000000000001', 'Worker A Two', 'worker', true)
 on conflict (id) do nothing;
 
-insert into public.classes (id, name, school_id)
-values
+insert into public.classes (id, name, school_id) values
   ('00000000-0000-4000-8000-000000000011', 'Clase Sol', '00000000-0000-4000-8000-000000000001'),
-  ('00000000-0000-4000-8000-000000000012', 'Clase Luna', '00000000-0000-4000-8000-000000000001')
+  ('00000000-0000-4000-8000-000000000012', 'Clase Luna', '00000000-0000-4000-8000-000000000001'),
+  ('00000000-0000-4000-8000-000000000021', 'Clase B', '00000000-0000-4000-8000-000000000002')
 on conflict (id) do nothing;
 
-insert into public.monitors (id, first_name, last_name, code)
-values
-  ('00000000-0000-4000-8000-000000000021', 'Ana', 'Serra', 101),
-  ('00000000-0000-4000-8000-000000000022', 'Bruno', 'Vidal', 102),
-  ('00000000-0000-4000-8000-000000000023', 'Carla', 'Moya', 103),
-  ('00000000-0000-4000-8000-000000000024', 'Diego', 'Roca', 104),
-  ('00000000-0000-4000-8000-000000000025', 'Elena', 'Costa', 105)
+insert into public.monitors (id, first_name, last_name, code, school_id) values
+  ('00000000-0000-4000-8000-000000000021', 'Ana', 'Serra', 101, '00000000-0000-4000-8000-000000000001'),
+  ('00000000-0000-4000-8000-000000000022', 'Bruno', 'Vidal', 102, '00000000-0000-4000-8000-000000000001'),
+  ('00000000-0000-4000-8000-000000000023', 'Carla', 'Moya', 103, '00000000-0000-4000-8000-000000000001'),
+  ('00000000-0000-4000-8000-000000000024', 'Diego', 'Roca', 104, '00000000-0000-4000-8000-000000000001'),
+  ('00000000-0000-4000-8000-000000000025', 'Elena', 'Costa', 105, '00000000-0000-4000-8000-000000000001')
 on conflict (id) do nothing;
 
 insert into public.monitors_schools (monitor_id, school_id)
-values
-  ('00000000-0000-4000-8000-000000000021', '00000000-0000-4000-8000-000000000001'),
-  ('00000000-0000-4000-8000-000000000022', '00000000-0000-4000-8000-000000000001'),
-  ('00000000-0000-4000-8000-000000000023', '00000000-0000-4000-8000-000000000001'),
-  ('00000000-0000-4000-8000-000000000024', '00000000-0000-4000-8000-000000000001'),
-  ('00000000-0000-4000-8000-000000000025', '00000000-0000-4000-8000-000000000001')
+select id, '00000000-0000-4000-8000-000000000001' from public.monitors
+where id between '00000000-0000-4000-8000-000000000021' and '00000000-0000-4000-8000-000000000025'
 on conflict (school_id, monitor_id) do nothing;
 
-insert into public.children (id, first_name, last_name, class_id)
-values
+insert into public.children (id, first_name, last_name, class_id) values
   ('00000000-0000-4000-8000-000000000201', 'Alba', 'Martin', '00000000-0000-4000-8000-000000000011'),
   ('00000000-0000-4000-8000-000000000202', 'Adrian', 'Perez', '00000000-0000-4000-8000-000000000011'),
   ('00000000-0000-4000-8000-000000000203', 'Berta', 'Lopez', '00000000-0000-4000-8000-000000000011'),
@@ -271,81 +142,96 @@ values
   ('00000000-0000-4000-8000-000000000221', 'Iris', 'Pastor', '00000000-0000-4000-8000-000000000012'),
   ('00000000-0000-4000-8000-000000000222', 'Jan', 'Cano', '00000000-0000-4000-8000-000000000012'),
   ('00000000-0000-4000-8000-000000000223', 'Laia', 'Mora', '00000000-0000-4000-8000-000000000012'),
-  ('00000000-0000-4000-8000-000000000224', 'Marc', 'Rey', '00000000-0000-4000-8000-000000000012')
+  ('00000000-0000-4000-8000-000000000224', 'Marc', 'Rey', '00000000-0000-4000-8000-000000000012'),
+  ('00000000-0000-4000-8000-000000000225', 'Berta B', 'School B', '00000000-0000-4000-8000-000000000021'),
+  ('00000000-0000-4000-8000-000000000226', 'Null', 'Class', null)
 on conflict (id) do nothing;
 
--- The explicit links keep this seed independent of generated values and make
--- each parent responsible for six children.
 insert into public.parents_children (parent_id, child_id)
-values
-  ('00000000-0000-4000-8000-000000000101', '00000000-0000-4000-8000-000000000201'),
-  ('00000000-0000-4000-8000-000000000101', '00000000-0000-4000-8000-000000000202'),
-  ('00000000-0000-4000-8000-000000000101', '00000000-0000-4000-8000-000000000203'),
-  ('00000000-0000-4000-8000-000000000101', '00000000-0000-4000-8000-000000000204'),
-  ('00000000-0000-4000-8000-000000000101', '00000000-0000-4000-8000-000000000205'),
-  ('00000000-0000-4000-8000-000000000101', '00000000-0000-4000-8000-000000000206'),
-  ('00000000-0000-4000-8000-000000000102', '00000000-0000-4000-8000-000000000207'),
-  ('00000000-0000-4000-8000-000000000102', '00000000-0000-4000-8000-000000000208'),
-  ('00000000-0000-4000-8000-000000000102', '00000000-0000-4000-8000-000000000209'),
-  ('00000000-0000-4000-8000-000000000102', '00000000-0000-4000-8000-000000000210'),
-  ('00000000-0000-4000-8000-000000000102', '00000000-0000-4000-8000-000000000211'),
-  ('00000000-0000-4000-8000-000000000102', '00000000-0000-4000-8000-000000000212'),
-  ('00000000-0000-4000-8000-000000000103', '00000000-0000-4000-8000-000000000213'),
-  ('00000000-0000-4000-8000-000000000103', '00000000-0000-4000-8000-000000000214'),
-  ('00000000-0000-4000-8000-000000000103', '00000000-0000-4000-8000-000000000215'),
-  ('00000000-0000-4000-8000-000000000103', '00000000-0000-4000-8000-000000000216'),
-  ('00000000-0000-4000-8000-000000000103', '00000000-0000-4000-8000-000000000217'),
-  ('00000000-0000-4000-8000-000000000103', '00000000-0000-4000-8000-000000000218'),
-  ('00000000-0000-4000-8000-000000000104', '00000000-0000-4000-8000-000000000219'),
-  ('00000000-0000-4000-8000-000000000104', '00000000-0000-4000-8000-000000000220'),
-  ('00000000-0000-4000-8000-000000000104', '00000000-0000-4000-8000-000000000221'),
-  ('00000000-0000-4000-8000-000000000104', '00000000-0000-4000-8000-000000000222'),
-  ('00000000-0000-4000-8000-000000000104', '00000000-0000-4000-8000-000000000223'),
-  ('00000000-0000-4000-8000-000000000104', '00000000-0000-4000-8000-000000000224')
+select links.parent_id, links.child_id
+from (values
+  ('00000000-0000-4000-8000-000000000101'::uuid, '00000000-0000-4000-8000-000000000201'::uuid),
+  ('00000000-0000-4000-8000-000000000101'::uuid, '00000000-0000-4000-8000-000000000202'::uuid),
+  ('00000000-0000-4000-8000-000000000101'::uuid, '00000000-0000-4000-8000-000000000203'::uuid),
+  ('00000000-0000-4000-8000-000000000101'::uuid, '00000000-0000-4000-8000-000000000204'::uuid),
+  ('00000000-0000-4000-8000-000000000101'::uuid, '00000000-0000-4000-8000-000000000205'::uuid),
+  ('00000000-0000-4000-8000-000000000101'::uuid, '00000000-0000-4000-8000-000000000206'::uuid),
+  ('00000000-0000-4000-8000-000000000102'::uuid, '00000000-0000-4000-8000-000000000207'::uuid),
+  ('00000000-0000-4000-8000-000000000102'::uuid, '00000000-0000-4000-8000-000000000208'::uuid),
+  ('00000000-0000-4000-8000-000000000102'::uuid, '00000000-0000-4000-8000-000000000209'::uuid),
+  ('00000000-0000-4000-8000-000000000102'::uuid, '00000000-0000-4000-8000-000000000210'::uuid),
+  ('00000000-0000-4000-8000-000000000102'::uuid, '00000000-0000-4000-8000-000000000211'::uuid),
+  ('00000000-0000-4000-8000-000000000102'::uuid, '00000000-0000-4000-8000-000000000212'::uuid),
+  ('00000000-0000-4000-8000-000000000103'::uuid, '00000000-0000-4000-8000-000000000213'::uuid),
+  ('00000000-0000-4000-8000-000000000103'::uuid, '00000000-0000-4000-8000-000000000214'::uuid),
+  ('00000000-0000-4000-8000-000000000103'::uuid, '00000000-0000-4000-8000-000000000215'::uuid),
+  ('00000000-0000-4000-8000-000000000103'::uuid, '00000000-0000-4000-8000-000000000216'::uuid),
+  ('00000000-0000-4000-8000-000000000103'::uuid, '00000000-0000-4000-8000-000000000217'::uuid),
+  ('00000000-0000-4000-8000-000000000103'::uuid, '00000000-0000-4000-8000-000000000218'::uuid),
+  ('00000000-0000-4000-8000-000000000104'::uuid, '00000000-0000-4000-8000-000000000219'::uuid),
+  ('00000000-0000-4000-8000-000000000104'::uuid, '00000000-0000-4000-8000-000000000220'::uuid),
+  ('00000000-0000-4000-8000-000000000104'::uuid, '00000000-0000-4000-8000-000000000221'::uuid),
+  ('00000000-0000-4000-8000-000000000104'::uuid, '00000000-0000-4000-8000-000000000222'::uuid),
+  ('00000000-0000-4000-8000-000000000104'::uuid, '00000000-0000-4000-8000-000000000223'::uuid),
+  ('00000000-0000-4000-8000-000000000104'::uuid, '00000000-0000-4000-8000-000000000224'::uuid)
+) as links(parent_id, child_id)
 on conflict (parent_id, child_id) do nothing;
 
-insert into public.menus (id, first_course, second_course, side, salad, dessert, type)
-values
+insert into public.menus (id, first_course, second_course, side, salad, dessert, type) values
   ('00000000-0000-4000-8000-000000000301', 'Pan con tomate', 'Tortilla', 'Fruta', null, 'Plátano', 'Desayuno'),
   ('00000000-0000-4000-8000-000000000302', 'Lentejas', 'Pollo al horno', 'Arroz', 'Ensalada', 'Yogur', 'Comida'),
   ('00000000-0000-4000-8000-000000000303', 'Leche', 'Bocadillo de queso', null, null, 'Manzana', 'Merienda')
 on conflict (id) do nothing;
 
-insert into public.menus_schools (menu_id, school_id, date)
-values
+insert into public.menus_schools (menu_id, school_id, date) values
   ('00000000-0000-4000-8000-000000000301', '00000000-0000-4000-8000-000000000001', '2026-09-01'),
   ('00000000-0000-4000-8000-000000000302', '00000000-0000-4000-8000-000000000001', '2026-09-01'),
   ('00000000-0000-4000-8000-000000000303', '00000000-0000-4000-8000-000000000001', '2026-09-01')
 on conflict (menu_id, school_id) do nothing;
 
-insert into public.allergens (id, name)
-values
+insert into public.allergens (id, name) values
   ('00000000-0000-4000-8000-000000000401', 'Gluten'),
   ('00000000-0000-4000-8000-000000000402', 'Lactosa'),
   ('00000000-0000-4000-8000-000000000403', 'Frutos secos'),
-  ('00000000-0000-4000-8000-000000000404', 'Huevo')
-on conflict (name) do nothing;
+  ('00000000-0000-4000-8000-000000000404', 'Huevo'),
+  ('00000000-0000-4000-8000-000000000498', 'B-only test allergen'),
+  ('00000000-0000-4000-8000-000000000499', 'Shared test allergen')
+on conflict (id) do nothing;
 
-insert into public.child_allergens (child_id, allergen_id)
-select links.child_id, allergens.id
-from (
-  values
-    ('00000000-0000-4000-8000-000000000203'::uuid, 'Gluten'),
-    ('00000000-0000-4000-8000-000000000207'::uuid, 'Lactosa'),
-    ('00000000-0000-4000-8000-000000000215'::uuid, 'Frutos secos'),
-    ('00000000-0000-4000-8000-000000000220'::uuid, 'Huevo')
-) as links(child_id, allergen_name)
-join public.allergens on allergens.name = links.allergen_name
+insert into public.child_allergens (child_id, allergen_id) values
+  ('00000000-0000-4000-8000-000000000203', '00000000-0000-4000-8000-000000000401'),
+  ('00000000-0000-4000-8000-000000000207', '00000000-0000-4000-8000-000000000402'),
+  ('00000000-0000-4000-8000-000000000215', '00000000-0000-4000-8000-000000000403'),
+  ('00000000-0000-4000-8000-000000000220', '00000000-0000-4000-8000-000000000404'),
+  ('00000000-0000-4000-8000-000000000201', '00000000-0000-4000-8000-000000000499'),
+  ('00000000-0000-4000-8000-000000000225', '00000000-0000-4000-8000-000000000499'),
+  ('00000000-0000-4000-8000-000000000225', '00000000-0000-4000-8000-000000000498')
 on conflict (child_id, allergen_id) do nothing;
 
-insert into public.incidents (id, child_id, description, monitor_id, date, reviewed, requires_family_signature)
-values
+insert into public.incidents (id, child_id, description, monitor_id, date, reviewed, requires_family_signature) values
   ('00000000-0000-4000-8000-000000000501', '00000000-0000-4000-8000-000000000205', 'Pequeno golpe durante el juego', '00000000-0000-4000-8000-000000000021', '2026-09-01', false, false),
   ('00000000-0000-4000-8000-000000000502', '00000000-0000-4000-8000-000000000218', 'Necesita revisar la merienda', '00000000-0000-4000-8000-000000000024', '2026-09-01', true, true)
 on conflict (id) do nothing;
 
--- Useful read-only checks after `supabase db reset`:
--- select count(*) from public.schools where id = '00000000-0000-4000-8000-000000000001'; -- 1
--- select count(*) from public.classes where school_id = '00000000-0000-4000-8000-000000000001'; -- 2
--- select count(*) from public.children where id between '00000000-0000-4000-8000-000000000201' and '00000000-0000-4000-8000-000000000224'; -- 24
--- select type, count(*) from public.menus where id between '00000000-0000-4000-8000-000000000301' and '00000000-0000-4000-8000-000000000303' group by type order by type; -- 1 per category
+insert into public.devices (id, school_id, name, identifier) values
+  ('00000000-0000-4000-8000-000000000601', '00000000-0000-4000-8000-000000000001', 'Device A', 'device-a'),
+  ('00000000-0000-4000-8000-000000000602', '00000000-0000-4000-8000-000000000002', 'Device B', 'device-b')
+on conflict (id) do nothing;
+
+insert into public.worker_classrooms (worker_id, class_id) values
+  ('00000000-0000-4000-8000-000000000111', '00000000-0000-4000-8000-000000000011'),
+  ('00000000-0000-4000-8000-000000000116', '00000000-0000-4000-8000-000000000012'),
+  ('00000000-0000-4000-8000-000000000114', '00000000-0000-4000-8000-000000000021')
+on conflict (worker_id, class_id) do nothing;
+
+insert into public.meal_types (id, school_id, name, sort_order) values
+  ('00000000-0000-4000-8000-000000000611', '00000000-0000-4000-8000-000000000001', 'Comida A', 1),
+  ('00000000-0000-4000-8000-000000000612', '00000000-0000-4000-8000-000000000002', 'Comida B', 1)
+on conflict (id) do nothing;
+
+insert into public.meal_records (id, child_id, meal_type_id, recorded_by, recorded_at, status, notes) values
+  ('00000000-0000-4000-8000-000000000621', '00000000-0000-4000-8000-000000000225', '00000000-0000-4000-8000-000000000612', '00000000-0000-4000-8000-000000000114', now(), 'bien', 'School B record'),
+  ('00000000-0000-4000-8000-000000000622', '00000000-0000-4000-8000-000000000201', '00000000-0000-4000-8000-000000000611', '00000000-0000-4000-8000-000000000112', now(), 'regular', 'Supervisor review'),
+  ('00000000-0000-4000-8000-000000000623', '00000000-0000-4000-8000-000000000202', '00000000-0000-4000-8000-000000000611', '00000000-0000-4000-8000-000000000111', now() - interval '2 days', 'mal', 'Old worker record'),
+  ('00000000-0000-4000-8000-000000000624', '00000000-0000-4000-8000-000000000203', '00000000-0000-4000-8000-000000000611', '00000000-0000-4000-8000-000000000116', now(), 'bien', 'Other worker record')
+on conflict (id) do nothing;
