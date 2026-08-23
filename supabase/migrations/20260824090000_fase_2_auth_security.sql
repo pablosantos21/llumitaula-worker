@@ -228,14 +228,36 @@ begin
 end
 $$;
 
+create or replace function public.enforce_monitor_assignment_tenant()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.monitor_assignments_are_tenant_safe(new.monitor_id, new.school_id) then
+    raise exception 'monitor cannot be assigned across schools'
+      using errcode = '23514';
+  end if;
+
+  return new;
+end
+$$;
+
 revoke execute on function public.current_user_can_access_child(uuid) from public, anon;
 revoke execute on function public.current_user_has_assigned_child(uuid) from public, anon;
 revoke execute on function public.current_user_can_access_class(uuid) from public, anon;
 revoke execute on function public.monitor_assignments_are_tenant_safe(uuid, uuid) from public, anon;
+revoke execute on function public.enforce_monitor_assignment_tenant() from public, anon, authenticated, service_role;
 grant execute on function public.current_user_can_access_child(uuid) to authenticated, service_role;
 grant execute on function public.current_user_has_assigned_child(uuid) to authenticated, service_role;
 grant execute on function public.current_user_can_access_class(uuid) to authenticated, service_role;
 grant execute on function public.monitor_assignments_are_tenant_safe(uuid, uuid) to authenticated, service_role;
+grant execute on function public.enforce_monitor_assignment_tenant() to postgres;
+
+create trigger monitors_schools_same_school
+before insert or update on public.monitors_schools
+for each row execute function public.enforce_monitor_assignment_tenant();
 
 create or replace function public.custom_access_token_hook(event jsonb)
 returns jsonb
@@ -369,7 +391,7 @@ using (public.current_user_role() in ('admin', 'supervisor') and exists (
    where ms.monitor_id = monitors.id and ms.school_id = public.current_school_id()
 ));
 create policy monitors_admin_insert on public.monitors for insert to authenticated
-with check (false);
+with check (public.current_user_active() and public.current_user_role() = 'admin');
 create policy monitors_admin_update on public.monitors for update to authenticated
 using (public.current_user_active() and public.current_user_role() = 'admin' and exists (
   select 1 from public.monitors_schools ms where ms.monitor_id = monitors.id and ms.school_id = public.current_school_id()
