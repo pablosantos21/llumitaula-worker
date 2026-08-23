@@ -211,17 +211,21 @@ create or replace function public.monitor_assignments_are_tenant_safe(
   p_school_id uuid
 )
 returns boolean
-language sql
+language plpgsql
 stable
 security definer
 set search_path = public
 as $$
-  select not exists (
+begin
+  perform pg_advisory_xact_lock(2147483647, 42042);
+
+  return not exists (
     select 1
       from public.monitors_schools ms
      where ms.monitor_id = p_monitor_id
        and ms.school_id <> p_school_id
-  )
+  );
+end
 $$;
 
 revoke execute on function public.current_user_can_access_child(uuid) from public, anon;
