@@ -195,13 +195,22 @@ select set_config(
   true
 );
 select is(
-  (select count(*) from public.meal_records
-   where id in (
-     '00000000-0000-4000-8000-000000000623'::uuid,
-     '00000000-0000-4000-8000-000000000624'::uuid
-   )),
+  (select count(*)
+   from public.meal_records mr
+   where (mr.id = '00000000-0000-4000-8000-000000000623'::uuid
+          and mr.recorded_by = '00000000-0000-4000-8000-000000000111'::uuid
+          and mr.recorded_at < now() - interval '24 hours')
+      or (mr.id = '00000000-0000-4000-8000-000000000624'::uuid
+          and mr.recorded_by <> '00000000-0000-4000-8000-000000000111'::uuid
+          and exists (
+            select 1
+            from public.children c
+            join public.classes cl on cl.id = c.class_id
+            where c.id = mr.child_id
+              and cl.school_id = '00000000-0000-4000-8000-000000000001'::uuid
+          ))),
   2::bigint,
-  'worker A own old and another-worker records exist before update checks'
+  'old own and same-tenant other-worker records exist with expected ownership'
 );
 
 select set_config(
@@ -368,11 +377,15 @@ select set_config(
   true
 );
 select is(
-  (select count(*) from public.devices
-   where id = '00000000-0000-4000-8000-000000000601'::uuid
-     and school_id = '00000000-0000-4000-8000-000000000001'::uuid),
+  (select count(*)
+   from public.classes cl
+   left join public.worker_classrooms wc
+     on wc.class_id = cl.id
+    and wc.worker_id = '00000000-0000-4000-8000-000000000111'::uuid
+   where cl.id = '00000000-0000-4000-8000-000000000012'::uuid
+     and wc.worker_id is null),
   1::bigint,
-  'admin A can access an existing device in school A'
+  'class A ...0012 exists and is not assigned to worker A'
 );
 
 select set_config(
