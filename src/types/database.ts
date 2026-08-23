@@ -83,6 +83,44 @@ export type Database = {
           },
         ];
       };
+      devices: {
+        Row: {
+          active: boolean;
+          created_at: string;
+          id: string;
+          identifier: string;
+          last_seen_at: string | null;
+          name: string;
+          school_id: string;
+        };
+        Insert: {
+          active?: boolean;
+          created_at?: string;
+          id?: string;
+          identifier: string;
+          last_seen_at?: string | null;
+          name: string;
+          school_id: string;
+        };
+        Update: {
+          active?: boolean;
+          created_at?: string;
+          id?: string;
+          identifier?: string;
+          last_seen_at?: string | null;
+          name?: string;
+          school_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "devices_school_id_fkey";
+            columns: ["school_id"];
+            isOneToOne: false;
+            referencedRelation: "schools";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       incidents: {
         Row: {
           child_id: string | null;
@@ -146,6 +184,93 @@ export type Database = {
           },
         ];
       };
+      meal_records: {
+        Row: {
+          child_id: string;
+          id: string;
+          meal_type_id: string;
+          notes: string | null;
+          recorded_at: string;
+          recorded_by: string;
+          status: Database["public"]["Enums"]["meal_status"];
+        };
+        Insert: {
+          child_id: string;
+          id?: string;
+          meal_type_id: string;
+          notes?: string | null;
+          recorded_at?: string;
+          recorded_by: string;
+          status: Database["public"]["Enums"]["meal_status"];
+        };
+        Update: {
+          child_id?: string;
+          id?: string;
+          meal_type_id?: string;
+          notes?: string | null;
+          recorded_at?: string;
+          recorded_by?: string;
+          status?: Database["public"]["Enums"]["meal_status"];
+        };
+        Relationships: [
+          {
+            foreignKeyName: "meal_records_child_id_fkey";
+            columns: ["child_id"];
+            isOneToOne: false;
+            referencedRelation: "children";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "meal_records_meal_type_id_fkey";
+            columns: ["meal_type_id"];
+            isOneToOne: false;
+            referencedRelation: "meal_types";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "meal_records_recorded_by_fkey";
+            columns: ["recorded_by"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      meal_types: {
+        Row: {
+          active: boolean;
+          created_at: string;
+          id: string;
+          name: string;
+          school_id: string;
+          sort_order: number;
+        };
+        Insert: {
+          active?: boolean;
+          created_at?: string;
+          id?: string;
+          name: string;
+          school_id: string;
+          sort_order?: number;
+        };
+        Update: {
+          active?: boolean;
+          created_at?: string;
+          id?: string;
+          name?: string;
+          school_id?: string;
+          sort_order?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "meal_types_school_id_fkey";
+            columns: ["school_id"];
+            isOneToOne: false;
+            referencedRelation: "schools";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       menus: {
         Row: {
           dessert: string | null;
@@ -204,6 +329,7 @@ export type Database = {
           first_name: string;
           id: string;
           last_name: string;
+          school_id: string;
         };
         Insert: {
           code: number;
@@ -211,6 +337,7 @@ export type Database = {
           first_name: string;
           id?: string;
           last_name: string;
+          school_id: string;
         };
         Update: {
           code?: number;
@@ -218,8 +345,17 @@ export type Database = {
           first_name?: string;
           id?: string;
           last_name?: string;
+          school_id?: string;
         };
-        Relationships: [];
+        Relationships: [
+          {
+            foreignKeyName: "monitors_school_id_fkey";
+            columns: ["school_id"];
+            isOneToOne: false;
+            referencedRelation: "schools";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       monitors_schools: {
         Row: { monitor_id: string; school_id: string };
@@ -271,21 +407,51 @@ export type Database = {
       };
       users: {
         Row: {
+          active: boolean;
           created_at: string | null;
+          full_name: string | null;
           id: string;
           role: Database["public"]["Enums"]["user_role"];
+          school_id: string;
         };
         Insert: {
+          active?: boolean;
           created_at?: string | null;
+          full_name?: string | null;
           id?: string;
           role: Database["public"]["Enums"]["user_role"];
+          school_id: string;
         };
         Update: {
+          active?: boolean;
           created_at?: string | null;
+          full_name?: string | null;
           id?: string;
           role?: Database["public"]["Enums"]["user_role"];
+          school_id?: string;
         };
         Relationships: [];
+      };
+      worker_classrooms: {
+        Row: { class_id: string; created_at: string; worker_id: string };
+        Insert: { class_id: string; created_at?: string; worker_id: string };
+        Update: { class_id?: string; created_at?: string; worker_id?: string };
+        Relationships: [
+          {
+            foreignKeyName: "worker_classrooms_class_id_fkey";
+            columns: ["class_id"];
+            isOneToOne: false;
+            referencedRelation: "classes";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "worker_classrooms_worker_id_fkey";
+            columns: ["worker_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
+            referencedColumns: ["id"];
+          },
+        ];
       };
     };
     Views: { [_ in never]: never };
@@ -294,7 +460,7 @@ export type Database = {
     };
     Enums: {
       meal_status: "bien" | "regular" | "mal";
-      user_role: "admin" | "monitor" | "padre";
+      user_role: "admin" | "monitor" | "padre" | "worker" | "supervisor";
     };
     CompositeTypes: { [_ in never]: never };
   };
@@ -410,7 +576,7 @@ export const Constants = {
   public: {
     Enums: {
       meal_status: ["bien", "regular", "mal"],
-      user_role: ["admin", "monitor", "padre"],
+      user_role: ["admin", "monitor", "padre", "worker", "supervisor"],
     },
   },
 } as const;

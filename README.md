@@ -58,7 +58,36 @@ Aplica las migraciones y carga el seed determinista con un reset local:
 npx supabase db reset
 ```
 
-`npx supabase db reset` es destructivo para la base local: recrea el esquema y vuelve a ejecutar `supabase/seed.sql`. No lo ejecutes contra una base de datos de produccion. El seed no crea usuarios de Auth ni credenciales y no debe contener secretos.
+`npx supabase db reset` es destructivo para la base local: recrea el esquema y vuelve a ejecutar `supabase/seed.sql`. No lo ejecutes contra una base de datos de produccion. El seed crea cuentas Auth de desarrollo, pero no contiene credenciales productivas ni secretos.
+
+### Auth y roles locales
+
+El seed de desarrollo crea cuentas email/password en dos colegios. Todas usan la
+contraseña `password` y estos emails:
+
+```text
+parent.1@local.test, parent.2@local.test, parent.3@local.test, parent.4@local.test
+worker.a@local.test, worker.a2@local.test, supervisor.a@local.test, admin.a@local.test
+worker.b@local.test, admin.b@local.test
+```
+
+Estas credenciales son exclusivamente locales y de desarrollo: no son
+contraseñas productivas y no deben reutilizarse fuera del entorno local.
+
+Los perfiles conservan los roles `admin`, `monitor` y `padre`, y añaden
+`worker` y `supervisor`. `admin` gestiona los datos de su colegio; `supervisor`
+consulta el colegio y modifica registros de comidas; `worker` accede a sus
+clases asignadas y puede crear registros de sus niños. Un `worker` solo puede
+modificar registros propios creados durante las últimas 24 horas.
+
+Comprueba las políticas RLS con la instancia local:
+
+```sh
+npx supabase test db
+```
+
+Este flujo usa únicamente Supabase local. No ejecuta migraciones ni cambios
+contra el proyecto remoto; tampoco usa `service_role` en el navegador.
 
 Para detener los servicios locales:
 
