@@ -36,6 +36,15 @@ begin
   end if;
 
   if exists (
+    select 1
+    from public.schools
+    where name = 'Colegio Demo'
+      and id is distinct from '00000000-0000-4000-8000-000000000001'::uuid
+  ) then
+    raise exception 'seed natural key collision in public.schools';
+  end if;
+
+  if exists (
     select 1 from public.classes
     where id = '00000000-0000-4000-8000-000000000011'
       and (name, school_id) is distinct from ('Clase Sol', '00000000-0000-4000-8000-000000000001'::uuid)
@@ -45,6 +54,19 @@ begin
       and (name, school_id) is distinct from ('Clase Luna', '00000000-0000-4000-8000-000000000001'::uuid)
   ) then
     raise exception 'seed UUID collision in public.classes';
+  end if;
+
+  if exists (
+    select 1
+    from (
+      values
+        ('Clase Sol', '00000000-0000-4000-8000-000000000001'::uuid, '00000000-0000-4000-8000-000000000011'::uuid),
+        ('Clase Luna', '00000000-0000-4000-8000-000000000001'::uuid, '00000000-0000-4000-8000-000000000012'::uuid)
+    ) as demo(name, school_id, expected_id)
+    join public.classes on classes.name = demo.name and classes.school_id = demo.school_id
+    where classes.id is distinct from demo.expected_id
+  ) then
+    raise exception 'seed natural key collision in public.classes';
   end if;
 
   if exists (
@@ -69,6 +91,22 @@ begin
       and (first_name, last_name, code) is distinct from ('Elena', 'Costa', 105::smallint)
   ) then
     raise exception 'seed UUID collision in public.monitors';
+  end if;
+
+  if exists (
+    select 1
+    from (
+      values
+        (101::smallint, '00000000-0000-4000-8000-000000000021'::uuid),
+        (102::smallint, '00000000-0000-4000-8000-000000000022'::uuid),
+        (103::smallint, '00000000-0000-4000-8000-000000000023'::uuid),
+        (104::smallint, '00000000-0000-4000-8000-000000000024'::uuid),
+        (105::smallint, '00000000-0000-4000-8000-000000000025'::uuid)
+    ) as demo(code, expected_id)
+    join public.monitors on monitors.code = demo.code
+    where monitors.id is distinct from demo.expected_id
+  ) then
+    raise exception 'seed natural key collision in public.monitors';
   end if;
 
   if exists (
