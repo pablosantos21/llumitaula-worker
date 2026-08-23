@@ -133,6 +133,36 @@ $$;
 grant execute on function public.custom_access_token_hook(jsonb) to supabase_auth_admin;
 revoke execute on function public.custom_access_token_hook(jsonb) from public, anon, authenticated;
 
+-- Grants define which API roles can reach the objects; RLS policies below
+-- remain the effective row-level authorization for authenticated clients.
+grant usage on schema public to anon, authenticated, service_role;
+
+grant select, insert, update on table public.users to authenticated;
+grant select, insert, update, delete on table public.schools to authenticated;
+grant select, insert, update, delete on table public.classes to authenticated;
+grant select, insert, update, delete on table public.monitors to authenticated;
+grant select, insert, update, delete on table public.monitors_schools to authenticated;
+grant select, insert, update, delete on table public.children to authenticated;
+grant select, insert, update, delete on table public.parents_children to authenticated;
+grant select, insert, update, delete on table public.menus to authenticated;
+grant select, insert, update, delete on table public.menus_schools to authenticated;
+grant select, insert, update, delete on table public.allergens to authenticated;
+grant select, insert, update, delete on table public.child_allergens to authenticated;
+grant select, insert, update, delete on table public.incidents to authenticated;
+
+grant all privileges on table public.users to service_role;
+grant all privileges on table public.schools to service_role;
+grant all privileges on table public.classes to service_role;
+grant all privileges on table public.monitors to service_role;
+grant all privileges on table public.monitors_schools to service_role;
+grant all privileges on table public.children to service_role;
+grant all privileges on table public.parents_children to service_role;
+grant all privileges on table public.menus to service_role;
+grant all privileges on table public.menus_schools to service_role;
+grant all privileges on table public.allergens to service_role;
+grant all privileges on table public.child_allergens to service_role;
+grant all privileges on table public.incidents to service_role;
+
 alter table public.users enable row level security;
 alter table public.schools enable row level security;
 alter table public.classes enable row level security;

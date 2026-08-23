@@ -14,7 +14,7 @@ Comprueba las versiones antes de empezar:
 ```sh
 node --version
 npm --version
-supabase --version
+npx supabase --version
 ```
 
 ## Instalacion
@@ -47,7 +47,7 @@ Para desarrollo local, sustituye `PUBLIC_SUPABASE_URL` por `http://127.0.0.1:543
 El desarrollo normal usa la instancia local definida en `supabase/config.toml`, no el proyecto remoto. Con Docker en ejecucion, arranca los servicios desde la raiz del repositorio:
 
 ```sh
-supabase start
+npx supabase start
 ```
 
 La API local queda disponible en `http://127.0.0.1:54321` y Studio en `http://127.0.0.1:54323`.
@@ -55,15 +55,15 @@ La API local queda disponible en `http://127.0.0.1:54321` y Studio en `http://12
 Aplica las migraciones y carga el seed determinista con un reset local:
 
 ```sh
-supabase db reset
+npx supabase db reset
 ```
 
-`supabase db reset` es destructivo para la base local: recrea el esquema y vuelve a ejecutar `supabase/seed.sql`. No lo ejecutes contra una base de datos de produccion. El seed no crea usuarios de Auth ni credenciales y no debe contener secretos.
+`npx supabase db reset` es destructivo para la base local: recrea el esquema y vuelve a ejecutar `supabase/seed.sql`. No lo ejecutes contra una base de datos de produccion. El seed no crea usuarios de Auth ni credenciales y no debe contener secretos.
 
 Para detener los servicios locales:
 
 ```sh
-supabase stop
+npx supabase stop
 ```
 
 El proyecto Supabase remoto de referencia es `hjrxyobgukrwrcaslhok`. Se conserva como fuente del esquema existente, pero no se usa para el desarrollo normal ni se debe ejecutar ninguna migracion remota como parte de este flujo.
@@ -73,7 +73,7 @@ El proyecto Supabase remoto de referencia es `hjrxyobgukrwrcaslhok`. Se conserva
 Con Supabase local iniciado y las migraciones aplicadas, regenera los tipos TypeScript:
 
 ```sh
-supabase gen types typescript --local > src/types/database.ts
+npx supabase gen types typescript --local > src/types/database.ts
 ```
 
 Revisa el diff antes de confirmar cambios. El archivo generado representa las tablas, relaciones y enums del esquema local.
