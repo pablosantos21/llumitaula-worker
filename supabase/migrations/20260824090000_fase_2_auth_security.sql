@@ -127,6 +127,7 @@ as $$
 declare
   worker_school uuid;
   worker_role public.user_role;
+  parent_school uuid;
   class_school uuid;
   child_school uuid;
   meal_type_school uuid;
@@ -158,6 +159,13 @@ begin
        where mr.recorded_by = new.id
          and (c.school_id is distinct from new.school_id
            or mt.school_id is distinct from new.school_id)
+    ) or exists (
+      select 1
+        from public.parents_children pc
+        join public.children ch on ch.id = pc.child_id
+        join public.classes c on c.id = ch.class_id
+       where pc.parent_id = new.id
+         and c.school_id is distinct from new.school_id
     ) then
       raise exception 'users.school_id update would invalidate tenant relations'
         using errcode = '23514';
@@ -182,6 +190,13 @@ begin
        where ch.class_id = new.id
          and (mt.school_id is distinct from new.school_id
            or u.school_id is distinct from new.school_id)
+    ) or exists (
+      select 1
+        from public.children ch
+        join public.parents_children pc on pc.child_id = ch.id
+        join public.users u on u.id = pc.parent_id
+       where ch.class_id = new.id
+         and u.school_id is distinct from new.school_id
     ) then
       raise exception 'classes.school_id update would invalidate tenant relations'
         using errcode = '23514';
@@ -200,6 +215,18 @@ begin
       raise exception 'children.class_id update would invalidate meal_records'
         using errcode = '23514';
     end if;
+
+    if exists (
+      select 1
+        from public.parents_children pc
+        join public.users u on u.id = pc.parent_id
+        left join public.classes c on c.id = new.class_id
+       where pc.child_id = new.id
+         and u.school_id is distinct from c.school_id
+    ) then
+      raise exception 'children.class_id update would invalidate parents_children'
+        using errcode = '23514';
+    end if;
   elsif tg_table_name = 'meal_types' then
     if exists (
       select 1
@@ -212,6 +239,18 @@ begin
            or c.school_id is distinct from u.school_id)
     ) then
       raise exception 'meal_types.school_id update would invalidate meal_records'
+        using errcode = '23514';
+    end if;
+  elsif tg_table_name = 'parents_children' then
+    select u.school_id, c.school_id
+      into parent_school, child_school
+      from public.users u
+      join public.children ch on ch.id = new.child_id
+      left join public.classes c on c.id = ch.class_id
+     where u.id = new.parent_id;
+
+    if parent_school is distinct from child_school then
+      raise exception 'parents_children cannot relate different schools'
         using errcode = '23514';
     end if;
   elsif tg_table_name = 'worker_classrooms' then
@@ -268,6 +307,10 @@ for each row execute function public.enforce_same_school_relations();
 
 create trigger meal_records_same_school
 before insert or update on public.meal_records
+for each row execute function public.enforce_same_school_relations();
+
+create trigger parents_children_same_school
+before insert or update on public.parents_children
 for each row execute function public.enforce_same_school_relations();
 
 create trigger users_same_school_relations
