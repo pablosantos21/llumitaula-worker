@@ -291,6 +291,10 @@ export type Database = {
     Views: { [_ in never]: never };
     Functions: {
       custom_access_token_hook: { Args: { event: Json }; Returns: Json };
+      is_menu_visible_to_current_user: {
+        Args: { menu_id: string };
+        Returns: boolean;
+      };
     };
     Enums: {
       meal_status: "bien" | "regular" | "mal";

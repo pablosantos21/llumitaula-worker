@@ -122,7 +122,7 @@ begin
   claims := event->'claims';
   claims := jsonb_set(
     claims,
-    '{role}',
+    '{user_role}',
     to_jsonb((select role from public.users where id = (event->>'user_id')::uuid)),
     true
   );
@@ -132,6 +132,37 @@ $$;
 
 grant execute on function public.custom_access_token_hook(jsonb) to supabase_auth_admin;
 revoke execute on function public.custom_access_token_hook(jsonb) from public, anon, authenticated;
+
+create or replace function public.is_menu_visible_to_current_user(menu_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select
+    (auth.jwt() ->> 'user_role') = 'admin'
+    or exists (
+      select 1
+      from public.menus_schools ms
+      join public.monitors_schools monitor_schools on monitor_schools.school_id = ms.school_id
+      join public.monitors mon on mon.id = monitor_schools.monitor_id
+      where ms.menu_id = $1
+        and mon.code is not null
+    )
+    or exists (
+      select 1
+      from public.menus_schools ms
+      join public.classes c on c.school_id = ms.school_id
+      join public.children ch on ch.class_id = c.id
+      join public.parents_children pc on pc.child_id = ch.id
+      where ms.menu_id = $1
+        and pc.parent_id = auth.uid()
+    );
+$$;
+
+grant execute on function public.is_menu_visible_to_current_user(uuid) to authenticated;
+revoke execute on function public.is_menu_visible_to_current_user(uuid) from public, anon;
 
 alter table public.users enable row level security;
 alter table public.schools enable row level security;
@@ -147,48 +178,54 @@ alter table public.child_allergens enable row level security;
 alter table public.incidents enable row level security;
 
 create policy users_insert_own on public.users for insert to authenticated
-  with check (auth.uid() = id);
+  with check (
+    (auth.jwt() ->> 'user_role') = 'admin'
+    or (auth.uid() = id and role <> 'admin')
+  );
 create policy users_select on public.users for select to authenticated
-  using (auth.uid() = id or (auth.jwt() ->> 'role') = 'admin');
+  using (auth.uid() = id or (auth.jwt() ->> 'user_role') = 'admin');
 create policy users_update on public.users for update to authenticated
-  using (auth.uid() = id or (auth.jwt() ->> 'role') = 'admin')
-  with check (auth.uid() = id or (auth.jwt() ->> 'role') = 'admin');
+  using (auth.uid() = id or (auth.jwt() ->> 'user_role') = 'admin')
+  with check (
+    (auth.jwt() ->> 'user_role') = 'admin'
+    or (auth.uid() = id and role <> 'admin')
+  );
 
 create policy schools_select on public.schools for select to authenticated using (true);
 create policy schools_insert on public.schools for insert to authenticated
-  with check ((auth.jwt() ->> 'role') = 'admin');
+  with check ((auth.jwt() ->> 'user_role') = 'admin');
 create policy schools_update on public.schools for update to authenticated
-  using ((auth.jwt() ->> 'role') = 'admin') with check ((auth.jwt() ->> 'role') = 'admin');
+  using ((auth.jwt() ->> 'user_role') = 'admin') with check ((auth.jwt() ->> 'user_role') = 'admin');
 create policy schools_delete on public.schools for delete to authenticated
-  using ((auth.jwt() ->> 'role') = 'admin');
+  using ((auth.jwt() ->> 'user_role') = 'admin');
 
 create policy classes_select on public.classes for select to authenticated using (true);
 create policy classes_insert on public.classes for insert to authenticated
-  with check ((auth.jwt() ->> 'role') = 'admin');
+  with check ((auth.jwt() ->> 'user_role') = 'admin');
 create policy classes_update on public.classes for update to authenticated
-  using ((auth.jwt() ->> 'role') = 'admin') with check ((auth.jwt() ->> 'role') = 'admin');
+  using ((auth.jwt() ->> 'user_role') = 'admin') with check ((auth.jwt() ->> 'user_role') = 'admin');
 create policy classes_delete on public.classes for delete to authenticated
-  using ((auth.jwt() ->> 'role') = 'admin');
+  using ((auth.jwt() ->> 'user_role') = 'admin');
 
 create policy monitors_select on public.monitors for select to authenticated using (true);
 create policy monitors_insert on public.monitors for insert to authenticated
-  with check ((auth.jwt() ->> 'role') = 'admin');
+  with check ((auth.jwt() ->> 'user_role') = 'admin');
 create policy monitors_update on public.monitors for update to authenticated
-  using ((auth.jwt() ->> 'role') = 'admin') with check ((auth.jwt() ->> 'role') = 'admin');
+  using ((auth.jwt() ->> 'user_role') = 'admin') with check ((auth.jwt() ->> 'user_role') = 'admin');
 create policy monitors_delete on public.monitors for delete to authenticated
-  using ((auth.jwt() ->> 'role') = 'admin');
+  using ((auth.jwt() ->> 'user_role') = 'admin');
 
 create policy monitors_schools_select on public.monitors_schools for select to authenticated using (true);
 create policy monitors_schools_insert on public.monitors_schools for insert to authenticated
-  with check ((auth.jwt() ->> 'role') = 'admin');
+  with check ((auth.jwt() ->> 'user_role') = 'admin');
 create policy monitors_schools_update on public.monitors_schools for update to authenticated
-  using ((auth.jwt() ->> 'role') = 'admin') with check ((auth.jwt() ->> 'role') = 'admin');
+  using ((auth.jwt() ->> 'user_role') = 'admin') with check ((auth.jwt() ->> 'user_role') = 'admin');
 create policy monitors_schools_delete on public.monitors_schools for delete to authenticated
-  using ((auth.jwt() ->> 'role') = 'admin');
+  using ((auth.jwt() ->> 'user_role') = 'admin');
 
 create policy children_select on public.children for select to authenticated
   using (
-    (auth.jwt() ->> 'role') = 'admin'
+    (auth.jwt() ->> 'user_role') = 'admin'
     or class_id in (
       select c.id from public.classes c
       join public.monitors_schools ms on ms.school_id = c.school_id
@@ -197,54 +234,33 @@ create policy children_select on public.children for select to authenticated
     or id in (select pc.child_id from public.parents_children pc where pc.parent_id = auth.uid())
   );
 create policy children_insert on public.children for insert to authenticated
-  with check ((auth.jwt() ->> 'role') = 'admin');
+  with check ((auth.jwt() ->> 'user_role') = 'admin');
 create policy children_update on public.children for update to authenticated
-  using ((auth.jwt() ->> 'role') = 'admin') with check ((auth.jwt() ->> 'role') = 'admin');
+  using ((auth.jwt() ->> 'user_role') = 'admin') with check ((auth.jwt() ->> 'user_role') = 'admin');
 create policy children_delete on public.children for delete to authenticated
-  using ((auth.jwt() ->> 'role') = 'admin');
+  using ((auth.jwt() ->> 'user_role') = 'admin');
 
 create policy parents_children_select on public.parents_children for select to authenticated
-  using ((auth.jwt() ->> 'role') in ('admin', 'monitor') or parent_id = auth.uid());
+  using ((auth.jwt() ->> 'user_role') in ('admin', 'monitor') or parent_id = auth.uid());
 create policy parents_children_insert on public.parents_children for insert to authenticated
-  with check ((auth.jwt() ->> 'role') = 'admin');
+  with check ((auth.jwt() ->> 'user_role') = 'admin');
 create policy parents_children_update on public.parents_children for update to authenticated
-  using ((auth.jwt() ->> 'role') = 'admin') with check ((auth.jwt() ->> 'role') = 'admin');
+  using ((auth.jwt() ->> 'user_role') = 'admin') with check ((auth.jwt() ->> 'user_role') = 'admin');
 create policy parents_children_delete on public.parents_children for delete to authenticated
-  using ((auth.jwt() ->> 'role') = 'admin');
+  using ((auth.jwt() ->> 'user_role') = 'admin');
 
 create policy menus_select on public.menus for select to authenticated
-  using (
-    (auth.jwt() ->> 'role') = 'admin'
-    or id in (
-      select m.id from public.menus m
-      join public.menus_schools ms on ms.menu_id = m.id
-      where ms.school_id in (
-        select monitor_schools.school_id from public.monitors_schools monitor_schools
-        where monitor_schools.monitor_id in (select mon.id from public.monitors mon where mon.code is not null)
-      )
-    )
-    or id in (
-      select m.id from public.menus m
-      join public.menus_schools ms on ms.menu_id = m.id
-      join public.schools s on s.id = ms.school_id
-      where s.id in (
-        select distinct c.school_id from public.classes c
-        join public.children ch on ch.class_id = c.id
-        join public.parents_children pc on pc.child_id = ch.id
-        where pc.parent_id = auth.uid()
-      )
-    )
-  );
+  using (public.is_menu_visible_to_current_user(id));
 create policy menus_insert on public.menus for insert to authenticated
-  with check ((auth.jwt() ->> 'role') = 'admin');
+  with check ((auth.jwt() ->> 'user_role') = 'admin');
 create policy menus_update on public.menus for update to authenticated
-  using ((auth.jwt() ->> 'role') = 'admin') with check ((auth.jwt() ->> 'role') = 'admin');
+  using ((auth.jwt() ->> 'user_role') = 'admin') with check ((auth.jwt() ->> 'user_role') = 'admin');
 create policy menus_delete on public.menus for delete to authenticated
-  using ((auth.jwt() ->> 'role') = 'admin');
+  using ((auth.jwt() ->> 'user_role') = 'admin');
 
 create policy menus_schools_select on public.menus_schools for select to authenticated
   using (
-    (auth.jwt() ->> 'role') = 'admin'
+    (auth.jwt() ->> 'user_role') = 'admin'
     or school_id in (
       select ms.school_id from public.monitors_schools ms
       where ms.monitor_id in (select mon.id from public.monitors mon where mon.code is not null)
@@ -257,28 +273,38 @@ create policy menus_schools_select on public.menus_schools for select to authent
     )
   );
 create policy menus_schools_insert on public.menus_schools for insert to authenticated
-  with check ((auth.jwt() ->> 'role') = 'admin');
+  with check ((auth.jwt() ->> 'user_role') = 'admin');
 create policy menus_schools_update on public.menus_schools for update to authenticated
-  using ((auth.jwt() ->> 'role') = 'admin') with check ((auth.jwt() ->> 'role') = 'admin');
+  using ((auth.jwt() ->> 'user_role') = 'admin') with check ((auth.jwt() ->> 'user_role') = 'admin');
 create policy menus_schools_delete on public.menus_schools for delete to authenticated
-  using ((auth.jwt() ->> 'role') = 'admin');
+  using ((auth.jwt() ->> 'user_role') = 'admin');
 
 create policy allergens_select on public.allergens for select to authenticated using (true);
 create policy allergens_insert on public.allergens for insert to authenticated
-  with check ((auth.jwt() ->> 'role') = 'admin');
+  with check ((auth.jwt() ->> 'user_role') = 'admin');
 create policy allergens_update on public.allergens for update to authenticated
-  using ((auth.jwt() ->> 'role') = 'admin') with check ((auth.jwt() ->> 'role') = 'admin');
+  using ((auth.jwt() ->> 'user_role') = 'admin') with check ((auth.jwt() ->> 'user_role') = 'admin');
 create policy allergens_delete on public.allergens for delete to authenticated
-  using ((auth.jwt() ->> 'role') = 'admin');
+  using ((auth.jwt() ->> 'user_role') = 'admin');
 
-create policy child_allergens_select on public.child_allergens for select to authenticated using (true);
-create policy child_allergens_insert on public.child_allergens for insert to authenticated with check (true);
-create policy child_allergens_update on public.child_allergens for update to authenticated using (true) with check (true);
-create policy child_allergens_delete on public.child_allergens for delete to authenticated using (true);
+create policy child_allergens_select on public.child_allergens for select to authenticated
+  using (
+    (auth.jwt() ->> 'user_role') in ('admin', 'monitor')
+    or child_id in (
+      select pc.child_id from public.parents_children pc where pc.parent_id = auth.uid()
+    )
+  );
+create policy child_allergens_insert on public.child_allergens for insert to authenticated
+  with check ((auth.jwt() ->> 'user_role') = 'admin');
+create policy child_allergens_update on public.child_allergens for update to authenticated
+  using ((auth.jwt() ->> 'user_role') = 'admin')
+  with check ((auth.jwt() ->> 'user_role') = 'admin');
+create policy child_allergens_delete on public.child_allergens for delete to authenticated
+  using ((auth.jwt() ->> 'user_role') = 'admin');
 
 create policy incidents_select on public.incidents for select to authenticated
   using (
-    (auth.jwt() ->> 'role') = 'admin'
+    (auth.jwt() ->> 'user_role') = 'admin'
     or child_id in (
       select ch.id from public.children ch
       join public.classes c on c.id = ch.class_id
@@ -289,7 +315,7 @@ create policy incidents_select on public.incidents for select to authenticated
   );
 create policy incidents_insert on public.incidents for insert to authenticated
   with check (
-    (auth.jwt() ->> 'role') = 'admin'
+    (auth.jwt() ->> 'user_role') = 'admin'
     or child_id in (
       select ch.id from public.children ch
       join public.classes c on c.id = ch.class_id
@@ -298,6 +324,6 @@ create policy incidents_insert on public.incidents for insert to authenticated
     )
   );
 create policy incidents_update on public.incidents for update to authenticated
-  using ((auth.jwt() ->> 'role') = 'admin') with check ((auth.jwt() ->> 'role') = 'admin');
+  using ((auth.jwt() ->> 'user_role') = 'admin') with check ((auth.jwt() ->> 'user_role') = 'admin');
 create policy incidents_delete on public.incidents for delete to authenticated
-  using ((auth.jwt() ->> 'role') = 'admin');
+  using ((auth.jwt() ->> 'user_role') = 'admin');
