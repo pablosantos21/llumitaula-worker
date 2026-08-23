@@ -28,7 +28,7 @@
 
 - [ ] **Step 1: Escribir la suite pgTAP con expectativas de la fase**
 
-Crear una suite que use `begin;`, `select plan(28);` y helpers locales para
+Crear una suite que use `begin;`, `select plan(33);` y helpers locales para
 establecer `request.jwt.claims`. Debe crear o usar IDs deterministas de los dos
 colegios del seed y ejecutar estas comprobaciones: un worker de A solo ve sus
 clases y niños asignados; no ve escuelas, clases, niños, dispositivos, tipos ni

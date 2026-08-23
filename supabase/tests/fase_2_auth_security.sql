@@ -1,6 +1,6 @@
 begin;
 
-select plan(28);
+select plan(33);
 
 set local role postgres;
 
@@ -460,6 +460,22 @@ set local role authenticated;
 select set_config(
   'request.jwt.claims',
   json_build_object(
+    'sub', '00000000-0000-4000-8000-000000000111',
+    'role', 'authenticated'
+  )::text,
+  true
+);
+select throws_ok(
+  $$update public.users
+       set role = 'supervisor'
+     where id = '00000000-0000-4000-8000-000000000111'::uuid$$,
+  '42501',
+  'worker cannot elevate their own role to supervisor'
+);
+
+select set_config(
+  'request.jwt.claims',
+  json_build_object(
     'sub', '00000000-0000-4000-8000-000000000113',
     'role', 'authenticated'
   )::text,
@@ -534,36 +550,13 @@ select throws_ok(
 -- The role and allergy assertions require the authenticated Task 4 fixtures.
 -- Fail the precondition explicitly rather than turning missing fixtures into
 -- false-positive authorization results.
-select ok(
-  pg_temp.privileged_count_rows($query$
-    select count(*)
-      from (
-        select u.id
-          from public.users u
-         where u.id in (
-           '00000000-0000-4000-8000-000000000111'::uuid,
-           '00000000-0000-4000-8000-000000000112'::uuid,
-           '00000000-0000-4000-8000-000000000113'::uuid
-         )
-           and u.school_id = '00000000-0000-4000-8000-000000000001'::uuid
-           and u.active
-        union all
-        select c.id
-          from public.children c
-          join public.classes cl on cl.id = c.class_id
-         where (c.id, cl.school_id) in (
-           ('00000000-0000-4000-8000-000000000201'::uuid, '00000000-0000-4000-8000-000000000001'::uuid),
-           ('00000000-0000-4000-8000-000000000225'::uuid, '00000000-0000-4000-8000-000000000002'::uuid)
-         )
-      ) fixtures
-  $query$) = 5,
-  'role and cross-tenant allergy fixtures exist'
-);
-
 set local role postgres;
 insert into public.allergens (id, name)
 values ('00000000-0000-4000-8000-000000000498'::uuid, 'B-only test allergen'),
        ('00000000-0000-4000-8000-000000000499'::uuid, 'Shared test allergen')
+on conflict (id) do nothing;
+insert into public.children (id, first_name, last_name, class_id)
+values ('00000000-0000-4000-8000-000000000226'::uuid, 'Null', 'Class', null)
 on conflict (id) do nothing;
 insert into public.child_allergens (child_id, allergen_id)
 values
@@ -571,6 +564,54 @@ values
   ('00000000-0000-4000-8000-000000000201'::uuid, '00000000-0000-4000-8000-000000000499'::uuid),
   ('00000000-0000-4000-8000-000000000225'::uuid, '00000000-0000-4000-8000-000000000499'::uuid)
 on conflict (child_id, allergen_id) do nothing;
+
+select ok(
+  pg_temp.privileged_count_rows($query$
+    select count(*)
+      from (
+        select u.id
+          from public.users u
+          join (values
+            ('00000000-0000-4000-8000-000000000111'::uuid, 'worker'),
+            ('00000000-0000-4000-8000-000000000112'::uuid, 'supervisor'),
+            ('00000000-0000-4000-8000-000000000113'::uuid, 'admin')
+          ) expected(id, role) on expected.id = u.id
+         where u.role::text = expected.role
+           and u.school_id = '00000000-0000-4000-8000-000000000001'::uuid
+           and u.active
+        union all
+        select au.id
+          from auth.users au
+         where au.id in (
+           '00000000-0000-4000-8000-000000000111'::uuid,
+           '00000000-0000-4000-8000-000000000112'::uuid,
+           '00000000-0000-4000-8000-000000000113'::uuid
+         )
+        union all
+        select c.id
+          from public.children c
+          join public.classes cl on cl.id = c.class_id
+         where (c.id, cl.school_id) in (
+            ('00000000-0000-4000-8000-000000000201'::uuid, '00000000-0000-4000-8000-000000000001'::uuid),
+            ('00000000-0000-4000-8000-000000000225'::uuid, '00000000-0000-4000-8000-000000000002'::uuid)
+          )
+        union all
+        select ca.child_id
+          from public.child_allergens ca
+         where (ca.child_id, ca.allergen_id) in (
+           ('00000000-0000-4000-8000-000000000201'::uuid, '00000000-0000-4000-8000-000000000499'::uuid),
+           ('00000000-0000-4000-8000-000000000225'::uuid, '00000000-0000-4000-8000-000000000499'::uuid),
+           ('00000000-0000-4000-8000-000000000225'::uuid, '00000000-0000-4000-8000-000000000498'::uuid)
+         )
+        union all
+        select c.id
+          from public.children c
+         where c.id = '00000000-0000-4000-8000-000000000226'::uuid
+           and c.class_id is null
+      ) fixtures
+  $query$) = 12,
+  'role and cross-tenant allergy fixtures exist'
+);
 
 set local role authenticated;
 select set_config(
@@ -596,6 +637,21 @@ select lives_ok(
   'admin can safely demote a supervisor to worker'
 );
 
+select lives_ok(
+  $$update public.users
+       set role = 'supervisor'
+     where id = '00000000-0000-4000-8000-000000000112'::uuid$$,
+  'admin can restore the supervisor role in the same transaction'
+);
+
+select throws_ok(
+  $$update public.users
+       set role = 'supervisor'
+     where id = '00000000-0000-4000-8000-000000000113'::uuid$$,
+  '42501',
+  'admin cannot change their own role'
+);
+
 select is(
   pg_temp.count_rows($query$
     update public.allergens
@@ -617,7 +673,7 @@ select is(
   'admin cannot delete an allergen shared with another school'
 );
 
-set_config(
+select set_config(
   'request.jwt.claims',
   json_build_object(
     'sub', '00000000-0000-4000-8000-000000000111',
@@ -633,6 +689,26 @@ select is(
   $query$),
   0::bigint,
   'worker cannot read an allergen attached only to an unassigned class'
+);
+
+select is(
+  pg_temp.count_rows($query$
+    select count(*)
+      from public.allergens a
+     where a.id = '00000000-0000-4000-8000-000000000499'::uuid
+  $query$),
+  0::bigint,
+  'worker cannot read an allergen shared by schools A and B'
+);
+
+select is(
+  pg_temp.count_rows($query$
+    select count(*)
+      from public.children
+     where id = '00000000-0000-4000-8000-000000000226'::uuid
+  $query$),
+  0::bigint,
+  'a child without a class is not visible to a worker'
 );
 
 select * from finish();
