@@ -132,7 +132,89 @@ declare
   meal_type_school uuid;
   recorder_school uuid;
 begin
-  if tg_table_name = 'worker_classrooms' then
+  if tg_table_name = 'users' then
+    if new.role is distinct from 'worker'::public.user_role
+       and exists (
+         select 1
+           from public.worker_classrooms wc
+          where wc.worker_id = new.id
+       ) then
+      raise exception 'users.school_id update would invalidate worker_classrooms'
+        using errcode = '23514';
+    end if;
+
+    if exists (
+      select 1
+        from public.worker_classrooms wc
+        join public.classes c on c.id = wc.class_id
+       where wc.worker_id = new.id
+         and c.school_id is distinct from new.school_id
+    ) or exists (
+      select 1
+        from public.meal_records mr
+        join public.children ch on ch.id = mr.child_id
+        join public.classes c on c.id = ch.class_id
+        join public.meal_types mt on mt.id = mr.meal_type_id
+       where mr.recorded_by = new.id
+         and (c.school_id is distinct from new.school_id
+           or mt.school_id is distinct from new.school_id)
+    ) then
+      raise exception 'users.school_id update would invalidate tenant relations'
+        using errcode = '23514';
+    end if;
+  elsif tg_table_name = 'classes' then
+    if exists (
+      select 1
+        from public.worker_classrooms wc
+       where wc.class_id = new.id
+         and exists (
+           select 1
+             from public.users u
+            where u.id = wc.worker_id
+              and u.school_id is distinct from new.school_id
+         )
+    ) or exists (
+      select 1
+        from public.children ch
+        join public.meal_records mr on mr.child_id = ch.id
+        join public.meal_types mt on mt.id = mr.meal_type_id
+        join public.users u on u.id = mr.recorded_by
+       where ch.class_id = new.id
+         and (mt.school_id is distinct from new.school_id
+           or u.school_id is distinct from new.school_id)
+    ) then
+      raise exception 'classes.school_id update would invalidate tenant relations'
+        using errcode = '23514';
+    end if;
+  elsif tg_table_name = 'children' then
+    if exists (
+      select 1
+        from public.meal_records mr
+        join public.meal_types mt on mt.id = mr.meal_type_id
+        join public.users u on u.id = mr.recorded_by
+        left join public.classes c on c.id = new.class_id
+       where mr.child_id = new.id
+         and (c.school_id is distinct from mt.school_id
+           or c.school_id is distinct from u.school_id)
+    ) then
+      raise exception 'children.class_id update would invalidate meal_records'
+        using errcode = '23514';
+    end if;
+  elsif tg_table_name = 'meal_types' then
+    if exists (
+      select 1
+        from public.meal_records mr
+        join public.children ch on ch.id = mr.child_id
+        join public.classes c on c.id = ch.class_id
+        join public.users u on u.id = mr.recorded_by
+       where mr.meal_type_id = new.id
+         and (c.school_id is distinct from new.school_id
+           or c.school_id is distinct from u.school_id)
+    ) then
+      raise exception 'meal_types.school_id update would invalidate meal_records'
+        using errcode = '23514';
+    end if;
+  elsif tg_table_name = 'worker_classrooms' then
     select u.school_id, u.role
       into worker_school, worker_role
       from public.users u
@@ -186,4 +268,20 @@ for each row execute function public.enforce_same_school_relations();
 
 create trigger meal_records_same_school
 before insert or update on public.meal_records
+for each row execute function public.enforce_same_school_relations();
+
+create trigger users_same_school_relations
+before update of school_id, role on public.users
+for each row execute function public.enforce_same_school_relations();
+
+create trigger classes_same_school_relations
+before update of school_id on public.classes
+for each row execute function public.enforce_same_school_relations();
+
+create trigger children_same_school_relations
+before update of class_id on public.children
+for each row execute function public.enforce_same_school_relations();
+
+create trigger meal_types_same_school_relations
+before update of school_id on public.meal_types
 for each row execute function public.enforce_same_school_relations();
