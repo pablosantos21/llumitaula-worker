@@ -10,6 +10,8 @@ export default function AuthLoginForm() {
   const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (event: SubmitEvent<HTMLFormElement>) => {
+    if (loading) return;
+
     event.preventDefault();
     setError(null);
     setLoading(true);
@@ -50,6 +52,7 @@ export default function AuthLoginForm() {
           type="email"
           name="email"
           id="email"
+          autoComplete="username"
           placeholder="nombre@ejemplo.com"
           required
           className={inputClassName}
@@ -67,6 +70,7 @@ export default function AuthLoginForm() {
           type="password"
           name="password"
           id="password"
+          autoComplete="current-password"
           required
           className={inputClassName}
         />
