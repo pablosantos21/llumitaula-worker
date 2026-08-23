@@ -81,19 +81,19 @@ begin
   if exists (
     select 1 from public.users u
     join (values
-      ('00000000-0000-4000-8000-000000000101'::uuid, '00000000-0000-4000-8000-000000000001'::uuid, 'Parent One', 'padre'::public.user_role, true),
-      ('00000000-0000-4000-8000-000000000102'::uuid, '00000000-0000-4000-8000-000000000001'::uuid, 'Parent Two', 'padre'::public.user_role, true),
-      ('00000000-0000-4000-8000-000000000103'::uuid, '00000000-0000-4000-8000-000000000001'::uuid, 'Parent Three', 'padre'::public.user_role, true),
-      ('00000000-0000-4000-8000-000000000104'::uuid, '00000000-0000-4000-8000-000000000001'::uuid, 'Parent Four', 'padre'::public.user_role, true),
-      ('00000000-0000-4000-8000-000000000111'::uuid, '00000000-0000-4000-8000-000000000001'::uuid, 'Worker A', 'worker'::public.user_role, true),
-      ('00000000-0000-4000-8000-000000000112'::uuid, '00000000-0000-4000-8000-000000000001'::uuid, 'Supervisor A', 'supervisor'::public.user_role, true),
-      ('00000000-0000-4000-8000-000000000113'::uuid, '00000000-0000-4000-8000-000000000001'::uuid, 'Admin A', 'admin'::public.user_role, true),
-      ('00000000-0000-4000-8000-000000000114'::uuid, '00000000-0000-4000-8000-000000000002'::uuid, 'Worker B', 'worker'::public.user_role, true),
-      ('00000000-0000-4000-8000-000000000115'::uuid, '00000000-0000-4000-8000-000000000002'::uuid, 'Admin B', 'admin'::public.user_role, true),
-      ('00000000-0000-4000-8000-000000000116'::uuid, '00000000-0000-4000-8000-000000000001'::uuid, 'Worker A Two', 'worker'::public.user_role, true)
-    ) expected(id, school_id, full_name, role, active) on expected.id = u.id
-    where (u.school_id, u.full_name, u.role, u.active) is distinct from
-          (expected.school_id, expected.full_name, expected.role, expected.active)
+      ('00000000-0000-4000-8000-000000000101'::uuid, '00000000-0000-4000-8000-000000000001'::uuid, 'Parent One', 'padre'::public.user_role, true, timestamp '2026-01-01 00:00:00+00'),
+      ('00000000-0000-4000-8000-000000000102'::uuid, '00000000-0000-4000-8000-000000000001'::uuid, 'Parent Two', 'padre'::public.user_role, true, timestamp '2026-01-01 00:00:00+00'),
+      ('00000000-0000-4000-8000-000000000103'::uuid, '00000000-0000-4000-8000-000000000001'::uuid, 'Parent Three', 'padre'::public.user_role, true, timestamp '2026-01-01 00:00:00+00'),
+      ('00000000-0000-4000-8000-000000000104'::uuid, '00000000-0000-4000-8000-000000000001'::uuid, 'Parent Four', 'padre'::public.user_role, true, timestamp '2026-01-01 00:00:00+00'),
+      ('00000000-0000-4000-8000-000000000111'::uuid, '00000000-0000-4000-8000-000000000001'::uuid, 'Worker A', 'worker'::public.user_role, true, timestamp '2026-01-01 00:00:00+00'),
+      ('00000000-0000-4000-8000-000000000112'::uuid, '00000000-0000-4000-8000-000000000001'::uuid, 'Supervisor A', 'supervisor'::public.user_role, true, timestamp '2026-01-01 00:00:00+00'),
+      ('00000000-0000-4000-8000-000000000113'::uuid, '00000000-0000-4000-8000-000000000001'::uuid, 'Admin A', 'admin'::public.user_role, true, timestamp '2026-01-01 00:00:00+00'),
+      ('00000000-0000-4000-8000-000000000114'::uuid, '00000000-0000-4000-8000-000000000002'::uuid, 'Worker B', 'worker'::public.user_role, true, timestamp '2026-01-01 00:00:00+00'),
+      ('00000000-0000-4000-8000-000000000115'::uuid, '00000000-0000-4000-8000-000000000002'::uuid, 'Admin B', 'admin'::public.user_role, true, timestamp '2026-01-01 00:00:00+00'),
+      ('00000000-0000-4000-8000-000000000116'::uuid, '00000000-0000-4000-8000-000000000001'::uuid, 'Worker A Two', 'worker'::public.user_role, true, timestamp '2026-01-01 00:00:00+00')
+    ) expected(id, school_id, full_name, role, active, created_at) on expected.id = u.id
+    where (u.school_id, u.full_name, u.role, u.active, u.created_at) is distinct from
+          (expected.school_id, expected.full_name, expected.role, expected.active, expected.created_at)
   ) then
     raise exception 'seed collision in public.users';
   end if;
@@ -121,14 +121,14 @@ begin
   if exists (
     select 1 from public.monitors m
     join (values
-      ('00000000-0000-4000-8000-000000000021'::uuid, 'Ana', 'Serra', 101::smallint, '00000000-0000-4000-8000-000000000001'::uuid),
-      ('00000000-0000-4000-8000-000000000022'::uuid, 'Bruno', 'Vidal', 102::smallint, '00000000-0000-4000-8000-000000000001'::uuid),
-      ('00000000-0000-4000-8000-000000000023'::uuid, 'Carla', 'Moya', 103::smallint, '00000000-0000-4000-8000-000000000001'::uuid),
-      ('00000000-0000-4000-8000-000000000024'::uuid, 'Diego', 'Roca', 104::smallint, '00000000-0000-4000-8000-000000000001'::uuid),
-      ('00000000-0000-4000-8000-000000000025'::uuid, 'Elena', 'Costa', 105::smallint, '00000000-0000-4000-8000-000000000001'::uuid)
-    ) expected(id, first_name, last_name, code, school_id) on expected.id = m.id
-    where (m.first_name, m.last_name, m.code, m.school_id) is distinct from
-          (expected.first_name, expected.last_name, expected.code, expected.school_id)
+      ('00000000-0000-4000-8000-000000000021'::uuid, 'Ana', 'Serra', 101::smallint, '00000000-0000-4000-8000-000000000001'::uuid, timestamp '2026-01-01 00:00:00+00'),
+      ('00000000-0000-4000-8000-000000000022'::uuid, 'Bruno', 'Vidal', 102::smallint, '00000000-0000-4000-8000-000000000001'::uuid, timestamp '2026-01-01 00:00:00+00'),
+      ('00000000-0000-4000-8000-000000000023'::uuid, 'Carla', 'Moya', 103::smallint, '00000000-0000-4000-8000-000000000001'::uuid, timestamp '2026-01-01 00:00:00+00'),
+      ('00000000-0000-4000-8000-000000000024'::uuid, 'Diego', 'Roca', 104::smallint, '00000000-0000-4000-8000-000000000001'::uuid, timestamp '2026-01-01 00:00:00+00'),
+      ('00000000-0000-4000-8000-000000000025'::uuid, 'Elena', 'Costa', 105::smallint, '00000000-0000-4000-8000-000000000001'::uuid, timestamp '2026-01-01 00:00:00+00')
+    ) expected(id, first_name, last_name, code, school_id, created_at) on expected.id = m.id
+    where (m.first_name, m.last_name, m.code, m.school_id, m.created_at) is distinct from
+          (expected.first_name, expected.last_name, expected.code, expected.school_id, expected.created_at)
   ) or exists (
     select 1 from public.monitors m
     join (values
@@ -191,6 +191,14 @@ begin
           (expected.first_name, expected.last_name, expected.class_id)
   ) then
     raise exception 'seed collision in public.children';
+  end if;
+
+  if exists (
+    select 1 from public.children
+    where id between '00000000-0000-4000-8000-000000000201' and '00000000-0000-4000-8000-000000000226'
+      and created_at is distinct from timestamp '2026-01-01 00:00:00+00'
+  ) then
+    raise exception 'seed timestamp collision in public.children';
   end if;
 
   if exists (
@@ -371,6 +379,17 @@ begin
 end
 $$;
 
+do $$
+begin
+  if exists (select 1 from public.incidents where id in ('00000000-0000-4000-8000-000000000501', '00000000-0000-4000-8000-000000000502') and created_at is distinct from timestamp '2026-01-01 00:00:00+00')
+     or exists (select 1 from public.devices where id in ('00000000-0000-4000-8000-000000000601', '00000000-0000-4000-8000-000000000602') and created_at is distinct from timestamp '2026-01-01 00:00:00+00')
+     or exists (select 1 from public.meal_types where id in ('00000000-0000-4000-8000-000000000611', '00000000-0000-4000-8000-000000000612') and created_at is distinct from timestamp '2026-01-01 00:00:00+00')
+     or exists (select 1 from public.meal_records where id between '00000000-0000-4000-8000-000000000621' and '00000000-0000-4000-8000-000000000624' and created_at is distinct from timestamp '2026-01-01 00:00:00+00') then
+    raise exception 'seed timestamp collision in public fixtures';
+  end if;
+end
+$$;
+
 insert into auth.users (
   id, instance_id, aud, role, email, encrypted_password,
   email_confirmed_at, raw_app_meta_data, raw_user_meta_data, aal,
@@ -403,17 +422,17 @@ insert into public.schools (id, name) values
   ('00000000-0000-4000-8000-000000000002', 'School B')
 on conflict (id) do nothing;
 
-insert into public.users (id, school_id, full_name, role, active) values
-  ('00000000-0000-4000-8000-000000000101', '00000000-0000-4000-8000-000000000001', 'Parent One', 'padre', true),
-  ('00000000-0000-4000-8000-000000000102', '00000000-0000-4000-8000-000000000001', 'Parent Two', 'padre', true),
-  ('00000000-0000-4000-8000-000000000103', '00000000-0000-4000-8000-000000000001', 'Parent Three', 'padre', true),
-  ('00000000-0000-4000-8000-000000000104', '00000000-0000-4000-8000-000000000001', 'Parent Four', 'padre', true),
-  ('00000000-0000-4000-8000-000000000111', '00000000-0000-4000-8000-000000000001', 'Worker A', 'worker', true),
-  ('00000000-0000-4000-8000-000000000112', '00000000-0000-4000-8000-000000000001', 'Supervisor A', 'supervisor', true),
-  ('00000000-0000-4000-8000-000000000113', '00000000-0000-4000-8000-000000000001', 'Admin A', 'admin', true),
-  ('00000000-0000-4000-8000-000000000114', '00000000-0000-4000-8000-000000000002', 'Worker B', 'worker', true),
-  ('00000000-0000-4000-8000-000000000115', '00000000-0000-4000-8000-000000000002', 'Admin B', 'admin', true),
-  ('00000000-0000-4000-8000-000000000116', '00000000-0000-4000-8000-000000000001', 'Worker A Two', 'worker', true)
+insert into public.users (id, school_id, full_name, role, active, created_at) values
+  ('00000000-0000-4000-8000-000000000101', '00000000-0000-4000-8000-000000000001', 'Parent One', 'padre', true, timestamp '2026-01-01 00:00:00+00'),
+  ('00000000-0000-4000-8000-000000000102', '00000000-0000-4000-8000-000000000001', 'Parent Two', 'padre', true, timestamp '2026-01-01 00:00:00+00'),
+  ('00000000-0000-4000-8000-000000000103', '00000000-0000-4000-8000-000000000001', 'Parent Three', 'padre', true, timestamp '2026-01-01 00:00:00+00'),
+  ('00000000-0000-4000-8000-000000000104', '00000000-0000-4000-8000-000000000001', 'Parent Four', 'padre', true, timestamp '2026-01-01 00:00:00+00'),
+  ('00000000-0000-4000-8000-000000000111', '00000000-0000-4000-8000-000000000001', 'Worker A', 'worker', true, timestamp '2026-01-01 00:00:00+00'),
+  ('00000000-0000-4000-8000-000000000112', '00000000-0000-4000-8000-000000000001', 'Supervisor A', 'supervisor', true, timestamp '2026-01-01 00:00:00+00'),
+  ('00000000-0000-4000-8000-000000000113', '00000000-0000-4000-8000-000000000001', 'Admin A', 'admin', true, timestamp '2026-01-01 00:00:00+00'),
+  ('00000000-0000-4000-8000-000000000114', '00000000-0000-4000-8000-000000000002', 'Worker B', 'worker', true, timestamp '2026-01-01 00:00:00+00'),
+  ('00000000-0000-4000-8000-000000000115', '00000000-0000-4000-8000-000000000002', 'Admin B', 'admin', true, timestamp '2026-01-01 00:00:00+00'),
+  ('00000000-0000-4000-8000-000000000116', '00000000-0000-4000-8000-000000000001', 'Worker A Two', 'worker', true, timestamp '2026-01-01 00:00:00+00')
 on conflict (id) do nothing;
 
 insert into public.classes (id, name, school_id) values
@@ -422,12 +441,12 @@ insert into public.classes (id, name, school_id) values
   ('00000000-0000-4000-8000-000000000021', 'Clase B', '00000000-0000-4000-8000-000000000002')
 on conflict (id) do nothing;
 
-insert into public.monitors (id, first_name, last_name, code, school_id) values
-  ('00000000-0000-4000-8000-000000000021', 'Ana', 'Serra', 101, '00000000-0000-4000-8000-000000000001'),
-  ('00000000-0000-4000-8000-000000000022', 'Bruno', 'Vidal', 102, '00000000-0000-4000-8000-000000000001'),
-  ('00000000-0000-4000-8000-000000000023', 'Carla', 'Moya', 103, '00000000-0000-4000-8000-000000000001'),
-  ('00000000-0000-4000-8000-000000000024', 'Diego', 'Roca', 104, '00000000-0000-4000-8000-000000000001'),
-  ('00000000-0000-4000-8000-000000000025', 'Elena', 'Costa', 105, '00000000-0000-4000-8000-000000000001')
+insert into public.monitors (id, first_name, last_name, code, school_id, created_at) values
+  ('00000000-0000-4000-8000-000000000021', 'Ana', 'Serra', 101, '00000000-0000-4000-8000-000000000001', timestamp '2026-01-01 00:00:00+00'),
+  ('00000000-0000-4000-8000-000000000022', 'Bruno', 'Vidal', 102, '00000000-0000-4000-8000-000000000001', timestamp '2026-01-01 00:00:00+00'),
+  ('00000000-0000-4000-8000-000000000023', 'Carla', 'Moya', 103, '00000000-0000-4000-8000-000000000001', timestamp '2026-01-01 00:00:00+00'),
+  ('00000000-0000-4000-8000-000000000024', 'Diego', 'Roca', 104, '00000000-0000-4000-8000-000000000001', timestamp '2026-01-01 00:00:00+00'),
+  ('00000000-0000-4000-8000-000000000025', 'Elena', 'Costa', 105, '00000000-0000-4000-8000-000000000001', timestamp '2026-01-01 00:00:00+00')
 on conflict (id) do nothing;
 
 insert into public.monitors_schools (monitor_id, school_id)
@@ -467,7 +486,10 @@ begin
 end
 $$;
 
-insert into public.children (id, first_name, last_name, class_id) values
+insert into public.children (id, first_name, last_name, class_id, created_at)
+select child.id, child.first_name, child.last_name, child.class_id,
+       timestamp '2026-01-01 00:00:00+00'
+from (values
   ('00000000-0000-4000-8000-000000000201', 'Alba', 'Martin', '00000000-0000-4000-8000-000000000011'),
   ('00000000-0000-4000-8000-000000000202', 'Adrian', 'Perez', '00000000-0000-4000-8000-000000000011'),
   ('00000000-0000-4000-8000-000000000203', 'Berta', 'Lopez', '00000000-0000-4000-8000-000000000011'),
@@ -494,6 +516,7 @@ insert into public.children (id, first_name, last_name, class_id) values
   ('00000000-0000-4000-8000-000000000224', 'Marc', 'Rey', '00000000-0000-4000-8000-000000000012'),
   ('00000000-0000-4000-8000-000000000225', 'Berta B', 'School B', '00000000-0000-4000-8000-000000000021'),
   ('00000000-0000-4000-8000-000000000226', 'Null', 'Class', null)
+) child(id, first_name, last_name, class_id)
 on conflict (id) do nothing;
 
 insert into public.parents_children (parent_id, child_id)
@@ -557,14 +580,14 @@ insert into public.child_allergens (child_id, allergen_id) values
   ('00000000-0000-4000-8000-000000000225', '00000000-0000-4000-8000-000000000498')
 on conflict (child_id, allergen_id) do nothing;
 
-insert into public.incidents (id, child_id, description, monitor_id, date, reviewed, requires_family_signature) values
-  ('00000000-0000-4000-8000-000000000501', '00000000-0000-4000-8000-000000000205', 'Pequeno golpe durante el juego', '00000000-0000-4000-8000-000000000021', '2026-09-01', false, false),
-  ('00000000-0000-4000-8000-000000000502', '00000000-0000-4000-8000-000000000218', 'Necesita revisar la merienda', '00000000-0000-4000-8000-000000000024', '2026-09-01', true, true)
+insert into public.incidents (id, child_id, description, monitor_id, date, reviewed, requires_family_signature, created_at) values
+  ('00000000-0000-4000-8000-000000000501', '00000000-0000-4000-8000-000000000205', 'Pequeno golpe durante el juego', '00000000-0000-4000-8000-000000000021', '2026-09-01', false, false, timestamp '2026-01-01 00:00:00+00'),
+  ('00000000-0000-4000-8000-000000000502', '00000000-0000-4000-8000-000000000218', 'Necesita revisar la merienda', '00000000-0000-4000-8000-000000000024', '2026-09-01', true, true, timestamp '2026-01-01 00:00:00+00')
 on conflict (id) do nothing;
 
-insert into public.devices (id, school_id, name, identifier) values
-  ('00000000-0000-4000-8000-000000000601', '00000000-0000-4000-8000-000000000001', 'Device A', 'device-a'),
-  ('00000000-0000-4000-8000-000000000602', '00000000-0000-4000-8000-000000000002', 'Device B', 'device-b')
+insert into public.devices (id, school_id, name, identifier, created_at) values
+  ('00000000-0000-4000-8000-000000000601', '00000000-0000-4000-8000-000000000001', 'Device A', 'device-a', timestamp '2026-01-01 00:00:00+00'),
+  ('00000000-0000-4000-8000-000000000602', '00000000-0000-4000-8000-000000000002', 'Device B', 'device-b', timestamp '2026-01-01 00:00:00+00')
 on conflict (id) do nothing;
 
 insert into public.worker_classrooms (worker_id, class_id, created_at) values
@@ -573,14 +596,14 @@ insert into public.worker_classrooms (worker_id, class_id, created_at) values
   ('00000000-0000-4000-8000-000000000114', '00000000-0000-4000-8000-000000000021', timestamp '2026-01-01 00:00:00+00')
 on conflict (worker_id, class_id) do nothing;
 
-insert into public.meal_types (id, school_id, name, sort_order) values
-  ('00000000-0000-4000-8000-000000000611', '00000000-0000-4000-8000-000000000001', 'Comida A', 1),
-  ('00000000-0000-4000-8000-000000000612', '00000000-0000-4000-8000-000000000002', 'Comida B', 1)
+insert into public.meal_types (id, school_id, name, sort_order, created_at) values
+  ('00000000-0000-4000-8000-000000000611', '00000000-0000-4000-8000-000000000001', 'Comida A', 1, timestamp '2026-01-01 00:00:00+00'),
+  ('00000000-0000-4000-8000-000000000612', '00000000-0000-4000-8000-000000000002', 'Comida B', 1, timestamp '2026-01-01 00:00:00+00')
 on conflict (id) do nothing;
 
-insert into public.meal_records (id, child_id, meal_type_id, recorded_by, recorded_at, status, notes) values
-  ('00000000-0000-4000-8000-000000000621', '00000000-0000-4000-8000-000000000225', '00000000-0000-4000-8000-000000000612', '00000000-0000-4000-8000-000000000114', timestamp '2026-09-01 10:00:00+00', 'bien', 'School B record'),
-  ('00000000-0000-4000-8000-000000000622', '00000000-0000-4000-8000-000000000201', '00000000-0000-4000-8000-000000000611', '00000000-0000-4000-8000-000000000112', timestamp '2026-09-01 10:00:00+00', 'regular', 'Supervisor review'),
-  ('00000000-0000-4000-8000-000000000623', '00000000-0000-4000-8000-000000000202', '00000000-0000-4000-8000-000000000611', '00000000-0000-4000-8000-000000000111', timestamp '2026-01-01 10:00:00+00', 'mal', 'Old worker record'),
-  ('00000000-0000-4000-8000-000000000624', '00000000-0000-4000-8000-000000000203', '00000000-0000-4000-8000-000000000611', '00000000-0000-4000-8000-000000000116', timestamp '2026-09-01 10:00:00+00', 'bien', 'Other worker record')
+insert into public.meal_records (id, child_id, meal_type_id, recorded_by, recorded_at, status, notes, created_at) values
+  ('00000000-0000-4000-8000-000000000621', '00000000-0000-4000-8000-000000000225', '00000000-0000-4000-8000-000000000612', '00000000-0000-4000-8000-000000000114', timestamp '2026-09-01 10:00:00+00', 'bien', 'School B record', timestamp '2026-01-01 00:00:00+00'),
+  ('00000000-0000-4000-8000-000000000622', '00000000-0000-4000-8000-000000000201', '00000000-0000-4000-8000-000000000611', '00000000-0000-4000-8000-000000000112', timestamp '2026-09-01 10:00:00+00', 'regular', 'Supervisor review', timestamp '2026-01-01 00:00:00+00'),
+  ('00000000-0000-4000-8000-000000000623', '00000000-0000-4000-8000-000000000202', '00000000-0000-4000-8000-000000000611', '00000000-0000-4000-8000-000000000111', timestamp '2026-01-01 10:00:00+00', 'mal', 'Old worker record', timestamp '2026-01-01 00:00:00+00'),
+  ('00000000-0000-4000-8000-000000000624', '00000000-0000-4000-8000-000000000203', '00000000-0000-4000-8000-000000000611', '00000000-0000-4000-8000-000000000116', timestamp '2026-09-01 10:00:00+00', 'bien', 'Other worker record', timestamp '2026-01-01 00:00:00+00')
 on conflict (id) do nothing;
