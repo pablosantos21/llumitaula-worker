@@ -45,6 +45,31 @@ exception when undefined_table or undefined_column then
 end;
 $$;
 
+create or replace function pg_temp.change_role_and_verify(
+  p_user_id uuid,
+  p_role text
+)
+returns boolean
+language plpgsql
+as $$
+declare
+  affected_rows integer;
+  persisted_role text;
+begin
+  update public.users
+     set role = p_role::public.user_role
+   where id = p_user_id;
+  get diagnostics affected_rows = row_count;
+
+  select role::text
+    into persisted_role
+    from public.users
+   where id = p_user_id;
+
+  return affected_rows = 1 and persisted_role = p_role;
+end;
+$$;
+
 set local role authenticated;
 
 -- Deterministic fixtures used by the phase 2 seed.
@@ -561,7 +586,7 @@ on conflict (id) do nothing;
 insert into public.child_allergens (child_id, allergen_id)
 values
   ('00000000-0000-4000-8000-000000000225'::uuid, '00000000-0000-4000-8000-000000000498'::uuid),
-  ('00000000-0000-4000-8000-000000000201'::uuid, '00000000-0000-4000-8000-000000000499'::uuid),
+  ('00000000-0000-4000-8000-000000000214'::uuid, '00000000-0000-4000-8000-000000000499'::uuid),
   ('00000000-0000-4000-8000-000000000225'::uuid, '00000000-0000-4000-8000-000000000499'::uuid)
 on conflict (child_id, allergen_id) do nothing;
 
@@ -586,15 +611,28 @@ select ok(
            '00000000-0000-4000-8000-000000000111'::uuid,
            '00000000-0000-4000-8000-000000000112'::uuid,
            '00000000-0000-4000-8000-000000000113'::uuid
+          )
+        union all
+        select a.id
+          from public.allergens a
+         where (a.id, a.name) in (
+           ('00000000-0000-4000-8000-000000000498'::uuid, 'B-only test allergen'),
+           ('00000000-0000-4000-8000-000000000499'::uuid, 'Shared test allergen')
          )
         union all
         select c.id
           from public.children c
           join public.classes cl on cl.id = c.class_id
          where (c.id, cl.school_id) in (
-            ('00000000-0000-4000-8000-000000000201'::uuid, '00000000-0000-4000-8000-000000000001'::uuid),
-            ('00000000-0000-4000-8000-000000000225'::uuid, '00000000-0000-4000-8000-000000000002'::uuid)
-          )
+           ('00000000-0000-4000-8000-000000000214'::uuid, '00000000-0000-4000-8000-000000000001'::uuid),
+           ('00000000-0000-4000-8000-000000000225'::uuid, '00000000-0000-4000-8000-000000000002'::uuid)
+         )
+           and not exists (
+             select 1
+               from public.worker_classrooms wc
+              where wc.class_id = c.class_id
+                and wc.worker_id = '00000000-0000-4000-8000-000000000111'::uuid
+           )
         union all
         select ca.child_id
           from public.child_allergens ca
@@ -605,12 +643,14 @@ select ok(
          )
         union all
         select c.id
-          from public.children c
+         from public.children c
          where c.id = '00000000-0000-4000-8000-000000000226'::uuid
+           and c.first_name = 'Null'
+           and c.last_name = 'Class'
            and c.class_id is null
       ) fixtures
-  $query$) = 12,
-  'role and cross-tenant allergy fixtures exist'
+  $query$) = 14,
+  'role, auth, allergy, and null-class fixtures have exact values'
 );
 
 set local role authenticated;
@@ -630,17 +670,19 @@ select throws_ok(
   'admin cannot elevate a supervisor to admin'
 );
 
-select lives_ok(
-  $$update public.users
-       set role = 'worker'
-     where id = '00000000-0000-4000-8000-000000000112'::uuid$$,
+select ok(
+  pg_temp.change_role_and_verify(
+    '00000000-0000-4000-8000-000000000112'::uuid,
+    'worker'
+  ),
   'admin can safely demote a supervisor to worker'
 );
 
-select lives_ok(
-  $$update public.users
-       set role = 'supervisor'
-     where id = '00000000-0000-4000-8000-000000000112'::uuid$$,
+select ok(
+  pg_temp.change_role_and_verify(
+    '00000000-0000-4000-8000-000000000112'::uuid,
+    'supervisor'
+  ),
   'admin can restore the supervisor role in the same transaction'
 );
 
