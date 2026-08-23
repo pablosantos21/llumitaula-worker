@@ -180,7 +180,7 @@ alter table public.incidents enable row level security;
 create policy users_insert_own on public.users for insert to authenticated
   with check (
     (auth.jwt() ->> 'user_role') = 'admin'
-    or (auth.uid() = id and role <> 'admin')
+    or (auth.uid() = id and role = 'padre')
   );
 create policy users_select on public.users for select to authenticated
   using (auth.uid() = id or (auth.jwt() ->> 'user_role') = 'admin');
@@ -188,7 +188,7 @@ create policy users_update on public.users for update to authenticated
   using (auth.uid() = id or (auth.jwt() ->> 'user_role') = 'admin')
   with check (
     (auth.jwt() ->> 'user_role') = 'admin'
-    or (auth.uid() = id and role <> 'admin')
+    or (auth.uid() = id and role = 'padre')
   );
 
 create policy schools_select on public.schools for select to authenticated using (true);
@@ -289,7 +289,7 @@ create policy allergens_delete on public.allergens for delete to authenticated
 
 create policy child_allergens_select on public.child_allergens for select to authenticated
   using (
-    (auth.jwt() ->> 'user_role') in ('admin', 'monitor')
+    (auth.jwt() ->> 'user_role') = 'admin'
     or child_id in (
       select pc.child_id from public.parents_children pc where pc.parent_id = auth.uid()
     )
