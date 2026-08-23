@@ -2,6 +2,9 @@
   "name": "llumitaula-worker",
   "type": "module",
   "version": "0.0.1",
+  "engines": {
+    "node": ">=20.19.0"
+  },
   "scripts": {
     "dev": "astro dev",
     "build": "astro build",
@@ -15,7 +18,7 @@
   },
   "dependencies": {
     "@astrojs/react": "^4.4.2",
-    "@supabase/supabase-js": "^2.112.3",
+    "@supabase/supabase-js": "2.110.9",
     "@tailwindcss/vite": "^4.1.18",
     "astro": "^5.16.13",
     "tailwindcss": "^4.1.18",
