@@ -30,14 +30,8 @@ select ok(
   'all sensitive and phase 2 tables have RLS enabled'
 );
 
-select set_config(
-  'request.jwt.claims',
-  json_build_object(
-    'sub', '00000000-0000-4000-8000-000000000122',
-    'role', 'authenticated'
-  )::text,
-  true
-);
+set local role postgres;
+select set_config('request.jwt.claims', '{}', true);
 select is(
   (select count(*)
    from (
@@ -63,6 +57,7 @@ select is(
   'school B fixtures exist before cross-tenant checks'
 );
 
+set local role authenticated;
 select set_config(
   'request.jwt.claims',
   json_build_object(
@@ -77,6 +72,7 @@ select results_eq(
   'worker A sees only the class assigned to the worker'
 );
 
+set local role authenticated;
 select set_config(
   'request.jwt.claims',
   json_build_object(
@@ -115,6 +111,7 @@ select results_eq(
   'worker A sees only children in the assigned class'
 );
 
+set local role authenticated;
 select set_config(
   'request.jwt.claims',
   json_build_object(
@@ -194,6 +191,8 @@ select set_config(
   )::text,
   true
 );
+set local role postgres;
+select set_config('request.jwt.claims', '{}', true);
 select is(
   (select count(*)
    from public.meal_records mr
@@ -213,6 +212,7 @@ select is(
   'old own and same-tenant other-worker records exist with expected ownership'
 );
 
+set local role authenticated;
 select set_config(
   'request.jwt.claims',
   json_build_object(
@@ -368,14 +368,8 @@ select lives_ok(
   'admin A can insert, update, and delete a device in school A'
 );
 
-select set_config(
-  'request.jwt.claims',
-  json_build_object(
-    'sub', '00000000-0000-4000-8000-000000000113',
-    'role', 'authenticated'
-  )::text,
-  true
-);
+set local role postgres;
+select set_config('request.jwt.claims', '{}', true);
 select is(
   (select count(*)
    from public.classes cl
@@ -388,6 +382,7 @@ select is(
   'class A ...0012 exists and is not assigned to worker A'
 );
 
+set local role authenticated;
 select set_config(
   'request.jwt.claims',
   json_build_object(
