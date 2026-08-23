@@ -341,7 +341,7 @@ create or replace function public.incident_relations_are_tenant_safe(
 )
 returns boolean
 language plpgsql
-stable
+volatile
 security definer
 set search_path = public
 as $$
