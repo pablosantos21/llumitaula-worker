@@ -24,12 +24,18 @@ begin
       ('00000000-0000-4000-8000-000000000115'::uuid, 'admin.b@local.test', 'Admin B'),
       ('00000000-0000-4000-8000-000000000116'::uuid, 'worker.a2@local.test', 'Worker A Two')
     ) expected(id, email, full_name) on expected.id = au.id
-    where (au.email, au.role, au.aud, au.aal, au.email_confirmed_at,
-           au.raw_app_meta_data, au.raw_user_meta_data) is distinct from
-          (expected.email, 'authenticated', 'authenticated', 'aal1',
+    where (au.instance_id, au.email, au.role, au.aud, au.aal, au.email_confirmed_at,
+           au.raw_app_meta_data, au.raw_user_meta_data, au.created_at,
+           au.updated_at, au.confirmed_at) is distinct from
+          ('00000000-0000-0000-0000-000000000000'::uuid, expected.email,
+           'authenticated', 'authenticated', 'aal1',
            timestamp '2026-01-01 00:00:00+00',
            jsonb_build_object('provider', 'email', 'providers', jsonb_build_array('email')),
-           jsonb_build_object('full_name', expected.full_name))
+           jsonb_build_object('full_name', expected.full_name),
+           timestamp '2026-01-01 00:00:00+00',
+           timestamp '2026-01-01 00:00:00+00',
+           timestamp '2026-01-01 00:00:00+00')
+       or au.encrypted_password is null
        or crypt('password', au.encrypted_password) is distinct from au.encrypted_password
   ) then
     raise exception 'seed collision in auth.users';
@@ -323,11 +329,12 @@ begin
   if exists (
     select 1 from public.worker_classrooms wc
     join (values
-      ('00000000-0000-4000-8000-000000000111'::uuid, '00000000-0000-4000-8000-000000000011'::uuid),
-      ('00000000-0000-4000-8000-000000000116'::uuid, '00000000-0000-4000-8000-000000000012'::uuid),
-      ('00000000-0000-4000-8000-000000000114'::uuid, '00000000-0000-4000-8000-000000000021'::uuid)
-    ) expected(worker_id, class_id) on expected.worker_id = wc.worker_id and expected.class_id = wc.class_id
-    where wc.worker_id is null
+      ('00000000-0000-4000-8000-000000000111'::uuid, '00000000-0000-4000-8000-000000000011'::uuid, timestamp '2026-01-01 00:00:00+00'),
+      ('00000000-0000-4000-8000-000000000116'::uuid, '00000000-0000-4000-8000-000000000012'::uuid, timestamp '2026-01-01 00:00:00+00'),
+      ('00000000-0000-4000-8000-000000000114'::uuid, '00000000-0000-4000-8000-000000000021'::uuid, timestamp '2026-01-01 00:00:00+00')
+    ) expected(worker_id, class_id, created_at)
+      on expected.worker_id = wc.worker_id and expected.class_id = wc.class_id
+    where wc.created_at is distinct from expected.created_at
   ) then
     raise exception 'seed collision in public.worker_classrooms';
   end if;
@@ -359,8 +366,6 @@ begin
     ) expected(id, child_id, meal_type_id, recorded_by, status, notes) on expected.id = mr.id
     where (mr.child_id, mr.meal_type_id, mr.recorded_by, mr.status, mr.notes) is distinct from
           (expected.child_id, expected.meal_type_id, expected.recorded_by, expected.status, expected.notes)
-       or (mr.id = '00000000-0000-4000-8000-000000000623'::uuid and mr.recorded_at >= now() - interval '24 hours')
-       or (mr.id <> '00000000-0000-4000-8000-000000000623'::uuid and mr.recorded_at < now() - interval '24 hours')
   ) then
     raise exception 'seed collision in public.meal_records';
   end if;
@@ -531,10 +536,10 @@ insert into public.devices (id, school_id, name, identifier) values
   ('00000000-0000-4000-8000-000000000602', '00000000-0000-4000-8000-000000000002', 'Device B', 'device-b')
 on conflict (id) do nothing;
 
-insert into public.worker_classrooms (worker_id, class_id) values
-  ('00000000-0000-4000-8000-000000000111', '00000000-0000-4000-8000-000000000011'),
-  ('00000000-0000-4000-8000-000000000116', '00000000-0000-4000-8000-000000000012'),
-  ('00000000-0000-4000-8000-000000000114', '00000000-0000-4000-8000-000000000021')
+insert into public.worker_classrooms (worker_id, class_id, created_at) values
+  ('00000000-0000-4000-8000-000000000111', '00000000-0000-4000-8000-000000000011', timestamp '2026-01-01 00:00:00+00'),
+  ('00000000-0000-4000-8000-000000000116', '00000000-0000-4000-8000-000000000012', timestamp '2026-01-01 00:00:00+00'),
+  ('00000000-0000-4000-8000-000000000114', '00000000-0000-4000-8000-000000000021', timestamp '2026-01-01 00:00:00+00')
 on conflict (worker_id, class_id) do nothing;
 
 insert into public.meal_types (id, school_id, name, sort_order) values
@@ -543,8 +548,8 @@ insert into public.meal_types (id, school_id, name, sort_order) values
 on conflict (id) do nothing;
 
 insert into public.meal_records (id, child_id, meal_type_id, recorded_by, recorded_at, status, notes) values
-  ('00000000-0000-4000-8000-000000000621', '00000000-0000-4000-8000-000000000225', '00000000-0000-4000-8000-000000000612', '00000000-0000-4000-8000-000000000114', now(), 'bien', 'School B record'),
-  ('00000000-0000-4000-8000-000000000622', '00000000-0000-4000-8000-000000000201', '00000000-0000-4000-8000-000000000611', '00000000-0000-4000-8000-000000000112', now(), 'regular', 'Supervisor review'),
-  ('00000000-0000-4000-8000-000000000623', '00000000-0000-4000-8000-000000000202', '00000000-0000-4000-8000-000000000611', '00000000-0000-4000-8000-000000000111', now() - interval '2 days', 'mal', 'Old worker record'),
-  ('00000000-0000-4000-8000-000000000624', '00000000-0000-4000-8000-000000000203', '00000000-0000-4000-8000-000000000611', '00000000-0000-4000-8000-000000000116', now(), 'bien', 'Other worker record')
+  ('00000000-0000-4000-8000-000000000621', '00000000-0000-4000-8000-000000000225', '00000000-0000-4000-8000-000000000612', '00000000-0000-4000-8000-000000000114', timestamp '2026-09-01 10:00:00+00', 'bien', 'School B record'),
+  ('00000000-0000-4000-8000-000000000622', '00000000-0000-4000-8000-000000000201', '00000000-0000-4000-8000-000000000611', '00000000-0000-4000-8000-000000000112', timestamp '2026-09-01 10:00:00+00', 'regular', 'Supervisor review'),
+  ('00000000-0000-4000-8000-000000000623', '00000000-0000-4000-8000-000000000202', '00000000-0000-4000-8000-000000000611', '00000000-0000-4000-8000-000000000111', timestamp '2026-01-01 10:00:00+00', 'mal', 'Old worker record'),
+  ('00000000-0000-4000-8000-000000000624', '00000000-0000-4000-8000-000000000203', '00000000-0000-4000-8000-000000000611', '00000000-0000-4000-8000-000000000116', timestamp '2026-09-01 10:00:00+00', 'bien', 'Other worker record')
 on conflict (id) do nothing;
