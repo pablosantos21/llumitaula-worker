@@ -252,7 +252,7 @@ create or replace function public.monitor_assignments_are_tenant_safe(
 )
 returns boolean
 language plpgsql
-stable
+volatile
 security definer
 set search_path = public
 as $$
