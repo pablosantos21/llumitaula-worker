@@ -151,9 +151,8 @@ begin
       ('00000000-0000-4000-8000-000000000023'::uuid, '00000000-0000-4000-8000-000000000001'::uuid),
       ('00000000-0000-4000-8000-000000000024'::uuid, '00000000-0000-4000-8000-000000000001'::uuid),
       ('00000000-0000-4000-8000-000000000025'::uuid, '00000000-0000-4000-8000-000000000001'::uuid)
-    ) expected(monitor_id, school_id)
-      on expected.monitor_id = ms.monitor_id and expected.school_id = ms.school_id
-    where (ms.monitor_id, ms.school_id) is distinct from (expected.monitor_id, expected.school_id)
+    ) expected(monitor_id, school_id) on expected.monitor_id = ms.monitor_id
+    where ms.school_id is distinct from expected.school_id
   ) then
     raise exception 'seed collision in public.monitors_schools';
   end if;
@@ -435,6 +434,38 @@ insert into public.monitors_schools (monitor_id, school_id)
 select id, '00000000-0000-4000-8000-000000000001' from public.monitors
 where id between '00000000-0000-4000-8000-000000000021' and '00000000-0000-4000-8000-000000000025'
 on conflict (school_id, monitor_id) do nothing;
+
+do $$
+begin
+  if exists (
+    select 1
+      from (values
+        ('00000000-0000-4000-8000-000000000021'::uuid, '00000000-0000-4000-8000-000000000001'::uuid),
+        ('00000000-0000-4000-8000-000000000022'::uuid, '00000000-0000-4000-8000-000000000001'::uuid),
+        ('00000000-0000-4000-8000-000000000023'::uuid, '00000000-0000-4000-8000-000000000001'::uuid),
+        ('00000000-0000-4000-8000-000000000024'::uuid, '00000000-0000-4000-8000-000000000001'::uuid),
+        ('00000000-0000-4000-8000-000000000025'::uuid, '00000000-0000-4000-8000-000000000001'::uuid)
+      ) expected(monitor_id, school_id)
+      left join public.monitors_schools ms
+        on ms.monitor_id = expected.monitor_id
+       and ms.school_id = expected.school_id
+     where ms.monitor_id is null
+  ) or exists (
+    select 1
+      from public.monitors_schools ms
+      join (values
+        ('00000000-0000-4000-8000-000000000021'::uuid, '00000000-0000-4000-8000-000000000001'::uuid),
+        ('00000000-0000-4000-8000-000000000022'::uuid, '00000000-0000-4000-8000-000000000001'::uuid),
+        ('00000000-0000-4000-8000-000000000023'::uuid, '00000000-0000-4000-8000-000000000001'::uuid),
+        ('00000000-0000-4000-8000-000000000024'::uuid, '00000000-0000-4000-8000-000000000001'::uuid),
+        ('00000000-0000-4000-8000-000000000025'::uuid, '00000000-0000-4000-8000-000000000001'::uuid)
+      ) expected(monitor_id, school_id) on expected.monitor_id = ms.monitor_id
+     where ms.school_id is distinct from expected.school_id
+  ) then
+    raise exception 'seed monitor school links are incomplete or cross-tenant';
+  end if;
+end
+$$;
 
 insert into public.children (id, first_name, last_name, class_id) values
   ('00000000-0000-4000-8000-000000000201', 'Alba', 'Martin', '00000000-0000-4000-8000-000000000011'),
