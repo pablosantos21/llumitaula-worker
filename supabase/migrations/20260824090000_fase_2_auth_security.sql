@@ -109,8 +109,6 @@ create table public.meal_records (
 
 create index devices_school_id_idx on public.devices (school_id);
 create index worker_classrooms_class_id_idx on public.worker_classrooms (class_id);
-create index worker_classrooms_worker_id_idx on public.worker_classrooms (worker_id);
-create index meal_types_school_id_idx on public.meal_types (school_id);
 create index meal_records_child_id_idx on public.meal_records (child_id);
 create index meal_records_meal_type_id_idx on public.meal_records (meal_type_id);
 create index meal_records_recorded_by_idx on public.meal_records (recorded_by);
@@ -328,3 +326,51 @@ for each row execute function public.enforce_same_school_relations();
 create trigger meal_types_same_school_relations
 before update of school_id on public.meal_types
 for each row execute function public.enforce_same_school_relations();
+
+-- Trigger execution does not need to expose this function to API roles. Keep
+-- only the owner privilege needed to manage the trigger function.
+revoke execute on function public.enforce_same_school_relations() from public;
+grant execute on function public.enforce_same_school_relations() to postgres;
+
+-- Existing rows must not contain a tenant contradiction. Rows whose tenant
+-- cannot yet be derived remain valid for now and will be excluded by Task 3.
+do $$
+begin
+  if exists (
+    select 1
+      from public.parents_children pc
+      join public.users u on u.id = pc.parent_id
+      join public.children ch on ch.id = pc.child_id
+      join public.classes c on c.id = ch.class_id
+     where c.school_id is not null
+       and u.school_id is distinct from c.school_id
+  ) then
+    raise exception 'phase 2 tenant validation failed: parents_children crosses schools';
+  end if;
+
+  if exists (
+    select 1
+      from public.worker_classrooms wc
+      join public.users u on u.id = wc.worker_id
+      join public.classes c on c.id = wc.class_id
+     where c.school_id is not null
+       and u.school_id is distinct from c.school_id
+  ) then
+    raise exception 'phase 2 tenant validation failed: worker_classrooms crosses schools';
+  end if;
+
+  if exists (
+    select 1
+      from public.meal_records mr
+      join public.children ch on ch.id = mr.child_id
+      join public.classes c on c.id = ch.class_id
+      join public.meal_types mt on mt.id = mr.meal_type_id
+      join public.users u on u.id = mr.recorded_by
+     where c.school_id is not null
+       and (mt.school_id is distinct from c.school_id
+         or u.school_id is distinct from c.school_id)
+  ) then
+    raise exception 'phase 2 tenant validation failed: meal_records crosses schools';
+  end if;
+end
+$$;
