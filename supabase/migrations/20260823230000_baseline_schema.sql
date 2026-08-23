@@ -103,9 +103,7 @@ create index classes_school_id_idx on public.classes (school_id);
 create index child_allergens_allergen_id_idx on public.child_allergens (allergen_id);
 create index incidents_child_id_idx on public.incidents (child_id);
 create index incidents_monitor_id_idx on public.incidents (monitor_id);
-create index incidents_date_idx on public.incidents (date);
 create index menus_schools_school_id_idx on public.menus_schools (school_id);
-create index menus_schools_date_idx on public.menus_schools (date);
 create index monitors_schools_monitor_id_idx on public.monitors_schools (monitor_id);
 create index parents_children_child_id_idx on public.parents_children (child_id);
 
@@ -129,7 +127,6 @@ begin
 end;
 $$;
 
-grant execute on function public.custom_access_token_hook(jsonb) to supabase_auth_admin;
 revoke execute on function public.custom_access_token_hook(jsonb) from public, anon, authenticated;
 
 alter table public.users enable row level security;
