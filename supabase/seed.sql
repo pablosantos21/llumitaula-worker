@@ -1,6 +1,159 @@
 -- Deterministic development data for the local Supabase database.
--- This file never creates auth.users or stores passwords and only upserts rows
--- with the fixed demo IDs below. It does not remove data outside this dataset.
+-- This file never creates auth.users or stores passwords. It does not remove or
+-- update data outside this dataset.
+
+-- A fixed UUID may already exist in a database restored from another source.
+-- Abort before inserting in that case, rather than attaching demo relationships
+-- to or overwriting an unrelated row. Matching demo rows make reruns safe.
+do $$
+begin
+  if exists (
+    select 1 from public.users
+    where id = '00000000-0000-4000-8000-000000000101'
+      and role is distinct from 'padre'::public.user_role
+  ) or exists (
+    select 1 from public.users
+    where id = '00000000-0000-4000-8000-000000000102'
+      and role is distinct from 'padre'::public.user_role
+  ) or exists (
+    select 1 from public.users
+    where id = '00000000-0000-4000-8000-000000000103'
+      and role is distinct from 'padre'::public.user_role
+  ) or exists (
+    select 1 from public.users
+    where id = '00000000-0000-4000-8000-000000000104'
+      and role is distinct from 'padre'::public.user_role
+  ) then
+    raise exception 'seed UUID collision in public.users';
+  end if;
+
+  if exists (
+    select 1 from public.schools
+    where id = '00000000-0000-4000-8000-000000000001'
+      and name is distinct from 'Colegio Demo'
+  ) then
+    raise exception 'seed UUID collision in public.schools';
+  end if;
+
+  if exists (
+    select 1 from public.classes
+    where id = '00000000-0000-4000-8000-000000000011'
+      and (name, school_id) is distinct from ('Clase Sol', '00000000-0000-4000-8000-000000000001'::uuid)
+  ) or exists (
+    select 1 from public.classes
+    where id = '00000000-0000-4000-8000-000000000012'
+      and (name, school_id) is distinct from ('Clase Luna', '00000000-0000-4000-8000-000000000001'::uuid)
+  ) then
+    raise exception 'seed UUID collision in public.classes';
+  end if;
+
+  if exists (
+    select 1 from public.monitors
+    where id = '00000000-0000-4000-8000-000000000021'
+      and (first_name, last_name, code) is distinct from ('Ana', 'Serra', 101::smallint)
+  ) or exists (
+    select 1 from public.monitors
+    where id = '00000000-0000-4000-8000-000000000022'
+      and (first_name, last_name, code) is distinct from ('Bruno', 'Vidal', 102::smallint)
+  ) or exists (
+    select 1 from public.monitors
+    where id = '00000000-0000-4000-8000-000000000023'
+      and (first_name, last_name, code) is distinct from ('Carla', 'Moya', 103::smallint)
+  ) or exists (
+    select 1 from public.monitors
+    where id = '00000000-0000-4000-8000-000000000024'
+      and (first_name, last_name, code) is distinct from ('Diego', 'Roca', 104::smallint)
+  ) or exists (
+    select 1 from public.monitors
+    where id = '00000000-0000-4000-8000-000000000025'
+      and (first_name, last_name, code) is distinct from ('Elena', 'Costa', 105::smallint)
+  ) then
+    raise exception 'seed UUID collision in public.monitors';
+  end if;
+
+  if exists (
+    select 1 from public.children
+    where id between '00000000-0000-4000-8000-000000000201' and '00000000-0000-4000-8000-000000000224'
+      and (first_name, last_name, class_id) is distinct from (
+        case id
+          when '00000000-0000-4000-8000-000000000201'::uuid then 'Alba'
+          when '00000000-0000-4000-8000-000000000202'::uuid then 'Adrian'
+          when '00000000-0000-4000-8000-000000000203'::uuid then 'Berta'
+          when '00000000-0000-4000-8000-000000000204'::uuid then 'Bruno'
+          when '00000000-0000-4000-8000-000000000205'::uuid then 'Celia'
+          when '00000000-0000-4000-8000-000000000206'::uuid then 'Dario'
+          when '00000000-0000-4000-8000-000000000207'::uuid then 'Elsa'
+          when '00000000-0000-4000-8000-000000000208'::uuid then 'Eric'
+          when '00000000-0000-4000-8000-000000000209'::uuid then 'Fatima'
+          when '00000000-0000-4000-8000-000000000210'::uuid then 'Gael'
+          when '00000000-0000-4000-8000-000000000211'::uuid then 'Ines'
+          when '00000000-0000-4000-8000-000000000212'::uuid then 'Joel'
+          when '00000000-0000-4000-8000-000000000213'::uuid then 'Aina'
+          when '00000000-0000-4000-8000-000000000214'::uuid then 'Alex'
+          when '00000000-0000-4000-8000-000000000215'::uuid then 'Clara'
+          when '00000000-0000-4000-8000-000000000216'::uuid then 'Diana'
+          when '00000000-0000-4000-8000-000000000217'::uuid then 'Emma'
+          when '00000000-0000-4000-8000-000000000218'::uuid then 'Ferran'
+          when '00000000-0000-4000-8000-000000000219'::uuid then 'Gala'
+          when '00000000-0000-4000-8000-000000000220'::uuid then 'Hugo'
+          when '00000000-0000-4000-8000-000000000221'::uuid then 'Iris'
+          when '00000000-0000-4000-8000-000000000222'::uuid then 'Jan'
+          when '00000000-0000-4000-8000-000000000223'::uuid then 'Laia'
+          when '00000000-0000-4000-8000-000000000224'::uuid then 'Marc'
+        end,
+        case when id < '00000000-0000-4000-8000-000000000213'::uuid
+          then '00000000-0000-4000-8000-000000000011'::uuid
+          else '00000000-0000-4000-8000-000000000012'::uuid end
+      )
+  ) then
+    raise exception 'seed UUID collision in public.children';
+  end if;
+
+  if exists (
+    select 1 from public.menus
+    where id = '00000000-0000-4000-8000-000000000301'
+      and (first_course, second_course, side, salad, dessert, type) is distinct from ('Pan con tomate', 'Tortilla', 'Fruta', null, 'Plátano', 'Desayuno')
+  ) or exists (
+    select 1 from public.menus
+    where id = '00000000-0000-4000-8000-000000000302'
+      and (first_course, second_course, side, salad, dessert, type) is distinct from ('Lentejas', 'Pollo al horno', 'Arroz', 'Ensalada', 'Yogur', 'Comida')
+  ) or exists (
+    select 1 from public.menus
+    where id = '00000000-0000-4000-8000-000000000303'
+      and (first_course, second_course, side, salad, dessert, type) is distinct from ('Leche', 'Bocadillo de queso', null, null, 'Manzana', 'Merienda')
+  ) then
+    raise exception 'seed UUID collision in public.menus';
+  end if;
+
+  if exists (
+    select 1 from public.allergens
+    where id = '00000000-0000-4000-8000-000000000401' and name is distinct from 'Gluten'
+  ) or exists (
+    select 1 from public.allergens
+    where id = '00000000-0000-4000-8000-000000000402' and name is distinct from 'Lactosa'
+  ) or exists (
+    select 1 from public.allergens
+    where id = '00000000-0000-4000-8000-000000000403' and name is distinct from 'Frutos secos'
+  ) or exists (
+    select 1 from public.allergens
+    where id = '00000000-0000-4000-8000-000000000404' and name is distinct from 'Huevo'
+  ) then
+    raise exception 'seed UUID collision in public.allergens';
+  end if;
+
+  if exists (
+    select 1 from public.incidents
+    where id = '00000000-0000-4000-8000-000000000501'
+      and (child_id, description, monitor_id, date, reviewed, requires_family_signature) is distinct from ('00000000-0000-4000-8000-000000000205'::uuid, 'Pequeno golpe durante el juego', '00000000-0000-4000-8000-000000000021'::uuid, '2026-09-01'::date, false, false)
+  ) or exists (
+    select 1 from public.incidents
+    where id = '00000000-0000-4000-8000-000000000502'
+      and (child_id, description, monitor_id, date, reviewed, requires_family_signature) is distinct from ('00000000-0000-4000-8000-000000000218'::uuid, 'Necesita revisar la merienda', '00000000-0000-4000-8000-000000000024'::uuid, '2026-09-01'::date, true, true)
+  ) then
+    raise exception 'seed UUID collision in public.incidents';
+  end if;
+end
+$$;
 
 -- Demo users are public profile rows only. They intentionally have no matching
 -- auth.users rows; local authentication can be added separately when needed.
@@ -10,17 +163,17 @@ values
   ('00000000-0000-4000-8000-000000000102', 'padre'),
   ('00000000-0000-4000-8000-000000000103', 'padre'),
   ('00000000-0000-4000-8000-000000000104', 'padre')
-on conflict (id) do update set role = excluded.role;
+on conflict (id) do nothing;
 
 insert into public.schools (id, name)
 values ('00000000-0000-4000-8000-000000000001', 'Colegio Demo')
-on conflict (id) do update set name = excluded.name;
+on conflict (id) do nothing;
 
 insert into public.classes (id, name, school_id)
 values
   ('00000000-0000-4000-8000-000000000011', 'Clase Sol', '00000000-0000-4000-8000-000000000001'),
   ('00000000-0000-4000-8000-000000000012', 'Clase Luna', '00000000-0000-4000-8000-000000000001')
-on conflict (id) do update set name = excluded.name, school_id = excluded.school_id;
+on conflict (id) do nothing;
 
 insert into public.monitors (id, first_name, last_name, code)
 values
@@ -29,10 +182,7 @@ values
   ('00000000-0000-4000-8000-000000000023', 'Carla', 'Moya', 103),
   ('00000000-0000-4000-8000-000000000024', 'Diego', 'Roca', 104),
   ('00000000-0000-4000-8000-000000000025', 'Elena', 'Costa', 105)
-on conflict (id) do update
-  set first_name = excluded.first_name,
-      last_name = excluded.last_name,
-      code = excluded.code;
+on conflict (id) do nothing;
 
 insert into public.monitors_schools (monitor_id, school_id)
 values
@@ -69,10 +219,7 @@ values
   ('00000000-0000-4000-8000-000000000222', 'Jan', 'Cano', '00000000-0000-4000-8000-000000000012'),
   ('00000000-0000-4000-8000-000000000223', 'Laia', 'Mora', '00000000-0000-4000-8000-000000000012'),
   ('00000000-0000-4000-8000-000000000224', 'Marc', 'Rey', '00000000-0000-4000-8000-000000000012')
-on conflict (id) do update
-  set first_name = excluded.first_name,
-      last_name = excluded.last_name,
-      class_id = excluded.class_id;
+on conflict (id) do nothing;
 
 -- The explicit links keep this seed independent of generated values and make
 -- each parent responsible for six children.
@@ -109,27 +256,21 @@ values
   ('00000000-0000-4000-8000-000000000301', 'Pan con tomate', 'Tortilla', 'Fruta', null, 'Plátano', 'Desayuno'),
   ('00000000-0000-4000-8000-000000000302', 'Lentejas', 'Pollo al horno', 'Arroz', 'Ensalada', 'Yogur', 'Comida'),
   ('00000000-0000-4000-8000-000000000303', 'Leche', 'Bocadillo de queso', null, null, 'Manzana', 'Merienda')
-on conflict (id) do update
-  set first_course = excluded.first_course,
-      second_course = excluded.second_course,
-      side = excluded.side,
-      salad = excluded.salad,
-      dessert = excluded.dessert,
-      type = excluded.type;
+on conflict (id) do nothing;
 
 insert into public.menus_schools (menu_id, school_id, date)
 values
   ('00000000-0000-4000-8000-000000000301', '00000000-0000-4000-8000-000000000001', '2026-09-01'),
   ('00000000-0000-4000-8000-000000000302', '00000000-0000-4000-8000-000000000001', '2026-09-01'),
   ('00000000-0000-4000-8000-000000000303', '00000000-0000-4000-8000-000000000001', '2026-09-01')
-on conflict (menu_id, school_id) do update set date = excluded.date;
+on conflict (menu_id, school_id) do nothing;
 
 insert into public.allergens (id, name)
 values
-  (gen_random_uuid(), 'Gluten'),
-  (gen_random_uuid(), 'Lactosa'),
-  (gen_random_uuid(), 'Frutos secos'),
-  (gen_random_uuid(), 'Huevo')
+  ('00000000-0000-4000-8000-000000000401', 'Gluten'),
+  ('00000000-0000-4000-8000-000000000402', 'Lactosa'),
+  ('00000000-0000-4000-8000-000000000403', 'Frutos secos'),
+  ('00000000-0000-4000-8000-000000000404', 'Huevo')
 on conflict (name) do nothing;
 
 insert into public.child_allergens (child_id, allergen_id)
@@ -148,13 +289,7 @@ insert into public.incidents (id, child_id, description, monitor_id, date, revie
 values
   ('00000000-0000-4000-8000-000000000501', '00000000-0000-4000-8000-000000000205', 'Pequeno golpe durante el juego', '00000000-0000-4000-8000-000000000021', '2026-09-01', false, false),
   ('00000000-0000-4000-8000-000000000502', '00000000-0000-4000-8000-000000000218', 'Necesita revisar la merienda', '00000000-0000-4000-8000-000000000024', '2026-09-01', true, true)
-on conflict (id) do update
-  set child_id = excluded.child_id,
-      description = excluded.description,
-      monitor_id = excluded.monitor_id,
-      date = excluded.date,
-      reviewed = excluded.reviewed,
-      requires_family_signature = excluded.requires_family_signature;
+on conflict (id) do nothing;
 
 -- Useful read-only checks after `supabase db reset`:
 -- select count(*) from public.schools where id = '00000000-0000-4000-8000-000000000001'; -- 1
