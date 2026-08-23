@@ -10,9 +10,9 @@ export default function AuthLoginForm() {
   const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (event: SubmitEvent<HTMLFormElement>) => {
+    event.preventDefault();
     if (loading) return;
 
-    event.preventDefault();
     setError(null);
     setLoading(true);
 
