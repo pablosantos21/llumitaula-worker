@@ -4,9 +4,372 @@
 -- The same bcrypt password is used for every local account: password
 -- (development only). Auth rows must exist before public.users because the
 -- phase 2 migration adds a foreign key from public.users.id to auth.users.id.
+
+-- Validate every reserved UUID and natural key before any fixture is written.
+-- Existing rows with the exact fixture values are safe to keep on reruns;
+-- anything else aborts instead of being hidden by ON CONFLICT DO NOTHING.
+do $$
+begin
+  if exists (
+    select 1 from auth.users au
+    join (values
+      ('00000000-0000-4000-8000-000000000101'::uuid, 'parent.1@local.test', 'Parent One'),
+      ('00000000-0000-4000-8000-000000000102'::uuid, 'parent.2@local.test', 'Parent Two'),
+      ('00000000-0000-4000-8000-000000000103'::uuid, 'parent.3@local.test', 'Parent Three'),
+      ('00000000-0000-4000-8000-000000000104'::uuid, 'parent.4@local.test', 'Parent Four'),
+      ('00000000-0000-4000-8000-000000000111'::uuid, 'worker.a@local.test', 'Worker A'),
+      ('00000000-0000-4000-8000-000000000112'::uuid, 'supervisor.a@local.test', 'Supervisor A'),
+      ('00000000-0000-4000-8000-000000000113'::uuid, 'admin.a@local.test', 'Admin A'),
+      ('00000000-0000-4000-8000-000000000114'::uuid, 'worker.b@local.test', 'Worker B'),
+      ('00000000-0000-4000-8000-000000000115'::uuid, 'admin.b@local.test', 'Admin B'),
+      ('00000000-0000-4000-8000-000000000116'::uuid, 'worker.a2@local.test', 'Worker A Two')
+    ) expected(id, email, full_name) on expected.id = au.id
+    where (au.email, au.role, au.aud, au.aal, au.email_confirmed_at,
+           au.raw_app_meta_data, au.raw_user_meta_data) is distinct from
+          (expected.email, 'authenticated', 'authenticated', 'aal1',
+           timestamp '2026-01-01 00:00:00+00',
+           jsonb_build_object('provider', 'email', 'providers', jsonb_build_array('email')),
+           jsonb_build_object('full_name', expected.full_name))
+       or crypt('password', au.encrypted_password) is distinct from au.encrypted_password
+  ) then
+    raise exception 'seed collision in auth.users';
+  end if;
+
+  if exists (
+    select 1 from auth.users au
+    join (values
+      ('parent.1@local.test', '00000000-0000-4000-8000-000000000101'::uuid),
+      ('parent.2@local.test', '00000000-0000-4000-8000-000000000102'::uuid),
+      ('parent.3@local.test', '00000000-0000-4000-8000-000000000103'::uuid),
+      ('parent.4@local.test', '00000000-0000-4000-8000-000000000104'::uuid),
+      ('worker.a@local.test', '00000000-0000-4000-8000-000000000111'::uuid),
+      ('supervisor.a@local.test', '00000000-0000-4000-8000-000000000112'::uuid),
+      ('admin.a@local.test', '00000000-0000-4000-8000-000000000113'::uuid),
+      ('worker.b@local.test', '00000000-0000-4000-8000-000000000114'::uuid),
+      ('admin.b@local.test', '00000000-0000-4000-8000-000000000115'::uuid),
+      ('worker.a2@local.test', '00000000-0000-4000-8000-000000000116'::uuid)
+    ) expected(email, id) on expected.email = au.email
+    where au.id is distinct from expected.id
+  ) then
+    raise exception 'seed natural key collision in auth.users';
+  end if;
+
+  if exists (
+    select 1 from public.schools s
+    join (values
+      ('00000000-0000-4000-8000-000000000001'::uuid, 'Colegio Demo'),
+      ('00000000-0000-4000-8000-000000000002'::uuid, 'School B')
+    ) expected(id, name) on expected.id = s.id
+    where s.name is distinct from expected.name
+  ) or exists (
+    select 1 from public.schools s
+    join (values
+      ('00000000-0000-4000-8000-000000000001'::uuid, 'Colegio Demo'),
+      ('00000000-0000-4000-8000-000000000002'::uuid, 'School B')
+    ) expected(id, name) on expected.name = s.name
+    where s.id is distinct from expected.id
+  ) then
+    raise exception 'seed collision in public.schools';
+  end if;
+
+  if exists (
+    select 1 from public.users u
+    join (values
+      ('00000000-0000-4000-8000-000000000101'::uuid, '00000000-0000-4000-8000-000000000001'::uuid, 'Parent One', 'padre'::public.user_role, true),
+      ('00000000-0000-4000-8000-000000000102'::uuid, '00000000-0000-4000-8000-000000000001'::uuid, 'Parent Two', 'padre'::public.user_role, true),
+      ('00000000-0000-4000-8000-000000000103'::uuid, '00000000-0000-4000-8000-000000000001'::uuid, 'Parent Three', 'padre'::public.user_role, true),
+      ('00000000-0000-4000-8000-000000000104'::uuid, '00000000-0000-4000-8000-000000000001'::uuid, 'Parent Four', 'padre'::public.user_role, true),
+      ('00000000-0000-4000-8000-000000000111'::uuid, '00000000-0000-4000-8000-000000000001'::uuid, 'Worker A', 'worker'::public.user_role, true),
+      ('00000000-0000-4000-8000-000000000112'::uuid, '00000000-0000-4000-8000-000000000001'::uuid, 'Supervisor A', 'supervisor'::public.user_role, true),
+      ('00000000-0000-4000-8000-000000000113'::uuid, '00000000-0000-4000-8000-000000000001'::uuid, 'Admin A', 'admin'::public.user_role, true),
+      ('00000000-0000-4000-8000-000000000114'::uuid, '00000000-0000-4000-8000-000000000002'::uuid, 'Worker B', 'worker'::public.user_role, true),
+      ('00000000-0000-4000-8000-000000000115'::uuid, '00000000-0000-4000-8000-000000000002'::uuid, 'Admin B', 'admin'::public.user_role, true),
+      ('00000000-0000-4000-8000-000000000116'::uuid, '00000000-0000-4000-8000-000000000001'::uuid, 'Worker A Two', 'worker'::public.user_role, true)
+    ) expected(id, school_id, full_name, role, active) on expected.id = u.id
+    where (u.school_id, u.full_name, u.role, u.active) is distinct from
+          (expected.school_id, expected.full_name, expected.role, expected.active)
+  ) then
+    raise exception 'seed collision in public.users';
+  end if;
+
+  if exists (
+    select 1 from public.classes c
+    join (values
+      ('00000000-0000-4000-8000-000000000011'::uuid, 'Clase Sol', '00000000-0000-4000-8000-000000000001'::uuid),
+      ('00000000-0000-4000-8000-000000000012'::uuid, 'Clase Luna', '00000000-0000-4000-8000-000000000001'::uuid),
+      ('00000000-0000-4000-8000-000000000021'::uuid, 'Clase B', '00000000-0000-4000-8000-000000000002'::uuid)
+    ) expected(id, name, school_id) on expected.id = c.id
+    where (c.name, c.school_id) is distinct from (expected.name, expected.school_id)
+  ) or exists (
+    select 1 from public.classes c
+    join (values
+      ('Clase Sol', '00000000-0000-4000-8000-000000000001'::uuid, '00000000-0000-4000-8000-000000000011'::uuid),
+      ('Clase Luna', '00000000-0000-4000-8000-000000000001'::uuid, '00000000-0000-4000-8000-000000000012'::uuid),
+      ('Clase B', '00000000-0000-4000-8000-000000000002'::uuid, '00000000-0000-4000-8000-000000000021'::uuid)
+    ) expected(name, school_id, id) on expected.name = c.name and expected.school_id = c.school_id
+    where c.id is distinct from expected.id
+  ) then
+    raise exception 'seed collision in public.classes';
+  end if;
+
+  if exists (
+    select 1 from public.monitors m
+    join (values
+      ('00000000-0000-4000-8000-000000000021'::uuid, 'Ana', 'Serra', 101::smallint, '00000000-0000-4000-8000-000000000001'::uuid),
+      ('00000000-0000-4000-8000-000000000022'::uuid, 'Bruno', 'Vidal', 102::smallint, '00000000-0000-4000-8000-000000000001'::uuid),
+      ('00000000-0000-4000-8000-000000000023'::uuid, 'Carla', 'Moya', 103::smallint, '00000000-0000-4000-8000-000000000001'::uuid),
+      ('00000000-0000-4000-8000-000000000024'::uuid, 'Diego', 'Roca', 104::smallint, '00000000-0000-4000-8000-000000000001'::uuid),
+      ('00000000-0000-4000-8000-000000000025'::uuid, 'Elena', 'Costa', 105::smallint, '00000000-0000-4000-8000-000000000001'::uuid)
+    ) expected(id, first_name, last_name, code, school_id) on expected.id = m.id
+    where (m.first_name, m.last_name, m.code, m.school_id) is distinct from
+          (expected.first_name, expected.last_name, expected.code, expected.school_id)
+  ) or exists (
+    select 1 from public.monitors m
+    join (values
+      (101::smallint, '00000000-0000-4000-8000-000000000021'::uuid),
+      (102::smallint, '00000000-0000-4000-8000-000000000022'::uuid),
+      (103::smallint, '00000000-0000-4000-8000-000000000023'::uuid),
+      (104::smallint, '00000000-0000-4000-8000-000000000024'::uuid),
+      (105::smallint, '00000000-0000-4000-8000-000000000025'::uuid)
+    ) expected(code, id) on expected.code = m.code
+    where m.id is distinct from expected.id
+  ) then
+    raise exception 'seed collision in public.monitors';
+  end if;
+
+  if exists (
+    select 1 from public.monitors_schools ms
+    join (values
+      ('00000000-0000-4000-8000-000000000021'::uuid, '00000000-0000-4000-8000-000000000001'::uuid),
+      ('00000000-0000-4000-8000-000000000022'::uuid, '00000000-0000-4000-8000-000000000001'::uuid),
+      ('00000000-0000-4000-8000-000000000023'::uuid, '00000000-0000-4000-8000-000000000001'::uuid),
+      ('00000000-0000-4000-8000-000000000024'::uuid, '00000000-0000-4000-8000-000000000001'::uuid),
+      ('00000000-0000-4000-8000-000000000025'::uuid, '00000000-0000-4000-8000-000000000001'::uuid)
+    ) expected(monitor_id, school_id)
+      on expected.monitor_id = ms.monitor_id and expected.school_id = ms.school_id
+    where (ms.monitor_id, ms.school_id) is distinct from (expected.monitor_id, expected.school_id)
+  ) then
+    raise exception 'seed collision in public.monitors_schools';
+  end if;
+
+  if exists (
+    select 1 from public.children c
+    join (values
+      ('00000000-0000-4000-8000-000000000201'::uuid, 'Alba', 'Martin', '00000000-0000-4000-8000-000000000011'::uuid),
+      ('00000000-0000-4000-8000-000000000202'::uuid, 'Adrian', 'Perez', '00000000-0000-4000-8000-000000000011'::uuid),
+      ('00000000-0000-4000-8000-000000000203'::uuid, 'Berta', 'Lopez', '00000000-0000-4000-8000-000000000011'::uuid),
+      ('00000000-0000-4000-8000-000000000204'::uuid, 'Bruno', 'Gomez', '00000000-0000-4000-8000-000000000011'::uuid),
+      ('00000000-0000-4000-8000-000000000205'::uuid, 'Celia', 'Navarro', '00000000-0000-4000-8000-000000000011'::uuid),
+      ('00000000-0000-4000-8000-000000000206'::uuid, 'Dario', 'Soler', '00000000-0000-4000-8000-000000000011'::uuid),
+      ('00000000-0000-4000-8000-000000000207'::uuid, 'Elsa', 'Ribas', '00000000-0000-4000-8000-000000000011'::uuid),
+      ('00000000-0000-4000-8000-000000000208'::uuid, 'Eric', 'Ferrer', '00000000-0000-4000-8000-000000000011'::uuid),
+      ('00000000-0000-4000-8000-000000000209'::uuid, 'Fatima', 'Pastor', '00000000-0000-4000-8000-000000000011'::uuid),
+      ('00000000-0000-4000-8000-000000000210'::uuid, 'Gael', 'Cano', '00000000-0000-4000-8000-000000000011'::uuid),
+      ('00000000-0000-4000-8000-000000000211'::uuid, 'Ines', 'Mora', '00000000-0000-4000-8000-000000000011'::uuid),
+      ('00000000-0000-4000-8000-000000000212'::uuid, 'Joel', 'Rey', '00000000-0000-4000-8000-000000000011'::uuid),
+      ('00000000-0000-4000-8000-000000000213'::uuid, 'Aina', 'Martin', '00000000-0000-4000-8000-000000000012'::uuid),
+      ('00000000-0000-4000-8000-000000000214'::uuid, 'Alex', 'Perez', '00000000-0000-4000-8000-000000000012'::uuid),
+      ('00000000-0000-4000-8000-000000000215'::uuid, 'Clara', 'Lopez', '00000000-0000-4000-8000-000000000012'::uuid),
+      ('00000000-0000-4000-8000-000000000216'::uuid, 'Diana', 'Gomez', '00000000-0000-4000-8000-000000000012'::uuid),
+      ('00000000-0000-4000-8000-000000000217'::uuid, 'Emma', 'Navarro', '00000000-0000-4000-8000-000000000012'::uuid),
+      ('00000000-0000-4000-8000-000000000218'::uuid, 'Ferran', 'Soler', '00000000-0000-4000-8000-000000000012'::uuid),
+      ('00000000-0000-4000-8000-000000000219'::uuid, 'Gala', 'Ribas', '00000000-0000-4000-8000-000000000012'::uuid),
+      ('00000000-0000-4000-8000-000000000220'::uuid, 'Hugo', 'Ferrer', '00000000-0000-4000-8000-000000000012'::uuid),
+      ('00000000-0000-4000-8000-000000000221'::uuid, 'Iris', 'Pastor', '00000000-0000-4000-8000-000000000012'::uuid),
+      ('00000000-0000-4000-8000-000000000222'::uuid, 'Jan', 'Cano', '00000000-0000-4000-8000-000000000012'::uuid),
+      ('00000000-0000-4000-8000-000000000223'::uuid, 'Laia', 'Mora', '00000000-0000-4000-8000-000000000012'::uuid),
+      ('00000000-0000-4000-8000-000000000224'::uuid, 'Marc', 'Rey', '00000000-0000-4000-8000-000000000012'::uuid),
+      ('00000000-0000-4000-8000-000000000225'::uuid, 'Berta B', 'School B', '00000000-0000-4000-8000-000000000021'::uuid),
+      ('00000000-0000-4000-8000-000000000226'::uuid, 'Null', 'Class', null::uuid)
+    ) expected(id, first_name, last_name, class_id) on expected.id = c.id
+    where (c.first_name, c.last_name, c.class_id) is distinct from
+          (expected.first_name, expected.last_name, expected.class_id)
+  ) then
+    raise exception 'seed collision in public.children';
+  end if;
+
+  if exists (
+    select 1 from public.parents_children pc
+    join (values
+      ('00000000-0000-4000-8000-000000000101'::uuid, '00000000-0000-4000-8000-000000000201'::uuid),
+      ('00000000-0000-4000-8000-000000000101'::uuid, '00000000-0000-4000-8000-000000000202'::uuid),
+      ('00000000-0000-4000-8000-000000000101'::uuid, '00000000-0000-4000-8000-000000000203'::uuid),
+      ('00000000-0000-4000-8000-000000000101'::uuid, '00000000-0000-4000-8000-000000000204'::uuid),
+      ('00000000-0000-4000-8000-000000000101'::uuid, '00000000-0000-4000-8000-000000000205'::uuid),
+      ('00000000-0000-4000-8000-000000000101'::uuid, '00000000-0000-4000-8000-000000000206'::uuid),
+      ('00000000-0000-4000-8000-000000000102'::uuid, '00000000-0000-4000-8000-000000000207'::uuid),
+      ('00000000-0000-4000-8000-000000000102'::uuid, '00000000-0000-4000-8000-000000000208'::uuid),
+      ('00000000-0000-4000-8000-000000000102'::uuid, '00000000-0000-4000-8000-000000000209'::uuid),
+      ('00000000-0000-4000-8000-000000000102'::uuid, '00000000-0000-4000-8000-000000000210'::uuid),
+      ('00000000-0000-4000-8000-000000000102'::uuid, '00000000-0000-4000-8000-000000000211'::uuid),
+      ('00000000-0000-4000-8000-000000000102'::uuid, '00000000-0000-4000-8000-000000000212'::uuid),
+      ('00000000-0000-4000-8000-000000000103'::uuid, '00000000-0000-4000-8000-000000000213'::uuid),
+      ('00000000-0000-4000-8000-000000000103'::uuid, '00000000-0000-4000-8000-000000000214'::uuid),
+      ('00000000-0000-4000-8000-000000000103'::uuid, '00000000-0000-4000-8000-000000000215'::uuid),
+      ('00000000-0000-4000-8000-000000000103'::uuid, '00000000-0000-4000-8000-000000000216'::uuid),
+      ('00000000-0000-4000-8000-000000000103'::uuid, '00000000-0000-4000-8000-000000000217'::uuid),
+      ('00000000-0000-4000-8000-000000000103'::uuid, '00000000-0000-4000-8000-000000000218'::uuid),
+      ('00000000-0000-4000-8000-000000000104'::uuid, '00000000-0000-4000-8000-000000000219'::uuid),
+      ('00000000-0000-4000-8000-000000000104'::uuid, '00000000-0000-4000-8000-000000000220'::uuid),
+      ('00000000-0000-4000-8000-000000000104'::uuid, '00000000-0000-4000-8000-000000000221'::uuid),
+      ('00000000-0000-4000-8000-000000000104'::uuid, '00000000-0000-4000-8000-000000000222'::uuid),
+      ('00000000-0000-4000-8000-000000000104'::uuid, '00000000-0000-4000-8000-000000000223'::uuid),
+      ('00000000-0000-4000-8000-000000000104'::uuid, '00000000-0000-4000-8000-000000000224'::uuid)
+    ) expected(parent_id, child_id)
+      on expected.parent_id = pc.parent_id and expected.child_id = pc.child_id
+    where (pc.parent_id, pc.child_id) is distinct from (expected.parent_id, expected.child_id)
+  ) then
+    raise exception 'seed collision in public.parents_children';
+  end if;
+
+  if exists (
+    select 1 from public.menus m
+    join (values
+      ('00000000-0000-4000-8000-000000000301'::uuid, 'Pan con tomate', 'Tortilla', 'Fruta', null::text, 'Plátano', 'Desayuno'),
+      ('00000000-0000-4000-8000-000000000302'::uuid, 'Lentejas', 'Pollo al horno', 'Arroz', 'Ensalada', 'Yogur', 'Comida'),
+      ('00000000-0000-4000-8000-000000000303'::uuid, 'Leche', 'Bocadillo de queso', null::text, null::text, 'Manzana', 'Merienda')
+    ) expected(id, first_course, second_course, side, salad, dessert, type) on expected.id = m.id
+    where (m.first_course, m.second_course, m.side, m.salad, m.dessert, m.type) is distinct from
+          (expected.first_course, expected.second_course, expected.side, expected.salad, expected.dessert, expected.type)
+  ) then
+    raise exception 'seed collision in public.menus';
+  end if;
+
+  if exists (
+    select 1 from public.menus_schools ms
+    join (values
+      ('00000000-0000-4000-8000-000000000301'::uuid, '00000000-0000-4000-8000-000000000001'::uuid, '2026-09-01'::date),
+      ('00000000-0000-4000-8000-000000000302'::uuid, '00000000-0000-4000-8000-000000000001'::uuid, '2026-09-01'::date),
+      ('00000000-0000-4000-8000-000000000303'::uuid, '00000000-0000-4000-8000-000000000001'::uuid, '2026-09-01'::date)
+    ) expected(menu_id, school_id, date)
+      on expected.menu_id = ms.menu_id and expected.school_id = ms.school_id
+    where ms.date is distinct from expected.date
+  ) then
+    raise exception 'seed collision in public.menus_schools';
+  end if;
+
+  if exists (
+    select 1 from public.allergens a
+    join (values
+      ('00000000-0000-4000-8000-000000000401'::uuid, 'Gluten'),
+      ('00000000-0000-4000-8000-000000000402'::uuid, 'Lactosa'),
+      ('00000000-0000-4000-8000-000000000403'::uuid, 'Frutos secos'),
+      ('00000000-0000-4000-8000-000000000404'::uuid, 'Huevo'),
+      ('00000000-0000-4000-8000-000000000498'::uuid, 'B-only test allergen'),
+      ('00000000-0000-4000-8000-000000000499'::uuid, 'Shared test allergen')
+    ) expected(id, name) on expected.id = a.id
+    where a.name is distinct from expected.name
+  ) or exists (
+    select 1 from public.allergens a
+    join (values
+      ('Gluten', '00000000-0000-4000-8000-000000000401'::uuid),
+      ('Lactosa', '00000000-0000-4000-8000-000000000402'::uuid),
+      ('Frutos secos', '00000000-0000-4000-8000-000000000403'::uuid),
+      ('Huevo', '00000000-0000-4000-8000-000000000404'::uuid),
+      ('B-only test allergen', '00000000-0000-4000-8000-000000000498'::uuid),
+      ('Shared test allergen', '00000000-0000-4000-8000-000000000499'::uuid)
+    ) expected(name, id) on expected.name = a.name
+    where a.id is distinct from expected.id
+  ) then
+    raise exception 'seed collision in public.allergens';
+  end if;
+
+  if exists (
+    select 1 from public.child_allergens ca
+    join (values
+      ('00000000-0000-4000-8000-000000000203'::uuid, '00000000-0000-4000-8000-000000000401'::uuid),
+      ('00000000-0000-4000-8000-000000000207'::uuid, '00000000-0000-4000-8000-000000000402'::uuid),
+      ('00000000-0000-4000-8000-000000000215'::uuid, '00000000-0000-4000-8000-000000000403'::uuid),
+      ('00000000-0000-4000-8000-000000000220'::uuid, '00000000-0000-4000-8000-000000000404'::uuid),
+      ('00000000-0000-4000-8000-000000000201'::uuid, '00000000-0000-4000-8000-000000000499'::uuid),
+      ('00000000-0000-4000-8000-000000000225'::uuid, '00000000-0000-4000-8000-000000000499'::uuid),
+      ('00000000-0000-4000-8000-000000000225'::uuid, '00000000-0000-4000-8000-000000000498'::uuid)
+    ) expected(child_id, allergen_id)
+      on expected.child_id = ca.child_id and expected.allergen_id = ca.allergen_id
+    where (ca.child_id, ca.allergen_id) is distinct from (expected.child_id, expected.allergen_id)
+  ) then
+    raise exception 'seed collision in public.child_allergens';
+  end if;
+
+  if exists (
+    select 1 from public.incidents i
+    join (values
+      ('00000000-0000-4000-8000-000000000501'::uuid, '00000000-0000-4000-8000-000000000205'::uuid, 'Pequeno golpe durante el juego', '00000000-0000-4000-8000-000000000021'::uuid, '2026-09-01'::date, false, false),
+      ('00000000-0000-4000-8000-000000000502'::uuid, '00000000-0000-4000-8000-000000000218'::uuid, 'Necesita revisar la merienda', '00000000-0000-4000-8000-000000000024'::uuid, '2026-09-01'::date, true, true)
+    ) expected(id, child_id, description, monitor_id, date, reviewed, requires_family_signature) on expected.id = i.id
+    where (i.child_id, i.description, i.monitor_id, i.date, i.reviewed, i.requires_family_signature) is distinct from
+          (expected.child_id, expected.description, expected.monitor_id, expected.date, expected.reviewed, expected.requires_family_signature)
+  ) then
+    raise exception 'seed collision in public.incidents';
+  end if;
+
+  if exists (
+    select 1 from public.devices d
+    join (values
+      ('00000000-0000-4000-8000-000000000601'::uuid, '00000000-0000-4000-8000-000000000001'::uuid, 'Device A', 'device-a', true),
+      ('00000000-0000-4000-8000-000000000602'::uuid, '00000000-0000-4000-8000-000000000002'::uuid, 'Device B', 'device-b', true)
+    ) expected(id, school_id, name, identifier, active) on expected.id = d.id
+    where (d.school_id, d.name, d.identifier, d.active) is distinct from
+          (expected.school_id, expected.name, expected.identifier, expected.active)
+  ) or exists (
+    select 1 from public.devices d
+    join (values ('device-a', '00000000-0000-4000-8000-000000000601'::uuid), ('device-b', '00000000-0000-4000-8000-000000000602'::uuid)) expected(identifier, id)
+      on expected.identifier = d.identifier
+    where d.id is distinct from expected.id
+  ) then
+    raise exception 'seed collision in public.devices';
+  end if;
+
+  if exists (
+    select 1 from public.worker_classrooms wc
+    join (values
+      ('00000000-0000-4000-8000-000000000111'::uuid, '00000000-0000-4000-8000-000000000011'::uuid),
+      ('00000000-0000-4000-8000-000000000116'::uuid, '00000000-0000-4000-8000-000000000012'::uuid),
+      ('00000000-0000-4000-8000-000000000114'::uuid, '00000000-0000-4000-8000-000000000021'::uuid)
+    ) expected(worker_id, class_id) on expected.worker_id = wc.worker_id and expected.class_id = wc.class_id
+    where wc.worker_id is null
+  ) then
+    raise exception 'seed collision in public.worker_classrooms';
+  end if;
+
+  if exists (
+    select 1 from public.meal_types mt
+    join (values
+      ('00000000-0000-4000-8000-000000000611'::uuid, '00000000-0000-4000-8000-000000000001'::uuid, 'Comida A', true, 1),
+      ('00000000-0000-4000-8000-000000000612'::uuid, '00000000-0000-4000-8000-000000000002'::uuid, 'Comida B', true, 1)
+    ) expected(id, school_id, name, active, sort_order) on expected.id = mt.id
+    where (mt.school_id, mt.name, mt.active, mt.sort_order) is distinct from
+          (expected.school_id, expected.name, expected.active, expected.sort_order)
+  ) or exists (
+    select 1 from public.meal_types mt
+    join (values ('00000000-0000-4000-8000-000000000001'::uuid, 'Comida A', '00000000-0000-4000-8000-000000000611'::uuid), ('00000000-0000-4000-8000-000000000002'::uuid, 'Comida B', '00000000-0000-4000-8000-000000000612'::uuid)) expected(school_id, name, id)
+      on expected.school_id = mt.school_id and expected.name = mt.name
+    where mt.id is distinct from expected.id
+  ) then
+    raise exception 'seed collision in public.meal_types';
+  end if;
+
+  if exists (
+    select 1 from public.meal_records mr
+    join (values
+      ('00000000-0000-4000-8000-000000000621'::uuid, '00000000-0000-4000-8000-000000000225'::uuid, '00000000-0000-4000-8000-000000000612'::uuid, '00000000-0000-4000-8000-000000000114'::uuid, 'bien'::public.meal_status, 'School B record'),
+      ('00000000-0000-4000-8000-000000000622'::uuid, '00000000-0000-4000-8000-000000000201'::uuid, '00000000-0000-4000-8000-000000000611'::uuid, '00000000-0000-4000-8000-000000000112'::uuid, 'regular'::public.meal_status, 'Supervisor review'),
+      ('00000000-0000-4000-8000-000000000623'::uuid, '00000000-0000-4000-8000-000000000202'::uuid, '00000000-0000-4000-8000-000000000611'::uuid, '00000000-0000-4000-8000-000000000111'::uuid, 'mal'::public.meal_status, 'Old worker record'),
+      ('00000000-0000-4000-8000-000000000624'::uuid, '00000000-0000-4000-8000-000000000203'::uuid, '00000000-0000-4000-8000-000000000611'::uuid, '00000000-0000-4000-8000-000000000116'::uuid, 'bien'::public.meal_status, 'Other worker record')
+    ) expected(id, child_id, meal_type_id, recorded_by, status, notes) on expected.id = mr.id
+    where (mr.child_id, mr.meal_type_id, mr.recorded_by, mr.status, mr.notes) is distinct from
+          (expected.child_id, expected.meal_type_id, expected.recorded_by, expected.status, expected.notes)
+       or (mr.id = '00000000-0000-4000-8000-000000000623'::uuid and mr.recorded_at >= now() - interval '24 hours')
+       or (mr.id <> '00000000-0000-4000-8000-000000000623'::uuid and mr.recorded_at < now() - interval '24 hours')
+  ) then
+    raise exception 'seed collision in public.meal_records';
+  end if;
+end
+$$;
+
 insert into auth.users (
   id, instance_id, aud, role, email, encrypted_password,
-  email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
+  email_confirmed_at, raw_app_meta_data, raw_user_meta_data, aal,
   created_at, updated_at, confirmed_at
 )
 select account.id, '00000000-0000-0000-0000-000000000000'::uuid,
@@ -14,7 +377,7 @@ select account.id, '00000000-0000-0000-0000-000000000000'::uuid,
        '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy',
        timestamp '2026-01-01 00:00:00+00',
        jsonb_build_object('provider', 'email', 'providers', jsonb_build_array('email')),
-       jsonb_build_object('full_name', account.full_name),
+       jsonb_build_object('full_name', account.full_name), 'aal1',
        timestamp '2026-01-01 00:00:00+00', timestamp '2026-01-01 00:00:00+00',
        timestamp '2026-01-01 00:00:00+00'
   from (values
@@ -30,56 +393,6 @@ select account.id, '00000000-0000-0000-0000-000000000000'::uuid,
     ('00000000-0000-4000-8000-000000000116'::uuid, 'worker.a2@local.test', 'Worker A Two')
   ) as account(id, email, full_name)
 on conflict (id) do nothing;
-
-do $$
-begin
-  if exists (
-    select 1
-      from auth.users au
-      join (values
-        ('00000000-0000-4000-8000-000000000101'::uuid, 'parent.1@local.test'),
-        ('00000000-0000-4000-8000-000000000102'::uuid, 'parent.2@local.test'),
-        ('00000000-0000-4000-8000-000000000103'::uuid, 'parent.3@local.test'),
-        ('00000000-0000-4000-8000-000000000104'::uuid, 'parent.4@local.test'),
-        ('00000000-0000-4000-8000-000000000111'::uuid, 'worker.a@local.test'),
-        ('00000000-0000-4000-8000-000000000112'::uuid, 'supervisor.a@local.test'),
-        ('00000000-0000-4000-8000-000000000113'::uuid, 'admin.a@local.test'),
-        ('00000000-0000-4000-8000-000000000114'::uuid, 'worker.b@local.test'),
-        ('00000000-0000-4000-8000-000000000115'::uuid, 'admin.b@local.test'),
-        ('00000000-0000-4000-8000-000000000116'::uuid, 'worker.a2@local.test')
-      ) expected(id, email) on expected.id = au.id
-     where au.email is distinct from expected.email
-  ) then
-    raise exception 'seed collision in auth.users';
-  end if;
-  if exists (select 1 from public.schools where id = '00000000-0000-4000-8000-000000000001' and name <> 'Colegio Demo')
-     or exists (select 1 from public.schools where id = '00000000-0000-4000-8000-000000000002' and name <> 'School B') then
-    raise exception 'seed collision in public.schools';
-  end if;
-  if exists (select 1 from public.schools where name in ('Colegio Demo', 'School B') group by name having count(*) > 1) then
-    raise exception 'seed natural key collision in public.schools';
-  end if;
-  if exists (
-    select 1
-      from public.users u
-      join (values
-        ('00000000-0000-4000-8000-000000000101'::uuid, '00000000-0000-4000-8000-000000000001'::uuid, 'padre'::public.user_role),
-        ('00000000-0000-4000-8000-000000000102'::uuid, '00000000-0000-4000-8000-000000000001'::uuid, 'padre'::public.user_role),
-        ('00000000-0000-4000-8000-000000000103'::uuid, '00000000-0000-4000-8000-000000000001'::uuid, 'padre'::public.user_role),
-        ('00000000-0000-4000-8000-000000000104'::uuid, '00000000-0000-4000-8000-000000000001'::uuid, 'padre'::public.user_role),
-        ('00000000-0000-4000-8000-000000000111'::uuid, '00000000-0000-4000-8000-000000000001'::uuid, 'worker'::public.user_role),
-        ('00000000-0000-4000-8000-000000000112'::uuid, '00000000-0000-4000-8000-000000000001'::uuid, 'supervisor'::public.user_role),
-        ('00000000-0000-4000-8000-000000000113'::uuid, '00000000-0000-4000-8000-000000000001'::uuid, 'admin'::public.user_role),
-        ('00000000-0000-4000-8000-000000000114'::uuid, '00000000-0000-4000-8000-000000000002'::uuid, 'worker'::public.user_role),
-        ('00000000-0000-4000-8000-000000000115'::uuid, '00000000-0000-4000-8000-000000000002'::uuid, 'admin'::public.user_role),
-        ('00000000-0000-4000-8000-000000000116'::uuid, '00000000-0000-4000-8000-000000000001'::uuid, 'worker'::public.user_role)
-      ) expected(id, school_id, role) on expected.id = u.id
-     where (u.school_id, u.role) is distinct from (expected.school_id, expected.role)
-  ) then
-    raise exception 'seed collision in public.users';
-  end if;
-end
-$$;
 
 insert into public.schools (id, name) values
   ('00000000-0000-4000-8000-000000000001', 'Colegio Demo'),
