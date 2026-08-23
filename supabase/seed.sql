@@ -359,13 +359,13 @@ begin
   if exists (
     select 1 from public.meal_records mr
     join (values
-      ('00000000-0000-4000-8000-000000000621'::uuid, '00000000-0000-4000-8000-000000000225'::uuid, '00000000-0000-4000-8000-000000000612'::uuid, '00000000-0000-4000-8000-000000000114'::uuid, 'bien'::public.meal_status, 'School B record'),
-      ('00000000-0000-4000-8000-000000000622'::uuid, '00000000-0000-4000-8000-000000000201'::uuid, '00000000-0000-4000-8000-000000000611'::uuid, '00000000-0000-4000-8000-000000000112'::uuid, 'regular'::public.meal_status, 'Supervisor review'),
-      ('00000000-0000-4000-8000-000000000623'::uuid, '00000000-0000-4000-8000-000000000202'::uuid, '00000000-0000-4000-8000-000000000611'::uuid, '00000000-0000-4000-8000-000000000111'::uuid, 'mal'::public.meal_status, 'Old worker record'),
-      ('00000000-0000-4000-8000-000000000624'::uuid, '00000000-0000-4000-8000-000000000203'::uuid, '00000000-0000-4000-8000-000000000611'::uuid, '00000000-0000-4000-8000-000000000116'::uuid, 'bien'::public.meal_status, 'Other worker record')
-    ) expected(id, child_id, meal_type_id, recorded_by, status, notes) on expected.id = mr.id
-    where (mr.child_id, mr.meal_type_id, mr.recorded_by, mr.status, mr.notes) is distinct from
-          (expected.child_id, expected.meal_type_id, expected.recorded_by, expected.status, expected.notes)
+      ('00000000-0000-4000-8000-000000000621'::uuid, '00000000-0000-4000-8000-000000000225'::uuid, '00000000-0000-4000-8000-000000000612'::uuid, '00000000-0000-4000-8000-000000000114'::uuid, timestamp '2026-09-01 10:00:00+00', 'bien'::public.meal_status, 'School B record'),
+      ('00000000-0000-4000-8000-000000000622'::uuid, '00000000-0000-4000-8000-000000000201'::uuid, '00000000-0000-4000-8000-000000000611'::uuid, '00000000-0000-4000-8000-000000000112'::uuid, timestamp '2026-09-01 10:00:00+00', 'regular'::public.meal_status, 'Supervisor review'),
+      ('00000000-0000-4000-8000-000000000623'::uuid, '00000000-0000-4000-8000-000000000202'::uuid, '00000000-0000-4000-8000-000000000611'::uuid, '00000000-0000-4000-8000-000000000111'::uuid, timestamp '2026-01-01 10:00:00+00', 'mal'::public.meal_status, 'Old worker record'),
+      ('00000000-0000-4000-8000-000000000624'::uuid, '00000000-0000-4000-8000-000000000203'::uuid, '00000000-0000-4000-8000-000000000611'::uuid, '00000000-0000-4000-8000-000000000116'::uuid, timestamp '2026-09-01 10:00:00+00', 'bien'::public.meal_status, 'Other worker record')
+    ) expected(id, child_id, meal_type_id, recorded_by, recorded_at, status, notes) on expected.id = mr.id
+    where (mr.child_id, mr.meal_type_id, mr.recorded_by, mr.recorded_at, mr.status, mr.notes) is distinct from
+          (expected.child_id, expected.meal_type_id, expected.recorded_by, expected.recorded_at, expected.status, expected.notes)
   ) then
     raise exception 'seed collision in public.meal_records';
   end if;
