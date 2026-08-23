@@ -589,23 +589,12 @@ select ok(
         union all
         select au.id
           from auth.users au
-         where (au.id, au.email) in (
-           ('00000000-0000-4000-8000-000000000111'::uuid, 'worker.a@local.test'),
-           ('00000000-0000-4000-8000-000000000112'::uuid, 'supervisor.a@local.test'),
-           ('00000000-0000-4000-8000-000000000113'::uuid, 'admin.a@local.test')
-         )
-        union all
-        select null::uuid
-         where not exists (
-           select 1
-             from auth.users au
-            where au.email in ('worker.a@local.test', 'supervisor.a@local.test', 'admin.a@local.test')
-              and au.id not in (
-                '00000000-0000-4000-8000-000000000111'::uuid,
-                '00000000-0000-4000-8000-000000000112'::uuid,
-                '00000000-0000-4000-8000-000000000113'::uuid
-              )
-         )
+          where (au.id, au.email) in (
+            ('00000000-0000-4000-8000-000000000111'::uuid, 'worker.a@local.test'),
+            ('00000000-0000-4000-8000-000000000112'::uuid, 'supervisor.a@local.test'),
+            ('00000000-0000-4000-8000-000000000113'::uuid, 'admin.a@local.test')
+          )
+           and au.role = 'authenticated'
         union all
         select a.id
           from public.allergens a
@@ -643,7 +632,7 @@ select ok(
            and c.last_name = 'Class'
            and c.class_id is null
       ) fixtures
-  $query$) = 15,
+  $query$) = 14,
   'role, auth, allergy, and null-class fixtures have exact values'
 );
 
