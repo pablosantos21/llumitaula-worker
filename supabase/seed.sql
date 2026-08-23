@@ -203,7 +203,12 @@ begin
 
   if exists (
     select 1 from public.parents_children pc
-    join (values
+    where pc.parent_id in (
+      '00000000-0000-4000-8000-000000000101', '00000000-0000-4000-8000-000000000102',
+      '00000000-0000-4000-8000-000000000103', '00000000-0000-4000-8000-000000000104'
+    )
+    and not exists (
+      select 1 from (values
       ('00000000-0000-4000-8000-000000000101'::uuid, '00000000-0000-4000-8000-000000000201'::uuid),
       ('00000000-0000-4000-8000-000000000101'::uuid, '00000000-0000-4000-8000-000000000202'::uuid),
       ('00000000-0000-4000-8000-000000000101'::uuid, '00000000-0000-4000-8000-000000000203'::uuid),
@@ -228,9 +233,9 @@ begin
       ('00000000-0000-4000-8000-000000000104'::uuid, '00000000-0000-4000-8000-000000000222'::uuid),
       ('00000000-0000-4000-8000-000000000104'::uuid, '00000000-0000-4000-8000-000000000223'::uuid),
       ('00000000-0000-4000-8000-000000000104'::uuid, '00000000-0000-4000-8000-000000000224'::uuid)
-    ) expected(parent_id, child_id)
-      on expected.parent_id = pc.parent_id and expected.child_id = pc.child_id
-    where (pc.parent_id, pc.child_id) is distinct from (expected.parent_id, expected.child_id)
+      ) expected(parent_id, child_id)
+      where expected.parent_id = pc.parent_id and expected.child_id = pc.child_id
+    )
   ) then
     raise exception 'seed collision in public.parents_children';
   end if;
@@ -289,7 +294,13 @@ begin
 
   if exists (
     select 1 from public.child_allergens ca
-    join (values
+    where ca.child_id in (
+      '00000000-0000-4000-8000-000000000201', '00000000-0000-4000-8000-000000000203',
+      '00000000-0000-4000-8000-000000000207', '00000000-0000-4000-8000-000000000215',
+      '00000000-0000-4000-8000-000000000220', '00000000-0000-4000-8000-000000000225'
+    )
+    and not exists (
+      select 1 from (values
       ('00000000-0000-4000-8000-000000000203'::uuid, '00000000-0000-4000-8000-000000000401'::uuid),
       ('00000000-0000-4000-8000-000000000207'::uuid, '00000000-0000-4000-8000-000000000402'::uuid),
       ('00000000-0000-4000-8000-000000000215'::uuid, '00000000-0000-4000-8000-000000000403'::uuid),
@@ -297,9 +308,9 @@ begin
       ('00000000-0000-4000-8000-000000000201'::uuid, '00000000-0000-4000-8000-000000000499'::uuid),
       ('00000000-0000-4000-8000-000000000225'::uuid, '00000000-0000-4000-8000-000000000499'::uuid),
       ('00000000-0000-4000-8000-000000000225'::uuid, '00000000-0000-4000-8000-000000000498'::uuid)
-    ) expected(child_id, allergen_id)
-      on expected.child_id = ca.child_id and expected.allergen_id = ca.allergen_id
-    where (ca.child_id, ca.allergen_id) is distinct from (expected.child_id, expected.allergen_id)
+      ) expected(child_id, allergen_id)
+      where expected.child_id = ca.child_id and expected.allergen_id = ca.allergen_id
+    )
   ) then
     raise exception 'seed collision in public.child_allergens';
   end if;
@@ -384,7 +395,7 @@ begin
   if exists (select 1 from public.incidents where id in ('00000000-0000-4000-8000-000000000501', '00000000-0000-4000-8000-000000000502') and created_at is distinct from timestamp '2026-01-01 00:00:00+00')
      or exists (select 1 from public.devices where id in ('00000000-0000-4000-8000-000000000601', '00000000-0000-4000-8000-000000000602') and created_at is distinct from timestamp '2026-01-01 00:00:00+00')
      or exists (select 1 from public.meal_types where id in ('00000000-0000-4000-8000-000000000611', '00000000-0000-4000-8000-000000000612') and created_at is distinct from timestamp '2026-01-01 00:00:00+00')
-     or exists (select 1 from public.meal_records where id between '00000000-0000-4000-8000-000000000621' and '00000000-0000-4000-8000-000000000624' and created_at is distinct from timestamp '2026-01-01 00:00:00+00') then
+     then
     raise exception 'seed timestamp collision in public fixtures';
   end if;
 end
@@ -580,6 +591,48 @@ insert into public.child_allergens (child_id, allergen_id) values
   ('00000000-0000-4000-8000-000000000225', '00000000-0000-4000-8000-000000000498')
 on conflict (child_id, allergen_id) do nothing;
 
+do $$
+begin
+  if exists (
+    select 1
+      from (values
+        ('00000000-0000-4000-8000-000000000101'::uuid, array['00000000-0000-4000-8000-000000000201'::uuid, '00000000-0000-4000-8000-000000000202'::uuid, '00000000-0000-4000-8000-000000000203'::uuid, '00000000-0000-4000-8000-000000000204'::uuid, '00000000-0000-4000-8000-000000000205'::uuid, '00000000-0000-4000-8000-000000000206'::uuid]),
+        ('00000000-0000-4000-8000-000000000102'::uuid, array['00000000-0000-4000-8000-000000000207'::uuid, '00000000-0000-4000-8000-000000000208'::uuid, '00000000-0000-4000-8000-000000000209'::uuid, '00000000-0000-4000-8000-000000000210'::uuid, '00000000-0000-4000-8000-000000000211'::uuid, '00000000-0000-4000-8000-000000000212'::uuid]),
+        ('00000000-0000-4000-8000-000000000103'::uuid, array['00000000-0000-4000-8000-000000000213'::uuid, '00000000-0000-4000-8000-000000000214'::uuid, '00000000-0000-4000-8000-000000000215'::uuid, '00000000-0000-4000-8000-000000000216'::uuid, '00000000-0000-4000-8000-000000000217'::uuid, '00000000-0000-4000-8000-000000000218'::uuid]),
+        ('00000000-0000-4000-8000-000000000104'::uuid, array['00000000-0000-4000-8000-000000000219'::uuid, '00000000-0000-4000-8000-000000000220'::uuid, '00000000-0000-4000-8000-000000000221'::uuid, '00000000-0000-4000-8000-000000000222'::uuid, '00000000-0000-4000-8000-000000000223'::uuid, '00000000-0000-4000-8000-000000000224'::uuid])
+      ) expected(parent_id, child_ids)
+      left join lateral (
+        select array_agg(pc.child_id order by pc.child_id) as child_ids
+          from public.parents_children pc
+         where pc.parent_id = expected.parent_id
+      ) actual on true
+     where actual.child_ids is distinct from expected.child_ids
+  ) then
+    raise exception 'seed collision in public.parents_children';
+  end if;
+
+  if exists (
+    select 1
+      from (values
+        ('00000000-0000-4000-8000-000000000201'::uuid, array['00000000-0000-4000-8000-000000000499'::uuid]),
+        ('00000000-0000-4000-8000-000000000203'::uuid, array['00000000-0000-4000-8000-000000000401'::uuid]),
+        ('00000000-0000-4000-8000-000000000207'::uuid, array['00000000-0000-4000-8000-000000000402'::uuid]),
+        ('00000000-0000-4000-8000-000000000215'::uuid, array['00000000-0000-4000-8000-000000000403'::uuid]),
+        ('00000000-0000-4000-8000-000000000220'::uuid, array['00000000-0000-4000-8000-000000000404'::uuid]),
+        ('00000000-0000-4000-8000-000000000225'::uuid, array['00000000-0000-4000-8000-000000000498'::uuid, '00000000-0000-4000-8000-000000000499'::uuid])
+      ) expected(child_id, allergen_ids)
+      left join lateral (
+        select array_agg(ca.allergen_id order by ca.allergen_id) as allergen_ids
+          from public.child_allergens ca
+         where ca.child_id = expected.child_id
+      ) actual on true
+     where actual.allergen_ids is distinct from expected.allergen_ids
+  ) then
+    raise exception 'seed collision in public.child_allergens';
+  end if;
+end
+$$;
+
 insert into public.incidents (id, child_id, description, monitor_id, date, reviewed, requires_family_signature, created_at) values
   ('00000000-0000-4000-8000-000000000501', '00000000-0000-4000-8000-000000000205', 'Pequeno golpe durante el juego', '00000000-0000-4000-8000-000000000021', '2026-09-01', false, false, timestamp '2026-01-01 00:00:00+00'),
   ('00000000-0000-4000-8000-000000000502', '00000000-0000-4000-8000-000000000218', 'Necesita revisar la merienda', '00000000-0000-4000-8000-000000000024', '2026-09-01', true, true, timestamp '2026-01-01 00:00:00+00')
@@ -601,9 +654,9 @@ insert into public.meal_types (id, school_id, name, sort_order, created_at) valu
   ('00000000-0000-4000-8000-000000000612', '00000000-0000-4000-8000-000000000002', 'Comida B', 1, timestamp '2026-01-01 00:00:00+00')
 on conflict (id) do nothing;
 
-insert into public.meal_records (id, child_id, meal_type_id, recorded_by, recorded_at, status, notes, created_at) values
-  ('00000000-0000-4000-8000-000000000621', '00000000-0000-4000-8000-000000000225', '00000000-0000-4000-8000-000000000612', '00000000-0000-4000-8000-000000000114', timestamp '2026-09-01 10:00:00+00', 'bien', 'School B record', timestamp '2026-01-01 00:00:00+00'),
-  ('00000000-0000-4000-8000-000000000622', '00000000-0000-4000-8000-000000000201', '00000000-0000-4000-8000-000000000611', '00000000-0000-4000-8000-000000000112', timestamp '2026-09-01 10:00:00+00', 'regular', 'Supervisor review', timestamp '2026-01-01 00:00:00+00'),
-  ('00000000-0000-4000-8000-000000000623', '00000000-0000-4000-8000-000000000202', '00000000-0000-4000-8000-000000000611', '00000000-0000-4000-8000-000000000111', timestamp '2026-01-01 10:00:00+00', 'mal', 'Old worker record', timestamp '2026-01-01 00:00:00+00'),
-  ('00000000-0000-4000-8000-000000000624', '00000000-0000-4000-8000-000000000203', '00000000-0000-4000-8000-000000000611', '00000000-0000-4000-8000-000000000116', timestamp '2026-09-01 10:00:00+00', 'bien', 'Other worker record', timestamp '2026-01-01 00:00:00+00')
+insert into public.meal_records (id, child_id, meal_type_id, recorded_by, recorded_at, status, notes) values
+  ('00000000-0000-4000-8000-000000000621', '00000000-0000-4000-8000-000000000225', '00000000-0000-4000-8000-000000000612', '00000000-0000-4000-8000-000000000114', timestamp '2026-09-01 10:00:00+00', 'bien', 'School B record'),
+  ('00000000-0000-4000-8000-000000000622', '00000000-0000-4000-8000-000000000201', '00000000-0000-4000-8000-000000000611', '00000000-0000-4000-8000-000000000112', timestamp '2026-09-01 10:00:00+00', 'regular', 'Supervisor review'),
+  ('00000000-0000-4000-8000-000000000623', '00000000-0000-4000-8000-000000000202', '00000000-0000-4000-8000-000000000611', '00000000-0000-4000-8000-000000000111', timestamp '2026-01-01 10:00:00+00', 'mal', 'Old worker record'),
+  ('00000000-0000-4000-8000-000000000624', '00000000-0000-4000-8000-000000000203', '00000000-0000-4000-8000-000000000611', '00000000-0000-4000-8000-000000000116', timestamp '2026-09-01 10:00:00+00', 'bien', 'Other worker record')
 on conflict (id) do nothing;
