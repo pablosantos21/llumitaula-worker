@@ -388,3 +388,29 @@ export type Enums<
   : EnumNameOrOptions extends keyof DefaultSchema["Enums"]
     ? DefaultSchema["Enums"][EnumNameOrOptions]
     : never;
+
+export type CompositeTypes<
+  CompositeTypeNameOrOptions extends
+    | keyof DefaultSchema["CompositeTypes"]
+    | { schema: keyof DatabaseWithoutInternals },
+  CompositeTypeName extends (CompositeTypeNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals;
+  }
+    ? keyof DatabaseWithoutInternals[CompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    : never) = never,
+> = CompositeTypeNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals;
+}
+  ? DatabaseWithoutInternals[CompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+  : CompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+    ? DefaultSchema["CompositeTypes"][CompositeTypeNameOrOptions]
+    : never;
+
+export const Constants = {
+  public: {
+    Enums: {
+      meal_status: ["bien", "regular", "mal"],
+      user_role: ["admin", "monitor", "padre"],
+    },
+  },
+} as const;
