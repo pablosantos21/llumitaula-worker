@@ -502,17 +502,28 @@ with check (
   and school_id = public.current_school_id()
   and role <> 'admin'
 );
-create policy users_update_tenant on public.users for update to authenticated
+create policy users_update_admin on public.users for update to authenticated
 using (
-  public.current_user_role() = 'admin'
+  public.current_user_active()
+  and public.current_user_role() = 'admin'
   and id <> public.current_user_id()
   and school_id = public.current_school_id()
 )
 with check (
-  public.current_user_role() = 'admin'
+  public.current_user_active()
+  and public.current_user_role() = 'admin'
   and id <> public.current_user_id()
   and school_id = public.current_school_id()
   and role <> 'admin'
+);
+create policy users_update_own on public.users for update to authenticated
+using (public.current_user_active() and id = public.current_user_id())
+with check (
+  public.current_user_active()
+  and id = public.current_user_id()
+  and role = public.current_user_role()
+  and school_id = public.current_school_id()
+  and active
 );
 
 create policy schools_select_tenant on public.schools for select to authenticated
@@ -950,8 +961,15 @@ begin
         from public.children ch
         join public.parents_children pc on pc.child_id = ch.id
         join public.users u on u.id = pc.parent_id
+        where ch.class_id = new.id
+          and u.school_id is distinct from new.school_id
+    ) or exists (
+      select 1
+        from public.incidents i
+        join public.children ch on ch.id = i.child_id
+        join public.monitors m on m.id = i.monitor_id
        where ch.class_id = new.id
-         and u.school_id is distinct from new.school_id
+         and m.school_id is distinct from new.school_id
     ) then
       raise exception 'classes.school_id update would invalidate tenant relations'
         using errcode = '23514';
@@ -980,6 +998,22 @@ begin
          and u.school_id is distinct from c.school_id
     ) then
       raise exception 'children.class_id update would invalidate parents_children'
+        using errcode = '23514';
+    end if;
+
+    select c.school_id
+      into child_school
+      from public.classes c
+     where c.id = new.class_id;
+
+    if exists (
+      select 1
+        from public.incidents i
+        join public.monitors m on m.id = i.monitor_id
+       where i.child_id = new.id
+         and m.school_id is distinct from child_school
+    ) then
+      raise exception 'children.class_id update would invalidate incidents'
         using errcode = '23514';
     end if;
   elsif tg_table_name = 'meal_types' then
