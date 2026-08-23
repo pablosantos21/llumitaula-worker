@@ -8,6 +8,14 @@ set local role authenticated;
 -- School A: ...0001, School B: ...0002.
 -- Worker A is assigned only to class ...0011.
 
+select set_config(
+  'request.jwt.claims',
+  json_build_object(
+    'sub', '00000000-0000-4000-8000-000000000111',
+    'role', 'authenticated'
+  )::text,
+  true
+);
 select ok(
   (select count(*) = 16
    from pg_class
@@ -20,6 +28,39 @@ select ok(
      )
      and relrowsecurity),
   'all sensitive and phase 2 tables have RLS enabled'
+);
+
+select set_config(
+  'request.jwt.claims',
+  json_build_object(
+    'sub', '00000000-0000-4000-8000-000000000122',
+    'role', 'authenticated'
+  )::text,
+  true
+);
+select is(
+  (select count(*)
+   from (
+     select 1 from public.schools
+      where id = '00000000-0000-4000-8000-000000000002'::uuid
+     union all
+     select 1 from public.classes
+      where id = '00000000-0000-4000-8000-000000000021'::uuid
+     union all
+     select 1 from public.children
+      where id = '00000000-0000-4000-8000-000000000225'::uuid
+     union all
+     select 1 from public.devices
+      where id = '00000000-0000-4000-8000-000000000602'::uuid
+     union all
+     select 1 from public.meal_types
+      where id = '00000000-0000-4000-8000-000000000612'::uuid
+     union all
+     select 1 from public.meal_records
+      where id = '00000000-0000-4000-8000-000000000621'::uuid
+   ) as b_fixtures),
+  6::bigint,
+  'school B fixtures exist before cross-tenant checks'
 );
 
 select set_config(
@@ -83,25 +124,13 @@ select set_config(
   true
 );
 select is(
-  (select count(*) from public.schools
-   where id = '00000000-0000-4000-8000-000000000002'::uuid),
-  0::bigint,
-  'worker A cannot see school B'
-);
-
-select set_config(
-  'request.jwt.claims',
-  json_build_object(
-    'sub', '00000000-0000-4000-8000-000000000111',
-    'role', 'authenticated'
-  )::text,
-  true
-);
-select is(
   (select count(*)
    from (
      select 1 from public.children
-      where id = '00000000-0000-4000-8000-000000000221'::uuid
+      where id = '00000000-0000-4000-8000-000000000225'::uuid
+     union all
+     select 1 from public.schools
+      where id = '00000000-0000-4000-8000-000000000002'::uuid
      union all
      select 1 from public.devices
       where school_id = '00000000-0000-4000-8000-000000000002'::uuid
@@ -110,7 +139,7 @@ select is(
       where school_id = '00000000-0000-4000-8000-000000000002'::uuid
      union all
      select 1 from public.meal_records
-      where child_id = '00000000-0000-4000-8000-000000000221'::uuid
+      where child_id = '00000000-0000-4000-8000-000000000225'::uuid
    ) as b_rows),
   0::bigint,
   'worker A cannot see B children, devices, meal types, or meal records'
@@ -129,8 +158,8 @@ select throws_ok(
       (id, child_id, meal_type_id, recorded_by, status)
     values
       ('00000000-0000-4000-8000-000000000611'::uuid,
-       '00000000-0000-4000-8000-000000000221'::uuid,
-       '00000000-0000-4000-8000-000000000621'::uuid,
+       '00000000-0000-4000-8000-000000000225'::uuid,
+       '00000000-0000-4000-8000-000000000612'::uuid,
        '00000000-0000-4000-8000-000000000111'::uuid,
        'bien')$$,
   '42501',
@@ -166,10 +195,28 @@ select set_config(
   true
 );
 select is(
+  (select count(*) from public.meal_records
+   where id in (
+     '00000000-0000-4000-8000-000000000623'::uuid,
+     '00000000-0000-4000-8000-000000000624'::uuid
+   )),
+  2::bigint,
+  'worker A own old and another-worker records exist before update checks'
+);
+
+select set_config(
+  'request.jwt.claims',
+  json_build_object(
+    'sub', '00000000-0000-4000-8000-000000000111',
+    'role', 'authenticated'
+  )::text,
+  true
+);
+select is(
   (with attempted as (
      update public.meal_records
         set notes = 'cross-tenant update'
-      where id = '00000000-0000-4000-8000-000000000631'::uuid
+      where id = '00000000-0000-4000-8000-000000000624'::uuid
       returning id
    ) select count(*) from attempted),
   0::bigint,
@@ -186,31 +233,12 @@ select set_config(
 );
 select is(
   (with attempted as (
-     update public.meal_records
-        set notes = 'too old'
-      where id = '00000000-0000-4000-8000-000000000632'::uuid
+     delete from public.meal_records
+      where id = '00000000-0000-4000-8000-000000000621'::uuid
       returning id
    ) select count(*) from attempted),
   0::bigint,
-  'worker A cannot update a record older than 24 hours'
-);
-
-select set_config(
-  'request.jwt.claims',
-  json_build_object(
-    'sub', '00000000-0000-4000-8000-000000000111',
-    'role', 'authenticated'
-  )::text,
-  true
-);
-select throws_ok(
-  $$insert into public.devices (id, school_id, name, identifier)
-    values
-      ('00000000-0000-4000-8000-000000000642'::uuid,
-       '00000000-0000-4000-8000-000000000002'::uuid,
-       'Worker B device', 'worker-device-b-test')$$,
-  '42501',
-  'worker A cannot insert a device in school B'
+  'worker A cannot delete a meal record from school B'
 );
 
 select set_config(
@@ -223,28 +251,13 @@ select set_config(
 );
 select is(
   (with attempted as (
-     update public.children
-        set last_name = 'cross-tenant update'
-      where id = '00000000-0000-4000-8000-000000000221'::uuid
+     update public.meal_records
+        set notes = 'too old'
+      where id = '00000000-0000-4000-8000-000000000623'::uuid
       returning id
    ) select count(*) from attempted),
   0::bigint,
-  'worker A cannot update a child from school B'
-);
-
-select set_config(
-  'request.jwt.claims',
-  json_build_object(
-    'sub', '00000000-0000-4000-8000-000000000112',
-    'role', 'authenticated'
-  )::text,
-  true
-);
-select is(
-  (select count(*) from public.schools
-   where id = '00000000-0000-4000-8000-000000000001'::uuid),
-  1::bigint,
-  'supervisor A can see school A'
+  'worker A cannot update a record older than 24 hours'
 );
 
 select set_config(
@@ -275,7 +288,7 @@ select is(
   (with attempted as (
      update public.meal_records
         set notes = 'supervisor review'
-      where id = '00000000-0000-4000-8000-000000000633'::uuid
+      where id = '00000000-0000-4000-8000-000000000622'::uuid
       returning id
    ) select count(*) from attempted),
   1::bigint,
@@ -292,7 +305,7 @@ select set_config(
 );
 select is(
   (select count(*) from public.meal_records
-   where child_id = '00000000-0000-4000-8000-000000000221'::uuid),
+   where child_id = '00000000-0000-4000-8000-000000000225'::uuid),
   0::bigint,
   'supervisor A cannot read meal records from school B'
 );
@@ -320,11 +333,30 @@ select set_config(
   )::text,
   true
 );
-select is(
-  (select count(*) from public.schools
-   where id = '00000000-0000-4000-8000-000000000001'::uuid),
-  1::bigint,
-  'admin A can manage school A'
+select lives_ok(
+  $test$do $inner$
+  begin
+    insert into public.devices (id, school_id, name, identifier)
+    values (
+      '00000000-0000-4000-8000-000000000693'::uuid,
+      '00000000-0000-4000-8000-000000000001'::uuid,
+      'Admin CRUD device',
+      'admin-crud-test'
+    );
+    update public.devices
+       set name = 'Admin CRUD device updated'
+     where id = '00000000-0000-4000-8000-000000000693'::uuid;
+    if not found then
+      raise exception 'admin update did not affect the inserted device';
+    end if;
+    delete from public.devices
+     where id = '00000000-0000-4000-8000-000000000693'::uuid;
+    if not found then
+      raise exception 'admin delete did not affect the inserted device';
+    end if;
+  end
+  $inner$;$test$,
+  'admin A can insert, update, and delete a device in school A'
 );
 
 select set_config(
@@ -335,13 +367,27 @@ select set_config(
   )::text,
   true
 );
-select lives_ok(
-  $$insert into public.devices (id, school_id, name, identifier)
-    values
-      ('00000000-0000-4000-8000-000000000643'::uuid,
-       '00000000-0000-4000-8000-000000000001'::uuid,
-       'A device', 'device-a-test')$$,
-  'admin A can create a device in school A'
+select is(
+  (select count(*) from public.devices
+   where id = '00000000-0000-4000-8000-000000000601'::uuid
+     and school_id = '00000000-0000-4000-8000-000000000001'::uuid),
+  1::bigint,
+  'admin A can access an existing device in school A'
+);
+
+select set_config(
+  'request.jwt.claims',
+  json_build_object(
+    'sub', '00000000-0000-4000-8000-000000000113',
+    'role', 'authenticated'
+  )::text,
+  true
+);
+select is(
+  (select count(*) from public.devices
+   where identifier = 'admin-crud-test'),
+  0::bigint,
+  'admin A CRUD leaves no residual device'
 );
 
 select set_config(
@@ -355,7 +401,7 @@ select set_config(
 select throws_ok(
   $$insert into public.devices (id, school_id, name, identifier)
     values
-      ('00000000-0000-4000-8000-000000000641'::uuid,
+      ('00000000-0000-4000-8000-000000000695'::uuid,
        '00000000-0000-4000-8000-000000000002'::uuid,
        'B device', 'device-b-test')$$,
   '42501',
