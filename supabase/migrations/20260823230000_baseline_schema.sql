@@ -146,7 +146,8 @@ alter table public.allergens enable row level security;
 alter table public.child_allergens enable row level security;
 alter table public.incidents enable row level security;
 
--- Monitor access remains disabled until monitors has a verifiable auth.users identity link.
+-- Monitor-facing access remains disabled until monitors has a verifiable
+-- auth.users identity link; only admins can view monitor records and assignments.
 create policy users_insert_own on public.users for insert to authenticated
   with check (
     (auth.jwt() ->> 'user_role') = 'admin'
@@ -177,7 +178,8 @@ create policy classes_update on public.classes for update to authenticated
 create policy classes_delete on public.classes for delete to authenticated
   using ((auth.jwt() ->> 'user_role') = 'admin');
 
-create policy monitors_select on public.monitors for select to authenticated using (true);
+create policy monitors_select on public.monitors for select to authenticated
+  using ((auth.jwt() ->> 'user_role') = 'admin');
 create policy monitors_insert on public.monitors for insert to authenticated
   with check ((auth.jwt() ->> 'user_role') = 'admin');
 create policy monitors_update on public.monitors for update to authenticated
@@ -185,7 +187,8 @@ create policy monitors_update on public.monitors for update to authenticated
 create policy monitors_delete on public.monitors for delete to authenticated
   using ((auth.jwt() ->> 'user_role') = 'admin');
 
-create policy monitors_schools_select on public.monitors_schools for select to authenticated using (true);
+create policy monitors_schools_select on public.monitors_schools for select to authenticated
+  using ((auth.jwt() ->> 'user_role') = 'admin');
 create policy monitors_schools_insert on public.monitors_schools for insert to authenticated
   with check ((auth.jwt() ->> 'user_role') = 'admin');
 create policy monitors_schools_update on public.monitors_schools for update to authenticated
@@ -206,7 +209,7 @@ create policy children_delete on public.children for delete to authenticated
   using ((auth.jwt() ->> 'user_role') = 'admin');
 
 create policy parents_children_select on public.parents_children for select to authenticated
-  using ((auth.jwt() ->> 'user_role') in ('admin', 'monitor') or parent_id = auth.uid());
+  using ((auth.jwt() ->> 'user_role') = 'admin' or parent_id = auth.uid());
 create policy parents_children_insert on public.parents_children for insert to authenticated
   with check ((auth.jwt() ->> 'user_role') = 'admin');
 create policy parents_children_update on public.parents_children for update to authenticated
