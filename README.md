@@ -1,5 +1,9 @@
 # Astro Starter Kit: Minimal
 
+## Requisito
+
+El proyecto requiere Node.js `>=22.12.0`.
+
 ```sh
 npm create astro@latest -- --template minimal
 ```
