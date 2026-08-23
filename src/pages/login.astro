@@ -1,7 +1,6 @@
 ---
 import MainLayout from "../layouts/MainLayout.astro";
-import Input from "../components/Input.astro";
-import PrimaryButton from "../components/PrimaryButton.astro";
+import AuthLoginForm from "../components/AuthLoginForm";
 ---
 
 <MainLayout title="Login Monitor">
@@ -14,21 +13,7 @@ import PrimaryButton from "../components/PrimaryButton.astro";
         <p class="text-slate-500">Acceso para monitores</p>
       </div>
 
-      <form class="space-y-6" action="/" method="get">
-        <Input
-          type="email"
-          name="email"
-          label="Correo electrónico"
-          placeholder="nombre@ejemplo.com"
-          required
-        />
-
-        <Input type="password" name="password" label="Contraseña" required />
-
-        <div class="pt-2">
-          <PrimaryButton type="submit" fullWidth> Entrar </PrimaryButton>
-        </div>
-      </form>
+      <AuthLoginForm client:load />
     </div>
   </div>
 </MainLayout>
