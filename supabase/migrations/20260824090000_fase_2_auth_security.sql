@@ -132,6 +132,87 @@ grant execute on function public.current_school_id() to authenticated, service_r
 grant execute on function public.current_user_role() to authenticated, service_role;
 grant execute on function public.current_user_active() to authenticated, service_role;
 
+create or replace function public.current_user_can_access_child(p_child_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select public.current_user_active()
+     and exists (
+       select 1
+         from public.children ch
+         join public.classes cl on cl.id = ch.class_id
+        where ch.id = p_child_id
+          and cl.school_id = public.current_school_id()
+          and (
+            public.current_user_role() in ('admin', 'supervisor')
+            or exists (
+              select 1 from public.worker_classrooms wc
+               where wc.class_id = cl.id
+                 and wc.worker_id = public.current_user_id()
+            )
+            or exists (
+              select 1 from public.parents_children pc
+               where pc.child_id = ch.id
+                 and pc.parent_id = public.current_user_id()
+            )
+          )
+     )
+$$;
+
+create or replace function public.current_user_has_assigned_child(p_child_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select public.current_user_active()
+     and public.current_user_role() = 'worker'
+     and exists (
+       select 1
+         from public.children ch
+         join public.classes cl on cl.id = ch.class_id
+         join public.worker_classrooms wc on wc.class_id = cl.id
+        where ch.id = p_child_id
+          and wc.worker_id = public.current_user_id()
+          and cl.school_id = public.current_school_id()
+     )
+$$;
+
+create or replace function public.current_user_can_access_class(p_class_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select public.current_user_active()
+     and exists (
+       select 1
+         from public.classes cl
+        where cl.id = p_class_id
+          and cl.school_id = public.current_school_id()
+          and (
+            public.current_user_role() in ('admin', 'supervisor')
+            or exists (
+              select 1 from public.worker_classrooms wc
+               where wc.class_id = cl.id
+                 and wc.worker_id = public.current_user_id()
+            )
+          )
+     )
+$$;
+
+revoke execute on function public.current_user_can_access_child(uuid) from public, anon;
+revoke execute on function public.current_user_has_assigned_child(uuid) from public, anon;
+revoke execute on function public.current_user_can_access_class(uuid) from public, anon;
+grant execute on function public.current_user_can_access_child(uuid) to authenticated, service_role;
+grant execute on function public.current_user_has_assigned_child(uuid) to authenticated, service_role;
+grant execute on function public.current_user_can_access_class(uuid) to authenticated, service_role;
+
 create or replace function public.custom_access_token_hook(event jsonb)
 returns jsonb
 language plpgsql
@@ -214,8 +295,7 @@ create policy users_select_tenant on public.users for select to authenticated
 using (
   public.current_user_active()
   and (id = public.current_user_id()
-    or (public.current_user_role() = 'admin' and school_id = public.current_school_id())
-    or (public.current_user_role() in ('supervisor', 'worker') and school_id = public.current_school_id()))
+    or (public.current_user_role() = 'admin' and school_id = public.current_school_id()))
 );
 create policy users_insert_tenant on public.users for insert to authenticated
 with check (
@@ -249,11 +329,7 @@ using (false);
 create policy classes_select_tenant on public.classes for select to authenticated
 using (
   public.current_user_active() and school_id = public.current_school_id()
-  and (public.current_user_role() in ('admin', 'supervisor')
-    or (public.current_user_role() = 'worker' and exists (
-      select 1 from public.worker_classrooms wc
-       where wc.class_id = classes.id and wc.worker_id = public.current_user_id()
-    )))
+  and public.current_user_can_access_class(id)
 );
 create policy classes_admin_insert on public.classes for insert to authenticated
 with check (public.current_user_role() = 'admin' and school_id = public.current_school_id());
@@ -269,13 +345,15 @@ using (public.current_user_role() in ('admin', 'supervisor') and exists (
    where ms.monitor_id = monitors.id and ms.school_id = public.current_school_id()
 ));
 create policy monitors_admin_insert on public.monitors for insert to authenticated
-with check (public.current_user_role() = 'admin');
+with check (false);
 create policy monitors_admin_update on public.monitors for update to authenticated
-using (public.current_user_role() = 'admin' and exists (
+using (public.current_user_active() and public.current_user_role() = 'admin' and exists (
   select 1 from public.monitors_schools ms where ms.monitor_id = monitors.id and ms.school_id = public.current_school_id()
-)) with check (public.current_user_role() = 'admin');
+)) with check (public.current_user_active() and public.current_user_role() = 'admin' and exists (
+  select 1 from public.monitors_schools ms where ms.monitor_id = monitors.id and ms.school_id = public.current_school_id()
+));
 create policy monitors_admin_delete on public.monitors for delete to authenticated
-using (public.current_user_role() = 'admin' and exists (
+using (public.current_user_active() and public.current_user_role() = 'admin' and exists (
   select 1 from public.monitors_schools ms where ms.monitor_id = monitors.id and ms.school_id = public.current_school_id()
 ));
 
@@ -290,18 +368,7 @@ create policy monitors_schools_admin_delete on public.monitors_schools for delet
 using (public.current_user_role() = 'admin' and school_id = public.current_school_id());
 
 create policy children_select_tenant on public.children for select to authenticated
-using (
-  public.current_user_active() and exists (
-    select 1 from public.classes cl
-     where cl.id = children.class_id and cl.school_id = public.current_school_id()
-       and (public.current_user_role() in ('admin', 'supervisor') or exists (
-         select 1 from public.worker_classrooms wc
-          where wc.class_id = cl.id and wc.worker_id = public.current_user_id()
-       ) or exists (
-         select 1 from public.parents_children pc
-          where pc.child_id = children.id and pc.parent_id = public.current_user_id()
-       ))
-));
+using (public.current_user_can_access_child(id));
 create policy children_admin_insert on public.children for insert to authenticated
 with check (public.current_user_role() = 'admin' and exists (
   select 1 from public.classes cl where cl.id = children.class_id and cl.school_id = public.current_school_id()
@@ -319,26 +386,24 @@ using (public.current_user_role() = 'admin' and exists (
 
 create policy parents_children_select_tenant on public.parents_children for select to authenticated
 using (
-  parent_id = public.current_user_id()
-  or (public.current_user_role() in ('admin', 'supervisor') and exists (
-    select 1 from public.children ch join public.classes cl on cl.id = ch.class_id
-     where ch.id = parents_children.child_id and cl.school_id = public.current_school_id()
-  ))
+  public.current_user_active()
+  and (parent_id = public.current_user_id()
+    or (public.current_user_role() in ('admin', 'supervisor') and public.current_user_can_access_child(child_id)))
 );
 create policy parents_children_admin_insert on public.parents_children for insert to authenticated
-with check (public.current_user_role() = 'admin' and exists (
+with check (public.current_user_active() and public.current_user_role() = 'admin' and exists (
   select 1 from public.users u join public.children ch on ch.id = parents_children.child_id join public.classes cl on cl.id = ch.class_id
    where u.id = parents_children.parent_id and u.school_id = public.current_school_id() and cl.school_id = public.current_school_id()
 ));
 create policy parents_children_admin_update on public.parents_children for update to authenticated
-using (public.current_user_role() = 'admin' and exists (
+using (public.current_user_active() and public.current_user_role() = 'admin' and exists (
   select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = parents_children.child_id and cl.school_id = public.current_school_id()
-)) with check (public.current_user_role() = 'admin' and exists (
+)) with check (public.current_user_active() and public.current_user_role() = 'admin' and exists (
   select 1 from public.users u join public.children ch on ch.id = parents_children.child_id join public.classes cl on cl.id = ch.class_id
    where u.id = parents_children.parent_id and u.school_id = public.current_school_id() and cl.school_id = public.current_school_id()
 ));
 create policy parents_children_admin_delete on public.parents_children for delete to authenticated
-using (public.current_user_role() = 'admin' and exists (
+using (public.current_user_active() and public.current_user_role() = 'admin' and exists (
   select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = parents_children.child_id and cl.school_id = public.current_school_id()
 ));
 
@@ -354,9 +419,7 @@ using (public.current_user_role() = 'admin' and school_id = public.current_schoo
 
 create policy worker_classrooms_select_tenant on public.worker_classrooms for select to authenticated
 using (public.current_user_active() and (
-  (public.current_user_role() in ('admin', 'supervisor') and exists (
-    select 1 from public.classes cl where cl.id = worker_classrooms.class_id and cl.school_id = public.current_school_id()
-  )) or worker_id = public.current_user_id()
+  public.current_user_can_access_class(class_id) or worker_id = public.current_user_id()
 ));
 create policy worker_classrooms_admin_insert on public.worker_classrooms for insert to authenticated
 with check (public.current_user_role() = 'admin' and exists (
@@ -386,7 +449,7 @@ create policy meal_types_admin_delete on public.meal_types for delete to authent
 using (public.current_user_role() = 'admin' and school_id = public.current_school_id());
 
 create policy meal_records_select_tenant on public.meal_records for select to authenticated
-using (exists (
+using (public.current_user_active() and exists (
   select 1 from public.children ch join public.classes cl on cl.id = ch.class_id
    where ch.id = meal_records.child_id and cl.school_id = public.current_school_id()
      and (public.current_user_role() in ('admin', 'supervisor') or exists (
@@ -394,24 +457,30 @@ using (exists (
      ) or meal_records.recorded_by = public.current_user_id())
 ));
 create policy meal_records_admin_supervisor_insert on public.meal_records for insert to authenticated
-with check (public.current_user_role() = 'admin' and exists (
+with check (public.current_user_active() and public.current_user_role() = 'admin' and exists (
   select 1 from public.children ch join public.classes cl on cl.id = ch.class_id join public.meal_types mt on mt.id = meal_records.meal_type_id
    where ch.id = meal_records.child_id and cl.school_id = public.current_school_id() and mt.school_id = cl.school_id
 ));
 create policy meal_records_worker_insert on public.meal_records for insert to authenticated
-with check (public.current_user_role() = 'worker' and recorded_by = public.current_user_id() and exists (
+with check (public.current_user_active() and public.current_user_role() = 'worker' and recorded_by = public.current_user_id() and exists (
   select 1 from public.children ch join public.classes cl on cl.id = ch.class_id join public.worker_classrooms wc on wc.class_id = cl.id join public.meal_types mt on mt.id = meal_records.meal_type_id
    where ch.id = meal_records.child_id and wc.worker_id = public.current_user_id() and cl.school_id = public.current_school_id() and mt.school_id = cl.school_id
 ));
 create policy meal_records_admin_supervisor_update on public.meal_records for update to authenticated
-using (public.current_user_role() in ('admin', 'supervisor') and exists (
+using (public.current_user_active() and public.current_user_role() in ('admin', 'supervisor') and exists (
   select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = meal_records.child_id and cl.school_id = public.current_school_id()
-)) with check (public.current_user_role() in ('admin', 'supervisor') and exists (
+)) with check (public.current_user_active() and public.current_user_role() in ('admin', 'supervisor') and exists (
   select 1 from public.children ch join public.classes cl on cl.id = ch.class_id join public.meal_types mt on mt.id = meal_records.meal_type_id where ch.id = meal_records.child_id and cl.school_id = public.current_school_id() and mt.school_id = cl.school_id
 ));
 create policy meal_records_worker_update on public.meal_records for update to authenticated
-using (public.current_user_role() = 'worker' and recorded_by = public.current_user_id() and recorded_at >= now() - interval '24 hours')
-with check (public.current_user_role() = 'worker' and recorded_by = public.current_user_id() and recorded_at >= now() - interval '24 hours');
+using (public.current_user_active() and public.current_user_role() = 'worker' and recorded_by = public.current_user_id() and recorded_at >= now() - interval '24 hours' and public.current_user_has_assigned_child(child_id))
+with check (public.current_user_active() and public.current_user_role() = 'worker' and recorded_by = public.current_user_id() and recorded_at >= now() - interval '24 hours' and public.current_user_has_assigned_child(child_id));
+create policy meal_records_admin_delete on public.meal_records for delete to authenticated
+using (public.current_user_active() and public.current_user_role() = 'admin' and exists (
+  select 1 from public.children ch
+  join public.classes cl on cl.id = ch.class_id
+   where ch.id = meal_records.child_id and cl.school_id = public.current_school_id()
+));
 
 -- Legacy entities without a direct tenant column derive it from their links.
 create policy menus_select_tenant on public.menus for select to authenticated using (exists (
