@@ -41,6 +41,46 @@ begin
 end
 $$;
 
+alter table public.monitors
+  add column school_id uuid;
+
+do $$
+begin
+  if exists (
+    select 1
+      from public.monitors_schools ms
+     group by ms.monitor_id
+    having count(distinct ms.school_id) > 1
+  ) then
+    raise exception 'cannot migrate monitors.school_id: a monitor belongs to multiple schools';
+  end if;
+
+  if exists (
+    select 1
+      from public.monitors m
+     where not exists (
+       select 1 from public.monitors_schools ms where ms.monitor_id = m.id
+     )
+  ) then
+    raise exception 'cannot migrate monitors.school_id: a monitor has no school association';
+  end if;
+
+  update public.monitors m
+     set school_id = (
+       select ms.school_id
+         from public.monitors_schools ms
+        where ms.monitor_id = m.id
+     );
+end
+$$;
+
+alter table public.monitors
+  alter column school_id set not null;
+
+alter table public.monitors
+  add constraint monitors_school_id_fkey
+  foreign key (school_id) references public.schools(id);
+
 create table if not exists public.devices (
   id uuid primary key default gen_random_uuid(),
   school_id uuid not null references public.schools(id),
@@ -216,8 +256,24 @@ stable
 security definer
 set search_path = public
 as $$
+declare
+  monitor_school_id uuid;
 begin
   perform pg_advisory_xact_lock(2147483647, 42042);
+
+  select m.school_id
+    into monitor_school_id
+    from public.monitors m
+   where m.id = p_monitor_id
+   for update;
+
+  if not found then
+    return true;
+  end if;
+
+  if monitor_school_id <> p_school_id then
+    return false;
+  end if;
 
   return not exists (
     select 1
@@ -244,20 +300,48 @@ begin
 end
 $$;
 
+create or replace function public.enforce_monitor_school_tenant()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  perform pg_advisory_xact_lock(2147483647, 42042);
+
+  if exists (
+    select 1
+      from public.monitors_schools ms
+     where ms.monitor_id = new.id
+       and ms.school_id <> new.school_id
+  ) then
+    raise exception 'monitor.school_id cannot diverge from monitor assignments'
+      using errcode = '23514';
+  end if;
+
+  return new;
+end
+$$;
+
 revoke execute on function public.current_user_can_access_child(uuid) from public, anon;
 revoke execute on function public.current_user_has_assigned_child(uuid) from public, anon;
 revoke execute on function public.current_user_can_access_class(uuid) from public, anon;
 revoke execute on function public.monitor_assignments_are_tenant_safe(uuid, uuid) from public, anon;
 revoke execute on function public.enforce_monitor_assignment_tenant() from public, anon, authenticated, service_role;
+revoke execute on function public.enforce_monitor_school_tenant() from public, anon, authenticated, service_role;
 grant execute on function public.current_user_can_access_child(uuid) to authenticated, service_role;
 grant execute on function public.current_user_has_assigned_child(uuid) to authenticated, service_role;
 grant execute on function public.current_user_can_access_class(uuid) to authenticated, service_role;
 grant execute on function public.monitor_assignments_are_tenant_safe(uuid, uuid) to authenticated, service_role;
 grant execute on function public.enforce_monitor_assignment_tenant() to postgres;
+grant execute on function public.enforce_monitor_school_tenant() to postgres;
 
 create trigger monitors_schools_same_school
 before insert or update on public.monitors_schools
 for each row execute function public.enforce_monitor_assignment_tenant();
+create trigger monitors_same_school_assignment
+before update of school_id on public.monitors
+for each row execute function public.enforce_monitor_school_tenant();
 
 create or replace function public.custom_access_token_hook(event jsonb)
 returns jsonb
@@ -386,22 +470,19 @@ create policy classes_admin_delete on public.classes for delete to authenticated
 using (public.current_user_role() = 'admin' and school_id = public.current_school_id());
 
 create policy monitors_select_tenant on public.monitors for select to authenticated
-using (public.current_user_role() in ('admin', 'supervisor') and exists (
-  select 1 from public.monitors_schools ms
-   where ms.monitor_id = monitors.id and ms.school_id = public.current_school_id()
-));
+using (public.current_user_active() and public.current_user_role() in ('admin', 'supervisor')
+  and school_id = public.current_school_id());
 create policy monitors_admin_insert on public.monitors for insert to authenticated
-with check (public.current_user_active() and public.current_user_role() = 'admin');
+with check (public.current_user_active() and public.current_user_role() = 'admin'
+  and school_id = public.current_school_id());
 create policy monitors_admin_update on public.monitors for update to authenticated
-using (public.current_user_active() and public.current_user_role() = 'admin' and exists (
-  select 1 from public.monitors_schools ms where ms.monitor_id = monitors.id and ms.school_id = public.current_school_id()
-)) with check (public.current_user_active() and public.current_user_role() = 'admin' and exists (
-  select 1 from public.monitors_schools ms where ms.monitor_id = monitors.id and ms.school_id = public.current_school_id()
-));
+using (public.current_user_active() and public.current_user_role() = 'admin'
+  and school_id = public.current_school_id())
+with check (public.current_user_active() and public.current_user_role() = 'admin'
+  and school_id = public.current_school_id());
 create policy monitors_admin_delete on public.monitors for delete to authenticated
-using (public.current_user_active() and public.current_user_role() = 'admin' and exists (
-  select 1 from public.monitors_schools ms where ms.monitor_id = monitors.id and ms.school_id = public.current_school_id()
-));
+using (public.current_user_active() and public.current_user_role() = 'admin'
+  and school_id = public.current_school_id());
 
 create policy monitors_schools_select_tenant on public.monitors_schools for select to authenticated
 using (public.current_user_role() in ('admin', 'supervisor') and school_id = public.current_school_id());
@@ -411,6 +492,10 @@ with check (
   and public.current_user_role() = 'admin'
   and school_id = public.current_school_id()
   and public.monitor_assignments_are_tenant_safe(monitor_id, public.current_school_id())
+  and exists (
+    select 1 from public.monitors m
+     where m.id = monitor_id and m.school_id = school_id
+  )
 );
 create policy monitors_schools_admin_update on public.monitors_schools for update to authenticated
 using (public.current_user_active() and public.current_user_role() = 'admin' and school_id = public.current_school_id())
@@ -419,6 +504,10 @@ with check (
   and public.current_user_role() = 'admin'
   and school_id = public.current_school_id()
   and public.monitor_assignments_are_tenant_safe(monitor_id, public.current_school_id())
+  and exists (
+    select 1 from public.monitors m
+     where m.id = monitor_id and m.school_id = school_id
+  )
 );
 create policy monitors_schools_admin_delete on public.monitors_schools for delete to authenticated
 using (public.current_user_role() = 'admin' and school_id = public.current_school_id());
