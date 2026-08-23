@@ -126,18 +126,22 @@ on conflict (menu_id, school_id) do update set date = excluded.date;
 
 insert into public.allergens (id, name)
 values
-  ('00000000-0000-4000-8000-000000000401', 'Gluten'),
-  ('00000000-0000-4000-8000-000000000402', 'Lactosa'),
-  ('00000000-0000-4000-8000-000000000403', 'Frutos secos'),
-  ('00000000-0000-4000-8000-000000000404', 'Huevo')
-on conflict (id) do update set name = excluded.name;
+  (gen_random_uuid(), 'Gluten'),
+  (gen_random_uuid(), 'Lactosa'),
+  (gen_random_uuid(), 'Frutos secos'),
+  (gen_random_uuid(), 'Huevo')
+on conflict (name) do nothing;
 
 insert into public.child_allergens (child_id, allergen_id)
-values
-  ('00000000-0000-4000-8000-000000000203', '00000000-0000-4000-8000-000000000401'),
-  ('00000000-0000-4000-8000-000000000207', '00000000-0000-4000-8000-000000000402'),
-  ('00000000-0000-4000-8000-000000000215', '00000000-0000-4000-8000-000000000403'),
-  ('00000000-0000-4000-8000-000000000220', '00000000-0000-4000-8000-000000000404')
+select links.child_id, allergens.id
+from (
+  values
+    ('00000000-0000-4000-8000-000000000203'::uuid, 'Gluten'),
+    ('00000000-0000-4000-8000-000000000207'::uuid, 'Lactosa'),
+    ('00000000-0000-4000-8000-000000000215'::uuid, 'Frutos secos'),
+    ('00000000-0000-4000-8000-000000000220'::uuid, 'Huevo')
+) as links(child_id, allergen_name)
+join public.allergens on allergens.name = links.allergen_name
 on conflict (child_id, allergen_id) do nothing;
 
 insert into public.incidents (id, child_id, description, monitor_id, date, reviewed, requires_family_signature)
