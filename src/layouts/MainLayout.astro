@@ -1,5 +1,5 @@
 ---
-import '../styles/global.css';
+import "../styles/global.css";
 interface Props {
   title: string;
   class?: string;
@@ -12,13 +12,16 @@ const { title, class: className } = Astro.props;
 <html lang="es" class="h-full bg-gray-50 antialiased touch-manipulation">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="generator" content={Astro.generator} />
     <title>{title}</title>
   </head>
   <body class="h-full flex flex-col text-gray-900">
-    <main class={`flex-1 flex flex-col ${className || ''}`}>
+    <main class={`flex-1 flex flex-col ${className || ""}`}>
       <slot />
     </main>
   </body>
@@ -26,7 +29,8 @@ const { title, class: className } = Astro.props;
 
 <style>
   /* Base styles for better mobile feel */
-  html, body {
+  html,
+  body {
     overscroll-behavior-y: none; /* Prevent pull-to-refresh on mobile if not desired */
   }
 </style>

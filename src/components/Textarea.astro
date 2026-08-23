@@ -1,36 +1,36 @@
 ---
 interface Props {
-    name: string;
-    id?: string;
-    label?: string;
-    placeholder?: string;
-    rows?: number;
-    class?: string;
+  name: string;
+  id?: string;
+  label?: string;
+  placeholder?: string;
+  rows?: number;
+  class?: string;
 }
 
 const {
-    name,
-    id = name,
-    label,
-    placeholder,
-    rows = 3,
-    class: className = "",
+  name,
+  id = name,
+  label,
+  placeholder,
+  rows = 3,
+  class: className = "",
 } = Astro.props;
 ---
 
 <div class={`flex flex-col gap-1.5 ${className}`}>
-    {
-        label && (
-            <label for={id} class="text-sm font-medium text-slate-700 ml-1">
-                {label}
-            </label>
-        )
-    }
-    <textarea
-        name={name}
-        id={id}
-        rows={rows}
-        placeholder={placeholder}
-        class="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all resize-none"
-    ></textarea>
+  {
+    label && (
+      <label for={id} class="text-sm font-medium text-slate-700 ml-1">
+        {label}
+      </label>
+    )
+  }
+  <textarea
+    name={name}
+    id={id}
+    rows={rows}
+    placeholder={placeholder}
+    class="w-full px-4 py-3 rounded-xl border border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all resize-none"
+  ></textarea>
 </div>

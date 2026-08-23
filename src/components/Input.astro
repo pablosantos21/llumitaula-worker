@@ -1,39 +1,39 @@
 ---
 interface Props {
-    type?: "text" | "email" | "password" | "search";
-    name: string;
-    id?: string;
-    label?: string;
-    placeholder?: string;
-    required?: boolean;
-    class?: string;
+  type?: "text" | "email" | "password" | "search";
+  name: string;
+  id?: string;
+  label?: string;
+  placeholder?: string;
+  required?: boolean;
+  class?: string;
 }
 
 const {
-    type = "text",
-    name,
-    id = name,
-    label,
-    placeholder,
-    required = false,
-    class: className = "",
+  type = "text",
+  name,
+  id = name,
+  label,
+  placeholder,
+  required = false,
+  class: className = "",
 } = Astro.props;
 ---
 
 <div class={`flex flex-col gap-1.5 ${className}`}>
-    {
-        label && (
-            <label for={id} class="text-sm font-medium text-slate-700 ml-1">
-                {label}
-            </label>
-        )
-    }
-    <input
-        type={type}
-        name={name}
-        id={id}
-        placeholder={placeholder}
-        required={required}
-        class="h-12 px-4 rounded-xl border border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all"
-    />
+  {
+    label && (
+      <label for={id} class="text-sm font-medium text-slate-700 ml-1">
+        {label}
+      </label>
+    )
+  }
+  <input
+    type={type}
+    name={name}
+    id={id}
+    placeholder={placeholder}
+    required={required}
+    class="h-12 px-4 rounded-xl border border-slate-200 bg-white text-slate-900 placeholder:text-slate-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all"
+  />
 </div>
