@@ -430,7 +430,15 @@ export type Database = {
           role?: Database["public"]["Enums"]["user_role"];
           school_id?: string;
         };
-        Relationships: [];
+        Relationships: [
+          {
+            foreignKeyName: "users_school_id_fkey";
+            columns: ["school_id"];
+            isOneToOne: false;
+            referencedRelation: "schools";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       worker_classrooms: {
         Row: { class_id: string; created_at: string; worker_id: string };
@@ -456,6 +464,22 @@ export type Database = {
     };
     Views: { [_ in never]: never };
     Functions: {
+      current_user_id: {
+        Args: Record<PropertyKey, never>;
+        Returns: string;
+      };
+      current_school_id: {
+        Args: Record<PropertyKey, never>;
+        Returns: string;
+      };
+      current_user_role: {
+        Args: Record<PropertyKey, never>;
+        Returns: string;
+      };
+      current_user_active: {
+        Args: Record<PropertyKey, never>;
+        Returns: boolean;
+      };
       custom_access_token_hook: { Args: { event: Json }; Returns: Json };
     };
     Enums: {
