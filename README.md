@@ -4,6 +4,9 @@
 
 El proyecto requiere Node.js `>=22.12.0`.
 
+La base usa Astro `7.2.4` y la integración React `6.0.4`.
+Tailwind `4.3.3` se ejecuta sobre Vite `8.0.13`.
+
 ```sh
 npm create astro@latest -- --template minimal
 ```
