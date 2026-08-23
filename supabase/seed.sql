@@ -142,6 +142,21 @@ begin
   end if;
 
   if exists (
+    select 1
+    from (
+      values
+        ('Gluten', '00000000-0000-4000-8000-000000000401'::uuid),
+        ('Lactosa', '00000000-0000-4000-8000-000000000402'::uuid),
+        ('Frutos secos', '00000000-0000-4000-8000-000000000403'::uuid),
+        ('Huevo', '00000000-0000-4000-8000-000000000404'::uuid)
+    ) as demo(name, expected_id)
+    join public.allergens on allergens.name = demo.name
+    where allergens.id is distinct from demo.expected_id
+  ) then
+    raise exception 'seed natural key collision in public.allergens';
+  end if;
+
+  if exists (
     select 1 from public.incidents
     where id = '00000000-0000-4000-8000-000000000501'
       and (child_id, description, monitor_id, date, reviewed, requires_family_signature) is distinct from ('00000000-0000-4000-8000-000000000205'::uuid, 'Pequeno golpe durante el juego', '00000000-0000-4000-8000-000000000021'::uuid, '2026-09-01'::date, false, false)
