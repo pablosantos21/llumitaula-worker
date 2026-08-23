@@ -319,6 +319,68 @@ begin
       using errcode = '23514';
   end if;
 
+  if exists (
+    select 1
+      from public.incidents i
+      join public.children ch on ch.id = i.child_id
+      join public.classes cl on cl.id = ch.class_id
+     where i.monitor_id = new.id
+       and cl.school_id <> new.school_id
+  ) then
+    raise exception 'monitor.school_id cannot diverge from incident children'
+      using errcode = '23514';
+  end if;
+
+  return new;
+end
+$$;
+
+create or replace function public.incident_relations_are_tenant_safe(
+  p_monitor_id uuid,
+  p_child_id uuid
+)
+returns boolean
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  monitor_school_id uuid;
+  child_school_id uuid;
+begin
+  perform pg_advisory_xact_lock(2147483647, 42042);
+
+  select m.school_id
+    into monitor_school_id
+    from public.monitors m
+   where m.id = p_monitor_id
+   for update;
+
+  select cl.school_id
+    into child_school_id
+    from public.children ch
+    join public.classes cl on cl.id = ch.class_id
+   where ch.id = p_child_id;
+
+  return monitor_school_id is not null
+     and child_school_id is not null
+     and monitor_school_id = child_school_id;
+end
+$$;
+
+create or replace function public.enforce_incident_tenant()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.incident_relations_are_tenant_safe(new.monitor_id, new.child_id) then
+    raise exception 'incident monitor and child must belong to the same school'
+      using errcode = '23514';
+  end if;
+
   return new;
 end
 $$;
@@ -329,12 +391,16 @@ revoke execute on function public.current_user_can_access_class(uuid) from publi
 revoke execute on function public.monitor_assignments_are_tenant_safe(uuid, uuid) from public, anon;
 revoke execute on function public.enforce_monitor_assignment_tenant() from public, anon, authenticated, service_role;
 revoke execute on function public.enforce_monitor_school_tenant() from public, anon, authenticated, service_role;
+revoke execute on function public.incident_relations_are_tenant_safe(uuid, uuid) from public, anon;
+revoke execute on function public.enforce_incident_tenant() from public, anon, authenticated, service_role;
 grant execute on function public.current_user_can_access_child(uuid) to authenticated, service_role;
 grant execute on function public.current_user_has_assigned_child(uuid) to authenticated, service_role;
 grant execute on function public.current_user_can_access_class(uuid) to authenticated, service_role;
 grant execute on function public.monitor_assignments_are_tenant_safe(uuid, uuid) to authenticated, service_role;
 grant execute on function public.enforce_monitor_assignment_tenant() to postgres;
 grant execute on function public.enforce_monitor_school_tenant() to postgres;
+grant execute on function public.incident_relations_are_tenant_safe(uuid, uuid) to authenticated, service_role;
+grant execute on function public.enforce_incident_tenant() to postgres;
 
 create trigger monitors_schools_same_school
 before insert or update on public.monitors_schools
@@ -342,6 +408,9 @@ for each row execute function public.enforce_monitor_assignment_tenant();
 create trigger monitors_same_school_assignment
 before update of school_id on public.monitors
 for each row execute function public.enforce_monitor_school_tenant();
+create trigger incidents_same_school
+before insert or update on public.incidents
+for each row execute function public.enforce_incident_tenant();
 
 create or replace function public.custom_access_token_hook(event jsonb)
 returns jsonb
@@ -658,10 +727,10 @@ create policy child_allergens_select_tenant on public.child_allergens for select
 create policy child_allergens_admin_insert on public.child_allergens for insert to authenticated with check (public.current_user_role() = 'admin' and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = child_allergens.child_id and cl.school_id = public.current_school_id()));
 create policy child_allergens_admin_update on public.child_allergens for update to authenticated using (public.current_user_role() = 'admin' and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = child_allergens.child_id and cl.school_id = public.current_school_id())) with check (public.current_user_role() = 'admin' and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = child_allergens.child_id and cl.school_id = public.current_school_id()));
 create policy child_allergens_admin_delete on public.child_allergens for delete to authenticated using (public.current_user_role() = 'admin' and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = child_allergens.child_id and cl.school_id = public.current_school_id()));
-create policy incidents_select_tenant on public.incidents for select to authenticated using (exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = incidents.child_id and cl.school_id = public.current_school_id() and (public.current_user_role() in ('admin', 'supervisor') or exists (select 1 from public.parents_children pc where pc.child_id = ch.id and pc.parent_id = public.current_user_id()))));
-create policy incidents_admin_insert on public.incidents for insert to authenticated with check (public.current_user_role() = 'admin' and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = incidents.child_id and cl.school_id = public.current_school_id()));
-create policy incidents_admin_update on public.incidents for update to authenticated using (public.current_user_role() = 'admin' and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = incidents.child_id and cl.school_id = public.current_school_id())) with check (public.current_user_role() = 'admin' and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = incidents.child_id and cl.school_id = public.current_school_id()));
-create policy incidents_admin_delete on public.incidents for delete to authenticated using (public.current_user_role() = 'admin' and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = incidents.child_id and cl.school_id = public.current_school_id()));
+create policy incidents_select_tenant on public.incidents for select to authenticated using (public.current_user_active() and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = incidents.child_id and cl.school_id = public.current_school_id() and (public.current_user_role() in ('admin', 'supervisor') or exists (select 1 from public.parents_children pc where pc.child_id = ch.id and pc.parent_id = public.current_user_id()))));
+create policy incidents_admin_insert on public.incidents for insert to authenticated with check (public.current_user_active() and public.current_user_role() = 'admin' and public.incident_relations_are_tenant_safe(monitor_id, child_id) and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = incidents.child_id and cl.school_id = public.current_school_id()));
+create policy incidents_admin_update on public.incidents for update to authenticated using (public.current_user_active() and public.current_user_role() = 'admin' and public.incident_relations_are_tenant_safe(monitor_id, child_id) and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = incidents.child_id and cl.school_id = public.current_school_id())) with check (public.current_user_active() and public.current_user_role() = 'admin' and public.incident_relations_are_tenant_safe(monitor_id, child_id) and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = incidents.child_id and cl.school_id = public.current_school_id()));
+create policy incidents_admin_delete on public.incidents for delete to authenticated using (public.current_user_active() and public.current_user_role() = 'admin' and public.incident_relations_are_tenant_safe(monitor_id, child_id) and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = incidents.child_id and cl.school_id = public.current_school_id()));
 
 -- Keep API privileges no broader than the policy matrix. service_role is the
 -- separate backend path; anon receives no table access.
