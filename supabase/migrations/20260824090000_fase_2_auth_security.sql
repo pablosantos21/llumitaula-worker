@@ -250,6 +250,24 @@ as $$
      )
 $$;
 
+create or replace function public.user_role_is_unchanged(
+  p_user_id uuid,
+  p_role text
+)
+returns boolean
+language sql
+stable
+security definer
+set search_path = pg_catalog, public, pg_temp
+as $$
+  select exists (
+    select 1
+      from public.users u
+     where u.id = p_user_id
+       and u.role::text = p_role
+  )
+$$;
+
 create or replace function public.monitor_assignments_are_tenant_safe(
   p_monitor_id uuid,
   p_school_id uuid
@@ -392,12 +410,14 @@ $$;
 alter function public.current_user_can_access_child(uuid) set schema private;
 alter function public.current_user_has_assigned_child(uuid) set schema private;
 alter function public.current_user_can_access_class(uuid) set schema private;
+alter function public.user_role_is_unchanged(uuid, text) set schema private;
 alter function public.monitor_assignments_are_tenant_safe(uuid, uuid) set schema private;
 alter function public.incident_relations_are_tenant_safe(uuid, uuid) set schema private;
 
 revoke execute on function private.current_user_can_access_child(uuid) from public, anon;
 revoke execute on function private.current_user_has_assigned_child(uuid) from public, anon;
 revoke execute on function private.current_user_can_access_class(uuid) from public, anon;
+revoke execute on function private.user_role_is_unchanged(uuid, text) from public, anon;
 revoke execute on function private.monitor_assignments_are_tenant_safe(uuid, uuid) from public, anon;
 revoke execute on function public.enforce_monitor_assignment_tenant() from public, anon, authenticated, service_role;
 revoke execute on function public.enforce_monitor_school_tenant() from public, anon, authenticated, service_role;
@@ -406,6 +426,7 @@ revoke execute on function public.enforce_incident_tenant() from public, anon, a
 grant execute on function private.current_user_can_access_child(uuid) to authenticated, service_role;
 grant execute on function private.current_user_has_assigned_child(uuid) to authenticated, service_role;
 grant execute on function private.current_user_can_access_class(uuid) to authenticated, service_role;
+grant execute on function private.user_role_is_unchanged(uuid, text) to authenticated, service_role;
 grant execute on function private.monitor_assignments_are_tenant_safe(uuid, uuid) to authenticated, service_role;
 grant execute on function public.enforce_monitor_assignment_tenant() to postgres;
 grant execute on function public.enforce_monitor_school_tenant() to postgres;
@@ -524,7 +545,7 @@ with check (
   and public.current_user_role() = 'admin'
   and id <> public.current_user_id()
   and school_id = public.current_school_id()
-  and role <> 'admin'
+  and private.user_role_is_unchanged(id, role::text)
 );
 create policy users_update_own on public.users for update to authenticated
 using (public.current_user_active() and id = public.current_user_id())
@@ -739,12 +760,13 @@ create policy menus_schools_admin_delete on public.menus_schools for delete to a
 
 create policy allergens_select_tenant on public.allergens for select to authenticated using (
   public.current_user_role() in ('admin', 'supervisor') and exists (select 1 from public.child_allergens ca join public.children ch on ch.id = ca.child_id join public.classes cl on cl.id = ch.class_id where ca.allergen_id = allergens.id and cl.school_id = public.current_school_id())
-  or public.current_user_role() in ('worker', 'padre') and exists (select 1 from public.child_allergens ca join public.children ch on ch.id = ca.child_id join public.classes cl on cl.id = ch.class_id where ca.allergen_id = allergens.id and cl.school_id = public.current_school_id())
+  or public.current_user_role() = 'worker' and exists (select 1 from public.child_allergens ca join public.children ch on ch.id = ca.child_id where ca.allergen_id = allergens.id and private.current_user_can_access_child(ch.id))
+  or public.current_user_role() = 'padre' and exists (select 1 from public.child_allergens ca join public.children ch on ch.id = ca.child_id where ca.allergen_id = allergens.id and private.current_user_can_access_child(ch.id))
 );
 create policy allergens_admin_insert on public.allergens for insert to authenticated with check (public.current_user_role() = 'admin');
 create policy allergens_admin_update on public.allergens for update to authenticated using (public.current_user_role() = 'admin' and exists (select 1 from public.child_allergens ca join public.children ch on ch.id = ca.child_id join public.classes cl on cl.id = ch.class_id where ca.allergen_id = allergens.id and cl.school_id = public.current_school_id())) with check (public.current_user_role() = 'admin');
 create policy allergens_admin_delete on public.allergens for delete to authenticated using (public.current_user_role() = 'admin' and exists (select 1 from public.child_allergens ca join public.children ch on ch.id = ca.child_id join public.classes cl on cl.id = ch.class_id where ca.allergen_id = allergens.id and cl.school_id = public.current_school_id()));
-create policy child_allergens_select_tenant on public.child_allergens for select to authenticated using (exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = child_allergens.child_id and cl.school_id = public.current_school_id() and (public.current_user_role() in ('admin', 'supervisor', 'worker') or exists (select 1 from public.parents_children pc where pc.child_id = ch.id and pc.parent_id = public.current_user_id()))));
+create policy child_allergens_select_tenant on public.child_allergens for select to authenticated using (public.current_user_active() and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = child_allergens.child_id and cl.school_id = public.current_school_id() and (public.current_user_role() in ('admin', 'supervisor') or private.current_user_can_access_child(ch.id))));
 create policy child_allergens_admin_insert on public.child_allergens for insert to authenticated with check (public.current_user_role() = 'admin' and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = child_allergens.child_id and cl.school_id = public.current_school_id()));
 create policy child_allergens_admin_update on public.child_allergens for update to authenticated using (public.current_user_role() = 'admin' and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = child_allergens.child_id and cl.school_id = public.current_school_id())) with check (public.current_user_role() = 'admin' and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = child_allergens.child_id and cl.school_id = public.current_school_id()));
 create policy child_allergens_admin_delete on public.child_allergens for delete to authenticated using (public.current_user_role() = 'admin' and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = child_allergens.child_id and cl.school_id = public.current_school_id()));
