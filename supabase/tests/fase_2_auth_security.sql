@@ -2,6 +2,49 @@ begin;
 
 select plan(22);
 
+set local role postgres;
+
+create or replace function pg_temp.count_rows(query text)
+returns bigint
+language plpgsql
+as $$
+declare
+  result bigint;
+begin
+  execute query into result;
+  return result;
+exception when undefined_table or undefined_column then
+  return -1;
+end;
+$$;
+
+create or replace function pg_temp.privileged_count_rows(query text)
+returns bigint
+language plpgsql
+security definer
+set search_path = pg_temp, public
+as $$
+declare
+  result bigint;
+begin
+  execute query into result;
+  return result;
+exception when undefined_table or undefined_column then
+  return -1;
+end;
+$$;
+
+create or replace function pg_temp.execute_test(query text)
+returns void
+language plpgsql
+as $$
+begin
+  execute query;
+exception when undefined_table or undefined_column then
+  raise exception 'required phase 2 relation is missing' using errcode = 'P0001';
+end;
+$$;
+
 set local role authenticated;
 
 -- Deterministic fixtures used by the phase 2 seed.
@@ -30,11 +73,11 @@ select ok(
   'all sensitive and phase 2 tables have RLS enabled'
 );
 
-set local role postgres;
 select set_config('request.jwt.claims', '{}', true);
 select is(
-  (select count(*)
-   from (
+  pg_temp.privileged_count_rows($query$
+    select count(*)
+    from (
      select 1 from public.schools
       where id = '00000000-0000-4000-8000-000000000002'::uuid
      union all
@@ -52,7 +95,8 @@ select is(
      union all
      select 1 from public.meal_records
       where id = '00000000-0000-4000-8000-000000000621'::uuid
-   ) as b_fixtures),
+    ) as b_fixtures
+  $query$),
   6::bigint,
   'school B fixtures exist before cross-tenant checks'
 );
@@ -121,8 +165,9 @@ select set_config(
   true
 );
 select is(
-  (select count(*)
-   from (
+  pg_temp.count_rows($query$
+    select count(*)
+    from (
      select 1 from public.children
       where id = '00000000-0000-4000-8000-000000000225'::uuid
      union all
@@ -137,7 +182,8 @@ select is(
      union all
      select 1 from public.meal_records
       where child_id = '00000000-0000-4000-8000-000000000225'::uuid
-   ) as b_rows),
+    ) as b_rows
+  $query$),
   0::bigint,
   'worker A cannot see B children, devices, meal types, or meal records'
 );
@@ -151,14 +197,14 @@ select set_config(
   true
 );
 select throws_ok(
-  $$insert into public.meal_records
+  $$select pg_temp.execute_test($sql$insert into public.meal_records
       (id, child_id, meal_type_id, recorded_by, status)
     values
       ('00000000-0000-4000-8000-000000000611'::uuid,
        '00000000-0000-4000-8000-000000000225'::uuid,
        '00000000-0000-4000-8000-000000000612'::uuid,
        '00000000-0000-4000-8000-000000000111'::uuid,
-       'bien')$$,
+       'bien'$sql$)$$,
   '42501',
   'worker A cannot insert a meal record for school B'
 );
@@ -172,14 +218,14 @@ select set_config(
   true
 );
 select lives_ok(
-  $$insert into public.meal_records
+  $$select pg_temp.execute_test($sql$insert into public.meal_records
       (id, child_id, meal_type_id, recorded_by, status)
     values
       ('00000000-0000-4000-8000-000000000612'::uuid,
        '00000000-0000-4000-8000-000000000201'::uuid,
        '00000000-0000-4000-8000-000000000611'::uuid,
        '00000000-0000-4000-8000-000000000111'::uuid,
-       'bien')$$,
+       'bien'$sql$)$$,
   'worker A can insert a meal record for an assigned child'
 );
 
@@ -191,11 +237,11 @@ select set_config(
   )::text,
   true
 );
-set local role postgres;
 select set_config('request.jwt.claims', '{}', true);
 select is(
-  (select count(*)
-   from public.meal_records mr
+  pg_temp.privileged_count_rows($query$
+    select count(*)
+    from public.meal_records mr
    where (mr.id = '00000000-0000-4000-8000-000000000623'::uuid
           and mr.recorded_by = '00000000-0000-4000-8000-000000000111'::uuid
           and mr.recorded_at < now() - interval '24 hours')
@@ -207,7 +253,8 @@ select is(
             join public.classes cl on cl.id = c.class_id
             where c.id = mr.child_id
               and cl.school_id = '00000000-0000-4000-8000-000000000001'::uuid
-          ))),
+          )))
+  $query$),
   2::bigint,
   'old own and same-tenant other-worker records exist with expected ownership'
 );
@@ -222,12 +269,14 @@ select set_config(
   true
 );
 select is(
-  (with attempted as (
+  pg_temp.count_rows($query$
+   with attempted as (
      update public.meal_records
         set notes = 'cross-tenant update'
       where id = '00000000-0000-4000-8000-000000000624'::uuid
       returning id
-   ) select count(*) from attempted),
+   ) select count(*) from attempted
+  $query$),
   0::bigint,
   'worker A cannot update another worker meal record'
 );
@@ -241,11 +290,13 @@ select set_config(
   true
 );
 select is(
-  (with attempted as (
+  pg_temp.count_rows($query$
+   with attempted as (
      delete from public.meal_records
       where id = '00000000-0000-4000-8000-000000000621'::uuid
       returning id
-   ) select count(*) from attempted),
+   ) select count(*) from attempted
+  $query$),
   0::bigint,
   'worker A cannot delete a meal record from school B'
 );
@@ -259,12 +310,14 @@ select set_config(
   true
 );
 select is(
-  (with attempted as (
+  pg_temp.count_rows($query$
+   with attempted as (
      update public.meal_records
         set notes = 'too old'
       where id = '00000000-0000-4000-8000-000000000623'::uuid
       returning id
-   ) select count(*) from attempted),
+   ) select count(*) from attempted
+  $query$),
   0::bigint,
   'worker A cannot update a record older than 24 hours'
 );
@@ -278,9 +331,25 @@ select set_config(
   true
 );
 select is(
-  (select count(*) from public.children
-   where id between '00000000-0000-4000-8000-000000000201'::uuid
-                 and '00000000-0000-4000-8000-000000000212'::uuid),
+  (select count(*)
+   from public.children c
+   join public.classes cl on cl.id = c.class_id
+   join public.schools s on s.id = cl.school_id
+   where s.id = '00000000-0000-4000-8000-000000000001'::uuid
+     and c.id in (
+       '00000000-0000-4000-8000-000000000201'::uuid,
+       '00000000-0000-4000-8000-000000000202'::uuid,
+       '00000000-0000-4000-8000-000000000203'::uuid,
+       '00000000-0000-4000-8000-000000000204'::uuid,
+       '00000000-0000-4000-8000-000000000205'::uuid,
+       '00000000-0000-4000-8000-000000000206'::uuid,
+       '00000000-0000-4000-8000-000000000207'::uuid,
+       '00000000-0000-4000-8000-000000000208'::uuid,
+       '00000000-0000-4000-8000-000000000209'::uuid,
+       '00000000-0000-4000-8000-000000000210'::uuid,
+       '00000000-0000-4000-8000-000000000211'::uuid,
+       '00000000-0000-4000-8000-000000000212'::uuid
+     )),
   12::bigint,
   'supervisor A can see all children in school A'
 );
@@ -294,12 +363,14 @@ select set_config(
   true
 );
 select is(
-  (with attempted as (
+  pg_temp.count_rows($query$
+   with attempted as (
      update public.meal_records
         set notes = 'supervisor review'
       where id = '00000000-0000-4000-8000-000000000622'::uuid
       returning id
-   ) select count(*) from attempted),
+   ) select count(*) from attempted
+  $query$),
   1::bigint,
   'supervisor A can update a meal record in school A'
 );
@@ -313,8 +384,10 @@ select set_config(
   true
 );
 select is(
-  (select count(*) from public.meal_records
-   where child_id = '00000000-0000-4000-8000-000000000225'::uuid),
+  pg_temp.count_rows($query$
+    select count(*) from public.meal_records
+     where child_id = '00000000-0000-4000-8000-000000000225'::uuid
+  $query$),
   0::bigint,
   'supervisor A cannot read meal records from school B'
 );
@@ -343,7 +416,7 @@ select set_config(
   true
 );
 select lives_ok(
-  $test$do $inner$
+  $test$select pg_temp.execute_test($inner$do $body$
   begin
     insert into public.devices (id, school_id, name, identifier)
     values (
@@ -364,20 +437,21 @@ select lives_ok(
       raise exception 'admin delete did not affect the inserted device';
     end if;
   end
-  $inner$;$test$,
+  $body$;$inner$)$test$,
   'admin A can insert, update, and delete a device in school A'
 );
 
-set local role postgres;
 select set_config('request.jwt.claims', '{}', true);
 select is(
-  (select count(*)
-   from public.classes cl
-   left join public.worker_classrooms wc
-     on wc.class_id = cl.id
-    and wc.worker_id = '00000000-0000-4000-8000-000000000111'::uuid
-   where cl.id = '00000000-0000-4000-8000-000000000012'::uuid
-     and wc.worker_id is null),
+  pg_temp.privileged_count_rows($query$
+    select count(*)
+    from public.classes cl
+    left join public.worker_classrooms wc
+      on wc.class_id = cl.id
+     and wc.worker_id = '00000000-0000-4000-8000-000000000111'::uuid
+    where cl.id = '00000000-0000-4000-8000-000000000012'::uuid
+      and wc.worker_id is null
+  $query$),
   1::bigint,
   'class A ...0012 exists and is not assigned to worker A'
 );
@@ -392,8 +466,10 @@ select set_config(
   true
 );
 select is(
-  (select count(*) from public.devices
-   where identifier = 'admin-crud-test'),
+  pg_temp.count_rows($query$
+    select count(*) from public.devices
+     where identifier = 'admin-crud-test'
+  $query$),
   0::bigint,
   'admin A CRUD leaves no residual device'
 );
@@ -407,11 +483,11 @@ select set_config(
   true
 );
 select throws_ok(
-  $$insert into public.devices (id, school_id, name, identifier)
+  $$select pg_temp.execute_test($sql$insert into public.devices (id, school_id, name, identifier)
     values
       ('00000000-0000-4000-8000-000000000695'::uuid,
        '00000000-0000-4000-8000-000000000002'::uuid,
-       'B device', 'device-b-test')$$,
+       'B device', 'device-b-test'$sql$)$$,
   '42501',
   'admin A cannot create a device in school B'
 );
@@ -425,12 +501,14 @@ select set_config(
   true
 );
 select is(
-  (with attempted as (
+  pg_temp.count_rows($query$
+   with attempted as (
      update public.meal_records
         set notes = 'cross-tenant update'
       where id = '00000000-0000-4000-8000-000000000621'::uuid
       returning id
-   ) select count(*) from attempted),
+   ) select count(*) from attempted
+  $query$),
   0::bigint,
   'worker A cannot update a meal record from school B'
 );
