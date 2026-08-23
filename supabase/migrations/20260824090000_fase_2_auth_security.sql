@@ -115,6 +115,10 @@ create table if not exists public.meal_records (
   notes text
 );
 
+create schema if not exists private;
+revoke all on schema private from public;
+grant usage on schema private to authenticated, service_role;
+
 -- Task 3: tenant-aware authorization. These helpers read the profile through
 -- the function owner, so policies never recurse through public.users.
 create or replace function public.current_user_id()
@@ -122,7 +126,7 @@ returns uuid
 language sql
 stable
 security definer
-set search_path = public
+set search_path = pg_catalog, public, pg_temp
 as $$
   select auth.uid()
 $$;
@@ -132,7 +136,7 @@ returns uuid
 language sql
 stable
 security definer
-set search_path = public
+set search_path = pg_catalog, public, pg_temp
 as $$
   select u.school_id
     from public.users u
@@ -141,13 +145,13 @@ as $$
 $$;
 
 create or replace function public.current_user_role()
-returns public.user_role
+returns text
 language sql
 stable
 security definer
-set search_path = public
+set search_path = pg_catalog, public, pg_temp
 as $$
-  select u.role
+  select u.role::text
     from public.users u
    where u.id = auth.uid()
      and u.active
@@ -158,7 +162,7 @@ returns boolean
 language sql
 stable
 security definer
-set search_path = public
+set search_path = pg_catalog, public, pg_temp
 as $$
   select coalesce((select u.active from public.users u where u.id = auth.uid()), false)
 $$;
@@ -177,7 +181,7 @@ returns boolean
 language sql
 stable
 security definer
-set search_path = public
+set search_path = pg_catalog, public, pg_temp
 as $$
   select public.current_user_active()
      and exists (
@@ -187,7 +191,7 @@ as $$
         where ch.id = p_child_id
           and cl.school_id = public.current_school_id()
           and (
-            public.current_user_role() in ('admin', 'supervisor')
+            public.current_user_role()::text in ('admin', 'supervisor')
             or exists (
               select 1 from public.worker_classrooms wc
                where wc.class_id = cl.id
@@ -207,10 +211,10 @@ returns boolean
 language sql
 stable
 security definer
-set search_path = public
+set search_path = pg_catalog, public, pg_temp
 as $$
   select public.current_user_active()
-     and public.current_user_role() = 'worker'
+     and public.current_user_role()::text = 'worker'
      and exists (
        select 1
          from public.children ch
@@ -227,7 +231,7 @@ returns boolean
 language sql
 stable
 security definer
-set search_path = public
+set search_path = pg_catalog, public, pg_temp
 as $$
   select public.current_user_active()
      and exists (
@@ -236,7 +240,7 @@ as $$
         where cl.id = p_class_id
           and cl.school_id = public.current_school_id()
           and (
-            public.current_user_role() in ('admin', 'supervisor')
+            public.current_user_role()::text in ('admin', 'supervisor')
             or exists (
               select 1 from public.worker_classrooms wc
                where wc.class_id = cl.id
@@ -254,7 +258,7 @@ returns boolean
 language plpgsql
 volatile
 security definer
-set search_path = public
+set search_path = pg_catalog, public, pg_temp
 as $$
 declare
   monitor_school_id uuid;
@@ -288,10 +292,10 @@ create or replace function public.enforce_monitor_assignment_tenant()
 returns trigger
 language plpgsql
 security definer
-set search_path = public
+set search_path = pg_catalog, public, pg_temp
 as $$
 begin
-  if not public.monitor_assignments_are_tenant_safe(new.monitor_id, new.school_id) then
+  if not private.monitor_assignments_are_tenant_safe(new.monitor_id, new.school_id) then
     raise exception 'monitor cannot be assigned across schools'
       using errcode = '23514';
   end if;
@@ -304,7 +308,7 @@ create or replace function public.enforce_monitor_school_tenant()
 returns trigger
 language plpgsql
 security definer
-set search_path = public
+set search_path = pg_catalog, public, pg_temp
 as $$
 begin
   perform pg_advisory_xact_lock(2147483647, 42042);
@@ -343,7 +347,7 @@ returns boolean
 language plpgsql
 volatile
 security definer
-set search_path = public
+set search_path = pg_catalog, public, pg_temp
 as $$
 declare
   monitor_school_id uuid;
@@ -373,10 +377,10 @@ create or replace function public.enforce_incident_tenant()
 returns trigger
 language plpgsql
 security definer
-set search_path = public
+set search_path = pg_catalog, public, pg_temp
 as $$
 begin
-  if not public.incident_relations_are_tenant_safe(new.monitor_id, new.child_id) then
+  if not private.incident_relations_are_tenant_safe(new.monitor_id, new.child_id) then
     raise exception 'incident monitor and child must belong to the same school'
       using errcode = '23514';
   end if;
@@ -385,21 +389,27 @@ begin
 end
 $$;
 
-revoke execute on function public.current_user_can_access_child(uuid) from public, anon;
-revoke execute on function public.current_user_has_assigned_child(uuid) from public, anon;
-revoke execute on function public.current_user_can_access_class(uuid) from public, anon;
-revoke execute on function public.monitor_assignments_are_tenant_safe(uuid, uuid) from public, anon;
+alter function public.current_user_can_access_child(uuid) set schema private;
+alter function public.current_user_has_assigned_child(uuid) set schema private;
+alter function public.current_user_can_access_class(uuid) set schema private;
+alter function public.monitor_assignments_are_tenant_safe(uuid, uuid) set schema private;
+alter function public.incident_relations_are_tenant_safe(uuid, uuid) set schema private;
+
+revoke execute on function private.current_user_can_access_child(uuid) from public, anon;
+revoke execute on function private.current_user_has_assigned_child(uuid) from public, anon;
+revoke execute on function private.current_user_can_access_class(uuid) from public, anon;
+revoke execute on function private.monitor_assignments_are_tenant_safe(uuid, uuid) from public, anon;
 revoke execute on function public.enforce_monitor_assignment_tenant() from public, anon, authenticated, service_role;
 revoke execute on function public.enforce_monitor_school_tenant() from public, anon, authenticated, service_role;
-revoke execute on function public.incident_relations_are_tenant_safe(uuid, uuid) from public, anon;
+revoke execute on function private.incident_relations_are_tenant_safe(uuid, uuid) from public, anon;
 revoke execute on function public.enforce_incident_tenant() from public, anon, authenticated, service_role;
-grant execute on function public.current_user_can_access_child(uuid) to authenticated, service_role;
-grant execute on function public.current_user_has_assigned_child(uuid) to authenticated, service_role;
-grant execute on function public.current_user_can_access_class(uuid) to authenticated, service_role;
-grant execute on function public.monitor_assignments_are_tenant_safe(uuid, uuid) to authenticated, service_role;
+grant execute on function private.current_user_can_access_child(uuid) to authenticated, service_role;
+grant execute on function private.current_user_has_assigned_child(uuid) to authenticated, service_role;
+grant execute on function private.current_user_can_access_class(uuid) to authenticated, service_role;
+grant execute on function private.monitor_assignments_are_tenant_safe(uuid, uuid) to authenticated, service_role;
 grant execute on function public.enforce_monitor_assignment_tenant() to postgres;
 grant execute on function public.enforce_monitor_school_tenant() to postgres;
-grant execute on function public.incident_relations_are_tenant_safe(uuid, uuid) to authenticated, service_role;
+grant execute on function private.incident_relations_are_tenant_safe(uuid, uuid) to authenticated, service_role;
 grant execute on function public.enforce_incident_tenant() to postgres;
 
 create trigger monitors_schools_same_school
@@ -416,7 +426,7 @@ create or replace function public.custom_access_token_hook(event jsonb)
 returns jsonb
 language plpgsql
 security definer
-set search_path = public
+set search_path = pg_catalog, public, pg_temp
 as $$
 declare
   claims jsonb := coalesce(event->'claims', '{}'::jsonb);
@@ -521,7 +531,7 @@ using (public.current_user_active() and id = public.current_user_id())
 with check (
   public.current_user_active()
   and id = public.current_user_id()
-  and role = public.current_user_role()
+  and role::text = public.current_user_role()
   and school_id = public.current_school_id()
   and active
 );
@@ -539,7 +549,7 @@ using (false);
 create policy classes_select_tenant on public.classes for select to authenticated
 using (
   public.current_user_active() and school_id = public.current_school_id()
-  and public.current_user_can_access_class(id)
+  and private.current_user_can_access_class(id)
 );
 create policy classes_admin_insert on public.classes for insert to authenticated
 with check (public.current_user_role() = 'admin' and school_id = public.current_school_id());
@@ -571,7 +581,7 @@ with check (
   public.current_user_active()
   and public.current_user_role() = 'admin'
   and school_id = public.current_school_id()
-  and public.monitor_assignments_are_tenant_safe(monitor_id, public.current_school_id())
+  and private.monitor_assignments_are_tenant_safe(monitor_id, public.current_school_id())
   and exists (
     select 1 from public.monitors m
      where m.id = monitor_id and m.school_id = school_id
@@ -583,7 +593,7 @@ with check (
   public.current_user_active()
   and public.current_user_role() = 'admin'
   and school_id = public.current_school_id()
-  and public.monitor_assignments_are_tenant_safe(monitor_id, public.current_school_id())
+  and private.monitor_assignments_are_tenant_safe(monitor_id, public.current_school_id())
   and exists (
     select 1 from public.monitors m
      where m.id = monitor_id and m.school_id = school_id
@@ -593,7 +603,7 @@ create policy monitors_schools_admin_delete on public.monitors_schools for delet
 using (public.current_user_role() = 'admin' and school_id = public.current_school_id());
 
 create policy children_select_tenant on public.children for select to authenticated
-using (public.current_user_can_access_child(id));
+using (private.current_user_can_access_child(id));
 create policy children_admin_insert on public.children for insert to authenticated
 with check (public.current_user_role() = 'admin' and exists (
   select 1 from public.classes cl where cl.id = children.class_id and cl.school_id = public.current_school_id()
@@ -613,7 +623,7 @@ create policy parents_children_select_tenant on public.parents_children for sele
 using (
   public.current_user_active()
   and (parent_id = public.current_user_id()
-    or (public.current_user_role() in ('admin', 'supervisor') and public.current_user_can_access_child(child_id)))
+    or (public.current_user_role() in ('admin', 'supervisor') and private.current_user_can_access_child(child_id)))
 );
 create policy parents_children_admin_insert on public.parents_children for insert to authenticated
 with check (public.current_user_active() and public.current_user_role() = 'admin' and exists (
@@ -644,7 +654,7 @@ using (public.current_user_role() = 'admin' and school_id = public.current_schoo
 
 create policy worker_classrooms_select_tenant on public.worker_classrooms for select to authenticated
 using (public.current_user_active() and (
-  public.current_user_can_access_class(class_id) or worker_id = public.current_user_id()
+  private.current_user_can_access_class(class_id) or worker_id = public.current_user_id()
 ));
 create policy worker_classrooms_admin_insert on public.worker_classrooms for insert to authenticated
 with check (public.current_user_role() = 'admin' and exists (
@@ -698,8 +708,8 @@ using (public.current_user_active() and public.current_user_role() in ('admin', 
   select 1 from public.children ch join public.classes cl on cl.id = ch.class_id join public.meal_types mt on mt.id = meal_records.meal_type_id where ch.id = meal_records.child_id and cl.school_id = public.current_school_id() and mt.school_id = cl.school_id
 ));
 create policy meal_records_worker_update on public.meal_records for update to authenticated
-using (public.current_user_active() and public.current_user_role() = 'worker' and recorded_by = public.current_user_id() and recorded_at >= now() - interval '24 hours' and public.current_user_has_assigned_child(child_id))
-with check (public.current_user_active() and public.current_user_role() = 'worker' and recorded_by = public.current_user_id() and recorded_at >= now() - interval '24 hours' and public.current_user_has_assigned_child(child_id));
+using (public.current_user_active() and public.current_user_role() = 'worker' and recorded_by = public.current_user_id() and recorded_at >= now() - interval '24 hours' and private.current_user_has_assigned_child(child_id))
+with check (public.current_user_active() and public.current_user_role() = 'worker' and recorded_by = public.current_user_id() and recorded_at >= now() - interval '24 hours' and private.current_user_has_assigned_child(child_id));
 create policy meal_records_admin_delete on public.meal_records for delete to authenticated
 using (public.current_user_active() and public.current_user_role() = 'admin' and exists (
   select 1 from public.children ch
@@ -739,9 +749,9 @@ create policy child_allergens_admin_insert on public.child_allergens for insert 
 create policy child_allergens_admin_update on public.child_allergens for update to authenticated using (public.current_user_role() = 'admin' and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = child_allergens.child_id and cl.school_id = public.current_school_id())) with check (public.current_user_role() = 'admin' and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = child_allergens.child_id and cl.school_id = public.current_school_id()));
 create policy child_allergens_admin_delete on public.child_allergens for delete to authenticated using (public.current_user_role() = 'admin' and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = child_allergens.child_id and cl.school_id = public.current_school_id()));
 create policy incidents_select_tenant on public.incidents for select to authenticated using (public.current_user_active() and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = incidents.child_id and cl.school_id = public.current_school_id() and (public.current_user_role() in ('admin', 'supervisor') or exists (select 1 from public.parents_children pc where pc.child_id = ch.id and pc.parent_id = public.current_user_id()))));
-create policy incidents_admin_insert on public.incidents for insert to authenticated with check (public.current_user_active() and public.current_user_role() = 'admin' and public.incident_relations_are_tenant_safe(monitor_id, child_id) and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = incidents.child_id and cl.school_id = public.current_school_id()));
-create policy incidents_admin_update on public.incidents for update to authenticated using (public.current_user_active() and public.current_user_role() = 'admin' and public.incident_relations_are_tenant_safe(monitor_id, child_id) and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = incidents.child_id and cl.school_id = public.current_school_id())) with check (public.current_user_active() and public.current_user_role() = 'admin' and public.incident_relations_are_tenant_safe(monitor_id, child_id) and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = incidents.child_id and cl.school_id = public.current_school_id()));
-create policy incidents_admin_delete on public.incidents for delete to authenticated using (public.current_user_active() and public.current_user_role() = 'admin' and public.incident_relations_are_tenant_safe(monitor_id, child_id) and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = incidents.child_id and cl.school_id = public.current_school_id()));
+create policy incidents_admin_insert on public.incidents for insert to authenticated with check (public.current_user_active() and public.current_user_role() = 'admin' and private.incident_relations_are_tenant_safe(monitor_id, child_id) and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = incidents.child_id and cl.school_id = public.current_school_id()));
+create policy incidents_admin_update on public.incidents for update to authenticated using (public.current_user_active() and public.current_user_role() = 'admin' and private.incident_relations_are_tenant_safe(monitor_id, child_id) and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = incidents.child_id and cl.school_id = public.current_school_id())) with check (public.current_user_active() and public.current_user_role() = 'admin' and private.incident_relations_are_tenant_safe(monitor_id, child_id) and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = incidents.child_id and cl.school_id = public.current_school_id()));
+create policy incidents_admin_delete on public.incidents for delete to authenticated using (public.current_user_active() and public.current_user_role() = 'admin' and private.incident_relations_are_tenant_safe(monitor_id, child_id) and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = incidents.child_id and cl.school_id = public.current_school_id()));
 
 -- Keep API privileges no broader than the policy matrix. service_role is the
 -- separate backend path; anon receives no table access.
@@ -885,7 +895,7 @@ create or replace function public.enforce_same_school_relations()
 returns trigger
 language plpgsql
 security definer
-set search_path = pg_catalog, public
+set search_path = pg_catalog, public, pg_temp
 as $$
 declare
   worker_school uuid;
@@ -900,7 +910,7 @@ begin
   perform pg_advisory_xact_lock(2147483647, 42042);
 
   if tg_table_name = 'users' then
-    if new.role is distinct from 'worker'::public.user_role
+  if new.role::text is distinct from 'worker'
        and exists (
          select 1
            from public.worker_classrooms wc
@@ -1053,7 +1063,7 @@ begin
       from public.classes c
      where c.id = new.class_id;
 
-    if worker_role is distinct from 'worker'::public.user_role then
+    if worker_role::text is distinct from 'worker' then
       raise exception 'worker_classrooms.worker_id must reference a worker'
         using errcode = '23514';
     end if;
