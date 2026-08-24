@@ -24,7 +24,11 @@ const { title, class: className, requiresAuth = true } = Astro.props;
   </head>
   <body class="h-full flex flex-col text-gray-900">
     <main class={`flex-1 flex flex-col ${className || ""}`}>
-      {requiresAuth && <AuthGuard client:load contentId="protected-content" />}
+      {
+        requiresAuth && (
+          <AuthGuard client:only="react" contentId="protected-content" />
+        )
+      }
       <div id="protected-content" hidden={requiresAuth} class="contents">
         <slot />
       </div>

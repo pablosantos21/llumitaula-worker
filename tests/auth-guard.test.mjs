@@ -15,7 +15,7 @@ test("MainLayout protects business content by default and leaves login public", 
 
   assert.match(layout, /requiresAuth\??\s*:\s*boolean/);
   assert.match(layout, /requiresAuth\s*=\s*true/);
-  assert.match(layout, /AuthGuard/);
+  assert.match(layout, /AuthGuard\s+client:only="react"/);
   assert.match(layout, /hidden=\{requiresAuth\}/);
   assert.match(login, /requiresAuth=\{false\}/);
 });
