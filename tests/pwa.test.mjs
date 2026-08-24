@@ -42,6 +42,29 @@ test("web manifest exposes the standalone app contract", async () => {
   );
 });
 
+test("PWA artwork and asset generation contract is present", async () => {
+  const packageJson = JSON.parse(await source("package.json"));
+  const icon = await source("public/icons/pwa-icon.svg");
+  const portraitSplash = await source("public/splash/ipad-portrait.svg");
+  const landscapeSplash = await source("public/splash/ipad-landscape.svg");
+
+  assert.equal(packageJson.devDependencies.sharp, "0.35.3");
+  assert.equal(
+    packageJson.scripts["generate:pwa-assets"],
+    "node scripts/generate-pwa-assets.mjs",
+  );
+  assert.equal(packageJson.scripts.prebuild, "npm run generate:pwa-assets");
+  assert.equal(
+    packageJson.scripts.postbuild,
+    "node scripts/generate-pwa-assets.mjs",
+  );
+  assert.match(icon, /viewBox="0 0 128 128"/);
+  assert.match(icon, /fill="#047857"/);
+  assert.match(icon, /fill="#fff"/i);
+  assert.match(portraitSplash, /viewBox="0 0 2048 2732"/);
+  assert.match(landscapeSplash, /viewBox="0 0 2732 2048"/);
+});
+
 test("MainLayout declares iOS metadata and registers the root service worker", async () => {
   const layout = await source("src/layouts/MainLayout.astro");
 
