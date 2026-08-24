@@ -1,6 +1,6 @@
 begin;
 
-select plan(77);
+select plan(76);
 
 set local role postgres;
 
@@ -476,17 +476,37 @@ select ok(
        and meal_type_id = '00000000-0000-4000-8000-000000000611'::uuid
        and recorded_date = current_date
        and notes = 'RPC meal note'
-  ),
-  'RPC upserts the meal record'
-);
-select ok(
-  exists (
+  ) and exists (
     select 1 from public.incidents
      where child_id = '00000000-0000-4000-8000-000000000201'::uuid
        and description = 'RPC combined incident'
        and date = current_date
   ),
-  'RPC inserts the incident'
+  'RPC upserts the meal and inserts the incident'
+);
+
+select lives_ok(
+  $$select * from public.record_meal_incident(
+    '00000000-0000-4000-8000-000000000202'::uuid,
+    '00000000-0000-4000-8000-000000000611'::uuid,
+    'bien'::public.meal_status,
+    'local browser date', current_date + 1, now(),
+    '00000000-0000-4000-8000-000000000021'::uuid,
+    'Local date incident'
+  )$$,
+  'RPC accepts a browser-local date within one day of server date'
+);
+select throws_ok(
+  $$select * from public.record_meal_incident(
+    '00000000-0000-4000-8000-000000000203'::uuid,
+    '00000000-0000-4000-8000-000000000611'::uuid,
+    'mal'::public.meal_status,
+    'future date must fail', current_date + 2, now(),
+    '00000000-0000-4000-8000-000000000021'::uuid,
+    'Invalid future incident'
+  )$$,
+  '22023',
+  'RPC rejects a date beyond the local date envelope'
 );
 
 select set_config(
@@ -521,18 +541,13 @@ select throws_ok(
   '42501',
   'RPC rejects a cross-tenant child'
 );
-select is(
-  (select count(*) from public.incidents where description = 'Cross tenant incident'),
-  0::bigint,
-  'failed RPC rolls back the incident insert'
-);
-select is(
-  (select count(*) from public.meal_records
+select ok(
+  (select count(*) from public.incidents where description = 'Cross tenant incident') = 0
+  and (select count(*) from public.meal_records
     where child_id = '00000000-0000-4000-8000-000000000225'::uuid
       and meal_type_id = '00000000-0000-4000-8000-000000000612'::uuid
-      and recorded_date = current_date),
-  0::bigint,
-  'failed RPC rolls back the meal upsert'
+      and recorded_date = current_date) = 0,
+  'failed RPC rolls back both the meal upsert and incident insert'
 );
 
 select set_config(

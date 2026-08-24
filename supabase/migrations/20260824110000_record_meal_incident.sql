@@ -34,10 +34,14 @@ begin
       using errcode = '42501';
   end if;
 
-  if p_recorded_date is distinct from current_date
+  -- The browser sends its local calendar date. Keep this within the same
+  -- one-day envelope enforced by meal_records, while recorded_at remains the
+  -- authoritative instant and cannot be in the future.
+  if p_recorded_date < current_date - 1
+     or p_recorded_date > current_date + 1
      or p_recorded_at is null
      or p_recorded_at > now() then
-    raise exception 'meal incident date must be today and recorded_at cannot be in the future'
+    raise exception 'meal incident date is outside the local date envelope or recorded_at is in the future'
       using errcode = '22023';
   end if;
 
