@@ -1,60 +1,8 @@
 ---
+import BusinessApp from "../components/BusinessApp";
 import MainLayout from "../layouts/MainLayout.astro";
-import StudentCard from "../components/StudentCard.astro";
-import IncidentModal from "../components/IncidentModal.astro";
-import FeedbackToast from "../components/FeedbackToast.astro";
-import { MOCK_STUDENTS, CURRENT_MONITOR } from "../lib/mocks";
-
-const classStudents = MOCK_STUDENTS.filter(
-  (s) => s.classGroup === CURRENT_MONITOR.assignedClass,
-);
 ---
 
 <MainLayout title="Mi Clase" requiresAuth={true}>
-  <!-- Header -->
-  <header
-    class="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-slate-200 px-4 py-3 flex items-center justify-between shadow-sm"
-  >
-    <div>
-      <h1 class="text-lg font-bold text-slate-900 leading-none">
-        {CURRENT_MONITOR.assignedClass}
-      </h1>
-      <p class="text-xs text-slate-500 font-medium mt-1">
-        Comedor Principal • {classStudents.length} alumnos
-      </p>
-    </div>
-    <div class="flex items-center gap-2">
-      <a
-        href="/search"
-        class="p-2 text-slate-600 bg-slate-100 rounded-full hover:bg-slate-200 transition-colors"
-      >
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          viewBox="0 0 20 20"
-          fill="currentColor"
-          class="w-5 h-5"
-        >
-          <path
-            fill-rule="evenodd"
-            d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z"
-            clip-rule="evenodd"></path>
-        </svg>
-      </a>
-      <a
-        href="/login"
-        class="w-9 h-9 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 font-bold text-sm border-2 border-white shadow-sm"
-      >
-        {CURRENT_MONITOR.name.substring(0, 2).toUpperCase()}
-      </a>
-    </div>
-  </header>
-
-  <!-- Main List -->
-  <div class="p-4 pb-24 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-    {classStudents.map((student) => <StudentCard student={student} />)}
-  </div>
-
-  <!-- Shared Interactives -->
-  <IncidentModal />
-  <FeedbackToast />
+  <BusinessApp page="home" client:only="react" />
 </MainLayout>
