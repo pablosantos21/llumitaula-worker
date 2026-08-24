@@ -724,8 +724,7 @@ select ok(
         select ca.child_id
           from public.child_allergens ca
          where (ca.child_id, ca.allergen_id) in (
-           ('00000000-0000-4000-8000-000000000201'::uuid, '00000000-0000-4000-8000-000000000499'::uuid),
-           ('00000000-0000-4000-8000-000000000225'::uuid, '00000000-0000-4000-8000-000000000499'::uuid),
+            ('00000000-0000-4000-8000-000000000225'::uuid, '00000000-0000-4000-8000-000000000499'::uuid),
            ('00000000-0000-4000-8000-000000000225'::uuid, '00000000-0000-4000-8000-000000000498'::uuid)
          )
         union all
@@ -861,10 +860,12 @@ begin
   )
   or (select count(*) from public.child_allergens ca
        where ca.allergen_id = '00000000-0000-4000-8000-000000000499'::uuid
-         and ca.child_id in (
-           '00000000-0000-4000-8000-000000000201'::uuid,
-           '00000000-0000-4000-8000-000000000225'::uuid
-         )) <> 2
+         and ca.child_id = '00000000-0000-4000-8000-000000000225'::uuid) <> 1
+  or exists (
+    select 1 from public.child_allergens
+     where child_id = '00000000-0000-4000-8000-000000000201'::uuid
+       and allergen_id = '00000000-0000-4000-8000-000000000499'::uuid
+  )
   or (select count(*) from public.child_allergens ca
        where ca.child_id = '00000000-0000-4000-8000-000000000202'::uuid
          and ca.allergen_id = '00000000-0000-4000-8000-000000000401'::uuid) <> 1
@@ -897,12 +898,21 @@ select throws_ok(
   '42501',
   'admin A cannot associate a B-only allergen with a school A child'
 );
-select throws_ok(
-  $$insert into public.child_allergens (child_id, allergen_id)
-    values ('00000000-0000-4000-8000-000000000202'::uuid,
-            '00000000-0000-4000-8000-000000000499'::uuid)$$,
-  '42501',
-  'admin A cannot associate a shared allergen with a school A child'
+select set_config(
+  'request.jwt.claims',
+  json_build_object(
+    'sub', '00000000-0000-4000-8000-000000000111',
+    'role', 'authenticated'
+  )::text,
+  true
+);
+select is(
+  pg_temp.count_rows($query$
+    select 1 from public.allergens a
+     where a.id = '00000000-0000-4000-8000-000000000499'::uuid
+  $query$),
+  0::bigint,
+  'worker A cannot read the B-only shared-test allergen'
 );
 select throws_ok(
   $$update public.child_allergens
