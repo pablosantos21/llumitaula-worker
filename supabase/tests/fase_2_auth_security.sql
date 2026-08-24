@@ -1,6 +1,6 @@
 begin;
 
-select plan(86);
+select plan(87);
 
 set local role postgres;
 
