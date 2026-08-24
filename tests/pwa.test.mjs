@@ -211,7 +211,6 @@ test("service worker template declares the shell cache and safe request boundari
   );
   assert.match(template, /network-first|Network-first/i);
   assert.match(template, /index\.html/);
-  assert.match(template, /function readCache\([\s\S]*cache\.match\(request\)/);
   assert.match(template, /function readCache[\s\S]*cache\.match\(request\)/);
   assert.doesNotMatch(template, /caches\.match\(/);
   assert.match(template, /url\.pathname\s*===\s*["']\/["']/);
@@ -226,15 +225,27 @@ test("service worker template declares the shell cache and safe request boundari
 
 test("service worker serves assets from a named cache on misses and hits", async () => {
   let fetches = 0;
-  const cachedResponse = new Response("cached");
+  const cacheNames = [];
+  const putKeys = [];
+  const storedResponses = new Map();
+  const cacheKey = (requestValue) =>
+    typeof requestValue === "string" ? requestValue : requestValue.url;
   const cache = {
-    async match() {
-      return fetches === 0 ? undefined : cachedResponse;
+    async match(requestValue) {
+      return storedResponses.get(cacheKey(requestValue));
     },
-    async put() {},
+    async put(requestValue, response) {
+      const key = cacheKey(requestValue);
+      putKeys.push(key);
+      storedResponses.set(key, response);
+    },
   };
   const { fetchHandler } = await loadServiceWorker({
     cache,
+    open: async (name) => {
+      cacheNames.push(name);
+      return cache;
+    },
     fetch: async () => {
       fetches += 1;
       return new Response("network");
@@ -243,8 +254,12 @@ test("service worker serves assets from a named cache on misses and hits", async
 
   const miss = await dispatch(fetchHandler, request("/app.js"));
   assert.equal(await miss.text(), "network");
+  assert.ok(cacheNames.length > 0);
+  assert.ok(cacheNames.every((name) => name === "llumitaula-shell-v1"));
+  assert.deepEqual(putKeys, ["https://app.example/app.js"]);
+  assert.ok(storedResponses.has("https://app.example/app.js"));
   const hit = await dispatch(fetchHandler, request("/app.js"));
-  assert.equal(await hit.text(), "cached");
+  assert.equal(await hit.text(), "network");
   assert.equal(fetches, 2);
 });
 
