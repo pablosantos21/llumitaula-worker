@@ -484,6 +484,19 @@ export type Database = {
         Returns: boolean;
       };
       custom_access_token_hook: { Args: { event: Json }; Returns: Json };
+      record_meal_incident: {
+        Args: {
+          p_child_id: string;
+          p_description: string;
+          p_meal_type_id: string;
+          p_monitor_id: string;
+          p_notes: string | null;
+          p_recorded_at: string;
+          p_recorded_date: string;
+          p_status: Database["public"]["Enums"]["meal_status"];
+        };
+        Returns: Database["public"]["Tables"]["meal_records"]["Row"];
+      };
     };
     Enums: {
       meal_status: "bien" | "regular" | "mal";

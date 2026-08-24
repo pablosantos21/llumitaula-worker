@@ -21,6 +21,7 @@ test("business pages keep protected React-only rendering", async () => {
   assert.match(app, /supabase\.auth\.getSession\(\)/);
   assert.match(app, /from\("children"\)/);
   assert.match(app, /from\("meal_records"\)/);
+  assert.match(app, /from\("incidents"\)/);
   assert.match(app, /from\("meal_types"\)/);
   assert.doesNotMatch(home, /MOCK_STUDENTS|Ana Martínez|Biel Roca/);
   assert.doesNotMatch(search, /MOCK_STUDENTS|Ana Martínez|Biel Roca/);
@@ -53,6 +54,7 @@ test("React business UI restores card, meal status, incident and toast component
   assert.match(app, /meal_records.*upsert|upsert.*meal_records/s);
   assert.match(app, /recorded_by/);
   assert.match(app, /recorded_date/);
+  assert.match(app, /record_meal_incident/);
   assert.match(app, /localDateString/);
   assert.doesNotMatch(app, /new Date\(\)\.toISOString\(\)\.slice\(0, 10\)/);
   assert.match(
@@ -110,7 +112,7 @@ test("local meal dates use the browser date and timestamps use ISO UTC", async (
   assert.match(new Date().toISOString(), /Z$/);
 });
 
-test("incidence saves the meal record before attempting the incident", async () => {
+test("incidence uses one atomic RPC and refreshes incident state", async () => {
   const app = await source("src/components/BusinessApp.tsx");
 
   assert.match(app, /async function saveIncident\(/);
@@ -120,10 +122,28 @@ test("incidence saves the meal record before attempting the incident", async () 
   assert.match(app, /comments: string/);
   assert.match(
     app,
+    /saveIncident[\s\S]*?\.rpc\("record_meal_incident",[\s\S]*?p_child_id[\s\S]*?p_monitor_id/,
+  );
+  assert.match(app, /setIncidents\(incidentsResult\.data/);
+  assert.match(app, /No se han podido guardar la comida ni la incidencia/);
+  assert.doesNotMatch(
+    app,
     /saveIncident[\s\S]*?\.from\("meal_records"\)[\s\S]*?\.upsert\([\s\S]*?\.from\("incidents"\)[\s\S]*?\.insert\(/,
   );
-  assert.match(app, /No se han podido guardar la comida ni la incidencia/);
-  assert.match(app, /no se ha podido registrar la incidencia/);
+});
+
+test("incidents override a good meal in the visual card status", async () => {
+  const app = await source("src/components/BusinessApp.tsx");
+
+  assert.match(
+    app,
+    /function statusFor\(records: MealRecord\[], incidents: Incident\[\]\)/,
+  );
+  assert.match(app, /record\.status !== "bien"[\s\S]*incidents\.length > 0/);
+  assert.match(
+    app,
+    /statusFor\([\s\S]*?records\.filter\([\s\S]*?incidents\.filter\(/,
+  );
 });
 
 test("incidence descriptions preserve flags and comments as readable text", async () => {

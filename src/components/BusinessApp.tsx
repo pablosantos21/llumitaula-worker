@@ -11,11 +11,13 @@ import StudentCard from "./StudentCard";
 type Child = Database["public"]["Tables"]["children"]["Row"];
 type MealRecord = Database["public"]["Tables"]["meal_records"]["Row"];
 type MealType = Database["public"]["Tables"]["meal_types"]["Row"];
+type Incident = Database["public"]["Tables"]["incidents"]["Row"];
 type Page = "home" | "search";
 type CardStatus = "all_good" | "incident";
 
-function statusFor(records: MealRecord[]): CardStatus {
-  return records.some((record) => record.status !== "bien")
+function statusFor(records: MealRecord[], incidents: Incident[]): CardStatus {
+  return records.some((record) => record.status !== "bien") ||
+    incidents.length > 0
     ? "incident"
     : "all_good";
 }
@@ -23,6 +25,7 @@ function statusFor(records: MealRecord[]): CardStatus {
 export default function BusinessApp({ page }: { page: Page }) {
   const [children, setChildren] = useState<Child[]>([]);
   const [records, setRecords] = useState<MealRecord[]>([]);
+  const [incidents, setIncidents] = useState<Incident[]>([]);
   const [mealTypes, setMealTypes] = useState<MealType[]>([]);
   const [userRole, setUserRole] = useState<
     Database["public"]["Enums"]["user_role"] | null
@@ -49,33 +52,45 @@ export default function BusinessApp({ page }: { page: Page }) {
         return;
       }
 
-      const [childrenResult, recordsResult, mealTypesResult, userResult] =
-        await Promise.all([
-          supabase
-            .from("children")
-            .select("id, first_name, last_name, class_id, created_at")
-            .order("last_name"),
-          supabase
-            .from("meal_records")
-            .select(
-              "id, child_id, meal_type_id, notes, recorded_date, recorded_at, recorded_by, status",
-            )
-            .eq("recorded_date", localDateString()),
-          supabase
-            .from("meal_types")
-            .select("id, name, active, school_id, sort_order, created_at")
-            .eq("active", true)
-            .order("sort_order"),
-          supabase
-            .from("users")
-            .select("role")
-            .eq("id", session.user.id)
-            .single(),
-        ]);
+      const [
+        childrenResult,
+        recordsResult,
+        incidentsResult,
+        mealTypesResult,
+        userResult,
+      ] = await Promise.all([
+        supabase
+          .from("children")
+          .select("id, first_name, last_name, class_id, created_at")
+          .order("last_name"),
+        supabase
+          .from("meal_records")
+          .select(
+            "id, child_id, meal_type_id, notes, recorded_date, recorded_at, recorded_by, status",
+          )
+          .eq("recorded_date", localDateString()),
+        supabase
+          .from("incidents")
+          .select(
+            "id, child_id, created_at, date, description, family_responded_at, family_response, family_seen, monitor_id, monitor_validated, requires_family_signature, reviewed, send_notification",
+          )
+          .eq("date", localDateString()),
+        supabase
+          .from("meal_types")
+          .select("id, name, active, school_id, sort_order, created_at")
+          .eq("active", true)
+          .order("sort_order"),
+        supabase
+          .from("users")
+          .select("role")
+          .eq("id", session.user.id)
+          .single(),
+      ]);
       if (!active) return;
       if (
         childrenResult.error ||
         recordsResult.error ||
+        incidentsResult.error ||
         mealTypesResult.error ||
         userResult.error
       ) {
@@ -84,6 +99,7 @@ export default function BusinessApp({ page }: { page: Page }) {
       }
       setChildren(childrenResult.data ?? []);
       setRecords(recordsResult.data ?? []);
+      setIncidents(incidentsResult.data ?? []);
       setMealTypes(mealTypesResult.data ?? []);
       setUserRole(userResult.data.role);
       setState("ready");
@@ -172,29 +188,12 @@ export default function BusinessApp({ page }: { page: Page }) {
       return;
     }
 
-    const date = localDateString();
-    const mealResult = await supabase
-      .from("meal_records")
-      .upsert(
-        {
-          child_id: child.id,
-          meal_type_id: details.mealTypeId,
-          recorded_date: date,
-          recorded_by: session.user.id,
-          status: details.status,
-          notes: details.notes,
-          recorded_at: new Date().toISOString(),
-        },
-        { onConflict: "child_id,meal_type_id,recorded_date" },
-      )
-      .select()
-      .single();
-
     const monitorsResult = await supabase
       .from("monitors")
       .select("id")
       .limit(1);
     const monitorId = monitorsResult.data?.[0]?.id;
+    const date = localDateString();
     const cleanComments = details.comments
       .replace(/\p{Cc}/gu, " ")
       .replace(/\s+/g, " ")
@@ -206,26 +205,25 @@ export default function BusinessApp({ page }: { page: Page }) {
       `No ha comido postre: ${details.noDessert ? "sí" : "no"}`,
       `Comentarios: ${cleanComments || "sin comentarios"}`,
     ].join("; ");
-    let incidentError: unknown = monitorsResult.error;
-    let incidentSaved = false;
-    if (!incidentError && monitorId) {
-      const result = await supabase
-        .from("incidents")
-        .insert({
-          child_id: child.id,
-          monitor_id: monitorId,
-          description,
-          date,
-        })
-        .select()
-        .single();
-      incidentError = result.error;
-      incidentSaved = !result.error;
-    } else if (!monitorId) {
-      incidentError = new Error("No hay monitor disponible");
+    if (monitorsResult.error || !monitorId) {
+      setToast({
+        message: "No se han podido cargar los datos de la incidencia",
+        type: "error",
+      });
+      return;
     }
 
-    if (mealResult.error && incidentError) {
+    const mealResult = await supabase.rpc("record_meal_incident", {
+      p_child_id: child.id,
+      p_description: description,
+      p_meal_type_id: details.mealTypeId,
+      p_monitor_id: monitorId,
+      p_notes: details.notes,
+      p_recorded_at: new Date().toISOString(),
+      p_recorded_date: date,
+      p_status: details.status,
+    });
+    if (mealResult.error) {
       setToast({
         message: "No se han podido guardar la comida ni la incidencia",
         type: "error",
@@ -233,27 +231,25 @@ export default function BusinessApp({ page }: { page: Page }) {
       return;
     }
 
-    if (mealResult.error) {
+    const incidentsResult = await supabase
+      .from("incidents")
+      .select(
+        "id, child_id, created_at, date, description, family_responded_at, family_response, family_seen, monitor_id, monitor_validated, requires_family_signature, reviewed, send_notification",
+      )
+      .eq("date", date);
+    if (incidentsResult.error) {
       setToast({
         message:
-          "Incidencia registrada, pero no se ha podido guardar la comida",
+          "Incidencia guardada, pero no se ha podido actualizar su estado",
         type: "error",
       });
       return;
     }
-
     setRecords((current) => [
       ...current.filter((record) => record.id !== mealResult.data.id),
       mealResult.data,
     ]);
-    if (incidentError || !incidentSaved) {
-      setToast({
-        message:
-          "Comida guardada, pero no se ha podido registrar la incidencia",
-        type: "error",
-      });
-      return;
-    }
+    setIncidents(incidentsResult.data ?? []);
 
     setSelectedChild(null);
     setToast({ message: "Incidencia registrada", type: "warning" });
@@ -329,6 +325,7 @@ export default function BusinessApp({ page }: { page: Page }) {
             name={`${child.first_name} ${child.last_name}`}
             status={statusFor(
               records.filter((record) => record.child_id === child.id),
+              incidents.filter((incident) => incident.child_id === child.id),
             )}
             onClick={() => setSelectedChild(child)}
           />

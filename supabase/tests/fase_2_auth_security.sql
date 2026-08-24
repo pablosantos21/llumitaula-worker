@@ -1,6 +1,6 @@
 begin;
 
-select plan(67);
+select plan(77);
 
 set local role postgres;
 
@@ -424,6 +424,115 @@ select throws_ok(
             'Worker incident', current_date)$$,
   '42501',
   'worker A cannot create an incident'
+);
+
+select ok(
+  exists (
+    select 1
+      from pg_proc
+     where oid = 'public.record_meal_incident(uuid,uuid,public.meal_status,text,date,timestamptz,uuid,text)'::regprocedure
+       and prosecdef
+       and proconfig @> array['search_path=pg_catalog, public, pg_temp']
+  ),
+  'record_meal_incident is a secure definer function'
+);
+select ok(
+  has_function_privilege(
+    'authenticated',
+    'public.record_meal_incident(uuid,uuid,public.meal_status,text,date,timestamptz,uuid,text)',
+    'EXECUTE'
+  )
+  and not has_function_privilege(
+    'anon',
+    'public.record_meal_incident(uuid,uuid,public.meal_status,text,date,timestamptz,uuid,text)',
+    'EXECUTE'
+  ),
+  'record_meal_incident is executable only by authenticated users'
+);
+
+select set_config(
+  'request.jwt.claims',
+  json_build_object(
+    'sub', '00000000-0000-4000-8000-000000000112',
+    'role', 'authenticated'
+  )::text,
+  true
+);
+select lives_ok(
+  $$select * from public.record_meal_incident(
+    '00000000-0000-4000-8000-000000000201'::uuid,
+    '00000000-0000-4000-8000-000000000611'::uuid,
+    'bien'::public.meal_status,
+    'RPC meal note', current_date, now(),
+    '00000000-0000-4000-8000-000000000021'::uuid,
+    'RPC combined incident'
+  )$$,
+  'supervisor can record meal and incident atomically'
+);
+select ok(
+  exists (
+    select 1 from public.meal_records
+     where child_id = '00000000-0000-4000-8000-000000000201'::uuid
+       and meal_type_id = '00000000-0000-4000-8000-000000000611'::uuid
+       and recorded_date = current_date
+       and notes = 'RPC meal note'
+  ),
+  'RPC upserts the meal record'
+);
+select ok(
+  exists (
+    select 1 from public.incidents
+     where child_id = '00000000-0000-4000-8000-000000000201'::uuid
+       and description = 'RPC combined incident'
+       and date = current_date
+  ),
+  'RPC inserts the incident'
+);
+
+select set_config(
+  'request.jwt.claims',
+  json_build_object(
+    'sub', '00000000-0000-4000-8000-000000000111',
+    'role', 'authenticated'
+  )::text,
+  true
+);
+select throws_ok(
+  $$select * from public.record_meal_incident(
+    '00000000-0000-4000-8000-000000000201'::uuid,
+    '00000000-0000-4000-8000-000000000611'::uuid,
+    'mal'::public.meal_status,
+    'worker must fail', current_date, now(),
+    '00000000-0000-4000-8000-000000000021'::uuid,
+    'Worker RPC incident'
+  )$$,
+  '42501',
+  'worker cannot call record_meal_incident'
+);
+select throws_ok(
+  $$select * from public.record_meal_incident(
+    '00000000-0000-4000-8000-000000000225'::uuid,
+    '00000000-0000-4000-8000-000000000612'::uuid,
+    'mal'::public.meal_status,
+    'cross tenant must fail', current_date, now(),
+    '00000000-0000-4000-8000-000000000021'::uuid,
+    'Cross tenant incident'
+  )$$,
+  '42501',
+  'RPC rejects a cross-tenant child'
+);
+select is(
+  (select count(*) from public.incidents where description = 'Cross tenant incident'),
+  0::bigint,
+  'failed RPC rolls back the incident insert'
+);
+select is(
+  (select count(*) from public.meal_records
+    where child_id = '00000000-0000-4000-8000-000000000225'::uuid
+      and meal_type_id = '00000000-0000-4000-8000-000000000612'::uuid
+      and recorded_date = current_date),
+  0::bigint,
+  'failed RPC rolls back the meal upsert'
 );
 
 select set_config(
