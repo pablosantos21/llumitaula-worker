@@ -334,12 +334,6 @@ declare
 begin
   perform pg_advisory_xact_lock(2147483647, 42042);
 
-  -- The trusted seed role preserves the existing shared legacy fixtures;
-  -- application and service_role writes still pass the tenant check below.
-  if current_user = 'postgres' then
-    return new;
-  end if;
-
   select cl.school_id
     into child_school_id
     from public.children ch
