@@ -248,18 +248,20 @@ test("service worker serves assets from a named cache on misses and hits", async
     },
     fetch: async () => {
       fetches += 1;
-      return new Response("network");
+      return new Response(
+        fetches === 1 ? "network data" : "fresh network data",
+      );
     },
   });
 
   const miss = await dispatch(fetchHandler, request("/app.js"));
-  assert.equal(await miss.text(), "network");
+  assert.equal(await miss.text(), "network data");
   assert.ok(cacheNames.length > 0);
   assert.ok(cacheNames.every((name) => name === "llumitaula-shell-v1"));
   assert.deepEqual(putKeys, ["https://app.example/app.js"]);
   assert.ok(storedResponses.has("https://app.example/app.js"));
   const hit = await dispatch(fetchHandler, request("/app.js"));
-  assert.equal(await hit.text(), "network");
+  assert.equal(await hit.text(), "network data");
   assert.equal(fetches, 2);
 });
 
