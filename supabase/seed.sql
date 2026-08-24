@@ -357,6 +357,23 @@ begin
   end if;
 
   if exists (
+    select 1 from public.device_setup_codes c
+    where c.id = '00000000-0000-4000-8000-000000000601'::uuid
+      and (c.school_id, c.code_hash, c.expires_at, c.max_uses, c.uses,
+           c.active, c.created_at, c.last_claimed_at) is distinct from
+          ('00000000-0000-4000-8000-000000000001'::uuid,
+           encode(digest('123456', 'sha256'), 'hex'),
+           timestamptz '2099-01-01 00:00:00+00', 1, 0, true,
+           timestamp '2026-01-01 00:00:00+00', null::timestamptz)
+  ) or exists (
+    select 1 from public.device_setup_codes c
+    where c.code_hash = encode(digest('123456', 'sha256'), 'hex')
+      and c.id is distinct from '00000000-0000-4000-8000-000000000601'::uuid
+  ) then
+    raise exception 'seed collision in public.device_setup_codes';
+  end if;
+
+  if exists (
     select 1 from public.worker_classrooms wc
     join (values
       ('00000000-0000-4000-8000-000000000111'::uuid, '00000000-0000-4000-8000-000000000011'::uuid, timestamp '2026-01-01 00:00:00+00'),
@@ -653,6 +670,17 @@ on conflict (id) do nothing;
 insert into public.devices (id, school_id, name, identifier, created_at) values
   ('00000000-0000-4000-8000-000000000601', '00000000-0000-4000-8000-000000000001', 'Device A', 'device-a', timestamp '2026-01-01 00:00:00+00'),
   ('00000000-0000-4000-8000-000000000602', '00000000-0000-4000-8000-000000000002', 'Device B', 'device-b', timestamp '2026-01-01 00:00:00+00')
+on conflict (id) do nothing;
+
+-- Local development code only; 123456 is not a production credential.
+insert into public.device_setup_codes
+  (id, school_id, code_hash, expires_at, max_uses, uses, active, created_at)
+values
+  ('00000000-0000-4000-8000-000000000601',
+   '00000000-0000-4000-8000-000000000001',
+   encode(digest('123456', 'sha256'), 'hex'),
+   timestamptz '2099-01-01 00:00:00+00', 1, 0, true,
+   timestamp '2026-01-01 00:00:00+00')
 on conflict (id) do nothing;
 
 insert into public.worker_classrooms (worker_id, class_id, created_at) values

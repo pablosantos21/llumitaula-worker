@@ -121,6 +121,71 @@ export type Database = {
           },
         ];
       };
+      device_setup_attempts: {
+        Row: {
+          attempt_count: number;
+          device_identifier: string;
+          last_attempt_at: string;
+          window_started_at: string;
+        };
+        Insert: {
+          attempt_count?: number;
+          device_identifier: string;
+          last_attempt_at?: string;
+          window_started_at?: string;
+        };
+        Update: {
+          attempt_count?: number;
+          device_identifier?: string;
+          last_attempt_at?: string;
+          window_started_at?: string;
+        };
+        Relationships: [];
+      };
+      device_setup_codes: {
+        Row: {
+          active: boolean;
+          code_hash: string;
+          created_at: string;
+          expires_at: string;
+          id: string;
+          last_claimed_at: string | null;
+          max_uses: number;
+          school_id: string;
+          uses: number;
+        };
+        Insert: {
+          active?: boolean;
+          code_hash: string;
+          created_at?: string;
+          expires_at: string;
+          id?: string;
+          last_claimed_at?: string | null;
+          max_uses?: number;
+          school_id: string;
+          uses?: number;
+        };
+        Update: {
+          active?: boolean;
+          code_hash?: string;
+          created_at?: string;
+          expires_at?: string;
+          id?: string;
+          last_claimed_at?: string | null;
+          max_uses?: number;
+          school_id?: string;
+          uses?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "device_setup_codes_school_id_fkey";
+            columns: ["school_id"];
+            isOneToOne: false;
+            referencedRelation: "schools";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       incidents: {
         Row: {
           child_id: string | null;
@@ -482,6 +547,10 @@ export type Database = {
       current_user_active: {
         Args: Record<PropertyKey, never>;
         Returns: boolean;
+      };
+      claim_device_setup: {
+        Args: { p_code: string; p_device_identifier: string };
+        Returns: Json;
       };
       custom_access_token_hook: { Args: { event: Json }; Returns: Json };
       record_meal_incident: {
