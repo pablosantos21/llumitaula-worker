@@ -105,11 +105,15 @@ test("MainLayout declares iOS metadata and registers the root service worker", a
   );
   assert.match(
     layout,
-    /href="\/splash\/ipad-portrait\.png"\s+media="\(orientation: portrait\) and \(device-width: 1024px\) and \(device-height: 1366px\)"/,
+    /href="\/splash\/ipad-portrait\.png"\s+media="\(orientation: portrait\) and \(min-device-width: 768px\)"/,
   );
   assert.match(
     layout,
-    /href="\/splash\/ipad-landscape\.png"\s+media="\(orientation: landscape\) and \(device-width: 1366px\) and \(device-height: 1024px\)"/,
+    /href="\/splash\/ipad-landscape\.png"\s+media="\(orientation: landscape\) and \(min-device-width: 768px\)"/,
+  );
+  assert.equal(
+    (layout.match(/rel="apple-touch-startup-image"/g) || []).length,
+    2,
   );
 });
 

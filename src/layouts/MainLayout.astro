@@ -27,22 +27,12 @@ const { title, class: className, requiresAuth = true } = Astro.props;
     <link
       rel="apple-touch-startup-image"
       href="/splash/ipad-portrait.png"
-      media="(orientation: portrait) and (device-width: 1024px) and (device-height: 1366px)"
+      media="(orientation: portrait) and (min-device-width: 768px)"
     />
     <link
       rel="apple-touch-startup-image"
       href="/splash/ipad-landscape.png"
-      media="(orientation: landscape) and (device-width: 1366px) and (device-height: 1024px)"
-    />
-    <link
-      rel="apple-touch-startup-image"
-      href="/splash/ipad-portrait.png"
-      media="(orientation: portrait)"
-    />
-    <link
-      rel="apple-touch-startup-image"
-      href="/splash/ipad-landscape.png"
-      media="(orientation: landscape)"
+      media="(orientation: landscape) and (min-device-width: 768px)"
     />
     <meta name="generator" content={Astro.generator} />
     <title>{title}</title>
