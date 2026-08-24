@@ -735,7 +735,7 @@ select ok(
            and c.last_name = 'Class'
            and c.class_id is null
       ) fixtures
-  $query$) = 14,
+  $query$) = 13,
   'role, auth, allergy, and null-class fixtures have exact values'
 );
 
@@ -914,13 +914,21 @@ select is(
   0::bigint,
   'worker A cannot read the B-only shared-test allergen'
 );
+select set_config(
+  'request.jwt.claims',
+  json_build_object(
+    'sub', '00000000-0000-4000-8000-000000000113',
+    'role', 'authenticated'
+  )::text,
+  true
+);
 select throws_ok(
   $$update public.child_allergens
-       set allergen_id = '00000000-0000-4000-8000-000000000498'::uuid
+       set allergen_id = '00000000-0000-4000-8000-000000000499'::uuid
      where child_id = '00000000-0000-4000-8000-000000000202'::uuid
        and allergen_id = '00000000-0000-4000-8000-000000000401'::uuid$$,
   '42501',
-  'admin A cannot update an A association to a B-only allergen'
+  'admin A cannot update an A association to allergen 499 from B'
 );
 
 set local role postgres;
