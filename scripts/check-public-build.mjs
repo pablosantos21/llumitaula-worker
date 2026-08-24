@@ -18,6 +18,16 @@ const requiredPwaAssets = [
   "splash/ipad-portrait.png",
   "splash/ipad-landscape.png",
 ];
+const requiredPrecacheUrls = [
+  "/index.html",
+  "/manifest.webmanifest",
+  "/icons/icon-192.png",
+  "/icons/icon-192-maskable.png",
+  "/icons/icon-512.png",
+  "/icons/icon-512-maskable.png",
+  "/icons/apple-touch-icon.png",
+];
+const hashedAstroAsset = /^\/_astro\/.+[.-][A-Za-z0-9_-]{6,}\.(js|css)$/;
 
 async function collectHtml(directory) {
   for (const entry of await readdir(directory, { withFileTypes: true })) {
@@ -98,6 +108,37 @@ const generatedServiceWorker = await readFile(
 );
 if (/supabase|service_role/i.test(generatedServiceWorker)) {
   throw new Error("Generated service worker must not contain Supabase secrets");
+}
+
+let precacheUrls;
+try {
+  const match = generatedServiceWorker.match(
+    /const\s+PRECACHE_URLS\s*=\s*(\[[\s\S]*?\]);/,
+  );
+  if (!match) throw new Error("PRECACHE_URLS declaration is missing");
+  precacheUrls = JSON.parse(match[1]);
+  if (!Array.isArray(precacheUrls)) throw new Error("not an array");
+} catch (error) {
+  throw new Error("Generated service worker has an invalid precache list", {
+    cause: error,
+  });
+}
+
+for (const path of requiredPrecacheUrls) {
+  if (!precacheUrls.includes(path)) {
+    throw new Error(`Generated service worker precache must include ${path}`);
+  }
+}
+for (const extension of ["js", "css"]) {
+  if (
+    !precacheUrls.some(
+      (path) => hashedAstroAsset.test(path) && path.endsWith(`.${extension}`),
+    )
+  ) {
+    throw new Error(
+      `Generated service worker precache must include a hashed /_astro/ application .${extension} asset`,
+    );
+  }
 }
 
 const source = await Promise.all(

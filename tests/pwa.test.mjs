@@ -271,7 +271,21 @@ async function populateFixture(fixture) {
     JSON.stringify({ display: "standalone" }),
   );
   await writeFile(join(fixture, "dist", "index.html"), "<main>shell</main>");
-  await writeFile(join(fixture, "dist", "sw.js"), "self.addEventListener;");
+  await writeFile(
+    join(fixture, "dist", "sw.js"),
+    `const PRECACHE_URLS = ${JSON.stringify([
+      "/_astro/app-abc123.js",
+      "/_astro/styles-def456.css",
+      "/icons/apple-touch-icon.png",
+      "/icons/icon-192-maskable.png",
+      "/icons/icon-192.png",
+      "/icons/icon-512-maskable.png",
+      "/icons/icon-512.png",
+      "/index.html",
+      "/manifest.webmanifest",
+      "/search/index.html",
+    ])};`,
+  );
   for (const path of [
     "icon-192.png",
     "icon-192-maskable.png",
@@ -318,6 +332,27 @@ test("public build checker rejects an invalid manifest in an isolated fixture", 
       JSON.stringify({ display: "browser" }),
     );
     await assert.rejects(runPublicBuildChecker(fixture), /standalone/);
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("public build checker rejects a service worker missing a critical precache URL", async () => {
+  const fixture = await createPublicBuildCheckerFixture();
+  try {
+    const serviceWorker = join(fixture, "dist", "sw.js");
+    const source = await readFile(serviceWorker, "utf8");
+    await writeFile(
+      serviceWorker,
+      source.replace('"/manifest.webmanifest",', ""),
+    );
+    await assert.rejects(runPublicBuildChecker(fixture), (error) => {
+      assert.match(
+        error.stderr,
+        /Generated service worker precache must include \/manifest\.webmanifest/,
+      );
+      return true;
+    });
   } finally {
     await rm(fixture, { recursive: true, force: true });
   }
