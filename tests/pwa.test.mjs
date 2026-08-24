@@ -56,7 +56,7 @@ test("PWA artwork and asset generation contract is present", async () => {
   assert.equal(packageJson.scripts.prebuild, "npm run generate:pwa-assets");
   assert.equal(
     packageJson.scripts.postbuild,
-    "node scripts/generate-pwa-assets.mjs",
+    "node scripts/generate-pwa-service-worker.mjs",
   );
   assert.match(icon, /viewBox="0 0 128 128"/);
   assert.match(icon, /fill="#047857"/);

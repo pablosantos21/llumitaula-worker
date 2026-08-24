@@ -9,7 +9,7 @@
     "dev": "astro dev",
     "build": "astro build",
     "prebuild": "npm run generate:pwa-assets",
-    "postbuild": "node scripts/generate-pwa-assets.mjs",
+    "postbuild": "node scripts/generate-pwa-service-worker.mjs",
     "generate:pwa-assets": "node scripts/generate-pwa-assets.mjs",
     "preview": "astro preview",
     "astro": "astro",
