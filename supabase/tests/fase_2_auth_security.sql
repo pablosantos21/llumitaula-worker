@@ -1,6 +1,6 @@
 begin;
 
-select plan(84);
+select plan(86);
 
 set local role postgres;
 
@@ -175,6 +175,21 @@ select is(
 );
 
 set local role authenticated;
+select set_config('request.jwt.claims', '{}', true);
+set local role service_role;
+select throws_ok(
+  $$insert into public.meal_records
+      (id, child_id, meal_type_id, recorded_by, recorded_date, recorded_at, status)
+    values
+      ('00000000-0000-0000-0000-000000000627'::uuid,
+       '00000000-0000-4000-8000-000000000204'::uuid,
+       '00000000-0000-4000-8000-000000000611'::uuid,
+       '00000000-0000-4000-8000-000000000111'::uuid,
+       current_date - 1, now(), 'bien')$$,
+  '42501',
+  'service_role without auth.uid cannot insert a meal record'
+);
+
 select set_config(
   'request.jwt.claims',
   json_build_object(
@@ -346,6 +361,21 @@ select results_eq(
   $$values ('00000000-0000-4000-8000-000000000111'::uuid,
             '00000000-0000-4000-8000-000000000011'::uuid)$$,
   'worker A sees only their own classroom assignments'
+);
+
+set local role authenticated;
+set local role postgres;
+select set_config('request.jwt.claims', '{}', true);
+select lives_ok(
+  $$insert into public.meal_records
+      (id, child_id, meal_type_id, recorded_by, recorded_date, recorded_at, status)
+    values
+      ('00000000-0000-0000-0000-000000000626'::uuid,
+       '00000000-0000-4000-8000-000000000204'::uuid,
+       '00000000-0000-4000-8000-000000000611'::uuid,
+       '00000000-0000-4000-8000-000000000111'::uuid,
+       current_date, now(), 'bien')$$,
+  'postgres seed context may insert without auth.uid'
 );
 
 set local role authenticated;

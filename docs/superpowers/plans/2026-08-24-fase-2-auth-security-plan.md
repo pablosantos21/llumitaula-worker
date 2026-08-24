@@ -190,7 +190,27 @@ Run: `npx supabase db reset && npx supabase db reset`
 Expected: ambas ejecuciones terminan correctamente y producen los mismos UUID,
 conteos y relaciones; ningún perfil queda sin `auth.users`.
 
-- [ ] **Step 5: Commit de fixtures locales**
+- [ ] **Step 5: Validar colisiones antes de ignorar conflictos**
+
+Las validaciones deben comparar la fila completa de cada fixture antes de sus
+`ON CONFLICT DO NOTHING`. En particular, incidents compara todos sus campos,
+incluidos `created_at`, `send_notification`, `family_seen`, `family_response`,
+`family_responded_at` y `monitor_validated`; devices compara
+`school_id`, `name`, `identifier`, `active`, `created_at` y `last_seen_at`; y
+meal_types compara `school_id`, `name`, `active`, `sort_order` y `created_at`.
+Una colisión en UUID o clave natural aborta el seed; una fila idéntica permite
+repetirlo sin modificar datos ajenos.
+
+- [ ] **Step 6: Validar autoría de meal_records en los tres contextos**
+
+`enforce_meal_record_authorship` retorna inmediatamente en INSERT solo cuando
+`session_user = 'postgres'`, el rol efectivo es `postgres` y `auth.uid() IS NULL`,
+para permitir el seed. Cualquier otro INSERT sin identidad se rechaza,
+`authenticated` debe usar `recorded_by = auth.uid()`, y UPDATE conserva
+`OLD.recorded_by`. La suite SQL debe cubrir seed/postgres y `service_role` sin
+identidad.
+
+- [ ] **Step 7: Commit de fixtures locales**
 
 ```sh
 git add supabase/seed.sql supabase/config.toml

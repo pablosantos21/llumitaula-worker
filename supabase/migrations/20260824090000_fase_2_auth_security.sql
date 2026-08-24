@@ -1357,8 +1357,14 @@ declare
   meal_type_school_id uuid;
   author_school_id uuid;
 begin
-  if auth.uid() is null
-     and session_user <> 'postgres' then
+  if tg_op = 'INSERT'
+     and session_user = 'postgres'
+     and current_setting('role', true) = 'postgres'
+     and auth.uid() is null then
+    return new;
+  end if;
+
+  if auth.uid() is null then
     raise exception 'meal_records writes require an authenticated user'
       using errcode = '42501';
   end if;

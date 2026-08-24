@@ -327,9 +327,13 @@ begin
     join (values
       ('00000000-0000-4000-8000-000000000501'::uuid, '00000000-0000-4000-8000-000000000205'::uuid, 'Pequeno golpe durante el juego', '00000000-0000-4000-8000-000000000021'::uuid, '2026-09-01'::date, false, false),
       ('00000000-0000-4000-8000-000000000502'::uuid, '00000000-0000-4000-8000-000000000218'::uuid, 'Necesita revisar la merienda', '00000000-0000-4000-8000-000000000024'::uuid, '2026-09-01'::date, true, true)
-    ) expected(id, child_id, description, monitor_id, date, reviewed, requires_family_signature) on expected.id = i.id
-    where (i.child_id, i.description, i.monitor_id, i.date, i.reviewed, i.requires_family_signature) is distinct from
-          (expected.child_id, expected.description, expected.monitor_id, expected.date, expected.reviewed, expected.requires_family_signature)
+     ) expected(id, child_id, description, monitor_id, date, reviewed, requires_family_signature) on expected.id = i.id
+     where (i.child_id, i.description, i.created_at, i.monitor_id, i.date, i.reviewed,
+            i.requires_family_signature, i.send_notification, i.family_seen,
+            i.family_response, i.family_responded_at, i.monitor_validated) is distinct from
+           (expected.child_id, expected.description, timestamp '2026-01-01 00:00:00+00',
+            expected.monitor_id, expected.date, expected.reviewed,
+            expected.requires_family_signature, false, false, null::text, null::timestamptz, false)
   ) then
     raise exception 'seed collision in public.incidents';
   end if;
@@ -339,9 +343,10 @@ begin
     join (values
       ('00000000-0000-4000-8000-000000000601'::uuid, '00000000-0000-4000-8000-000000000001'::uuid, 'Device A', 'device-a', true),
       ('00000000-0000-4000-8000-000000000602'::uuid, '00000000-0000-4000-8000-000000000002'::uuid, 'Device B', 'device-b', true)
-    ) expected(id, school_id, name, identifier, active) on expected.id = d.id
-    where (d.school_id, d.name, d.identifier, d.active) is distinct from
-          (expected.school_id, expected.name, expected.identifier, expected.active)
+     ) expected(id, school_id, name, identifier, active) on expected.id = d.id
+     where (d.school_id, d.name, d.identifier, d.active, d.created_at, d.last_seen_at) is distinct from
+           (expected.school_id, expected.name, expected.identifier, expected.active,
+            timestamp '2026-01-01 00:00:00+00', null::timestamptz)
   ) or exists (
     select 1 from public.devices d
     join (values ('device-a', '00000000-0000-4000-8000-000000000601'::uuid), ('device-b', '00000000-0000-4000-8000-000000000602'::uuid)) expected(identifier, id)
@@ -369,9 +374,10 @@ begin
     join (values
       ('00000000-0000-4000-8000-000000000611'::uuid, '00000000-0000-4000-8000-000000000001'::uuid, 'Comida A', true, 1),
       ('00000000-0000-4000-8000-000000000612'::uuid, '00000000-0000-4000-8000-000000000002'::uuid, 'Comida B', true, 1)
-    ) expected(id, school_id, name, active, sort_order) on expected.id = mt.id
-    where (mt.school_id, mt.name, mt.active, mt.sort_order) is distinct from
-          (expected.school_id, expected.name, expected.active, expected.sort_order)
+     ) expected(id, school_id, name, active, sort_order) on expected.id = mt.id
+     where (mt.school_id, mt.name, mt.active, mt.sort_order, mt.created_at) is distinct from
+           (expected.school_id, expected.name, expected.active, expected.sort_order,
+            timestamp '2026-01-01 00:00:00+00')
   ) or exists (
     select 1 from public.meal_types mt
     join (values ('00000000-0000-4000-8000-000000000001'::uuid, 'Comida A', '00000000-0000-4000-8000-000000000611'::uuid), ('00000000-0000-4000-8000-000000000002'::uuid, 'Comida B', '00000000-0000-4000-8000-000000000612'::uuid)) expected(school_id, name, id)
