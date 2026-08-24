@@ -121,7 +121,9 @@ npm run format:check
 
 - `npm run dev`: inicia el servidor de desarrollo Astro.
 - `npm run build`: crea la salida de produccion en `dist/`.
-- `npm run test:pwa`: ejecuta la verificacion automatizada completa: build, datos publicos y tests PWA.
+- `npm run test:pwa`: ejecuta la verificacion automatizada completa mediante `test:pwa:contract`.
+- `npm run test:pwa:contract`: ejecuta build, datos publicos y tests PWA.
+- `npm run test:pwa:unit`: ejecuta solo los tests PWA sin reconstruir.
 - `npm run test:public-data`: comprueba que el build no expone datos sensibles y que sus recursos PWA requeridos son validos.
 - `npm run check`: comprueba Astro y TypeScript.
 - `npm run lint`: ejecuta ESLint.

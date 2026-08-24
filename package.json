@@ -18,8 +18,8 @@
     "lint:fix": "eslint . --fix",
     "test:auth-guard": "node --test tests/auth-guard.test.mjs",
     "test:pwa:unit": "node --test tests/pwa.test.mjs",
-    "test:pwa:contract": "npm run build && npm run test:pwa:unit",
-    "test:pwa": "npm run build && npm run test:public-data && npm run test:pwa:unit",
+    "test:pwa:contract": "npm run build && npm run test:public-data && npm run test:pwa:unit",
+    "test:pwa": "npm run test:pwa:contract",
     "test:public-data": "node scripts/check-public-build.mjs",
     "format": "prettier . --write",
     "format:check": "prettier . --check"

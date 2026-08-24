@@ -6,6 +6,7 @@ import {
   mkdtemp,
   readFile,
   rm,
+  stat,
   writeFile,
 } from "node:fs/promises";
 import { execFile } from "node:child_process";
@@ -202,15 +203,15 @@ test("public build checker validates the complete PWA output contract", async ()
   const checker = await source("scripts/check-public-build.mjs");
   const packageJson = JSON.parse(await source("package.json"));
 
-  assert.equal(
-    packageJson.scripts["test:pwa"],
-    "npm run build && npm run test:public-data && npm run test:pwa:unit",
-  );
+  assert.equal(packageJson.scripts["test:pwa"], "npm run test:pwa:contract");
   assert.equal(
     packageJson.scripts["test:pwa:unit"],
     "node --test tests/pwa.test.mjs",
   );
-  assert.match(packageJson.scripts["test:pwa:contract"], /test:pwa:unit/);
+  assert.equal(
+    packageJson.scripts["test:pwa:contract"],
+    "npm run build && npm run test:public-data && npm run test:pwa:unit",
+  );
   assert.match(checker, /manifest\.webmanifest/);
   assert.match(checker, /display.*standalone/s);
   assert.match(checker, /index\.html/);
@@ -225,8 +226,18 @@ test("public build checker validates the complete PWA output contract", async ()
   assert.match(checker, /sensitiveMockValues/);
 });
 
-async function createPublicBuildCheckerFixture() {
+async function createPublicBuildCheckerFixture(setup = populateFixture) {
   const fixture = await mkdtemp(join("/tmp", "llumitaula-public-build-"));
+  try {
+    await setup(fixture);
+    return fixture;
+  } catch (error) {
+    await rm(fixture, { recursive: true, force: true });
+    throw error;
+  }
+}
+
+async function populateFixture(fixture) {
   await mkdir(join(fixture, "scripts"));
   await mkdir(join(fixture, "src", "pages"), { recursive: true });
   await mkdir(join(fixture, "dist", "icons"), { recursive: true });
@@ -256,8 +267,6 @@ async function createPublicBuildCheckerFixture() {
   }
   await writeFile(join(fixture, "src", "pages", "index.astro"), "");
   await writeFile(join(fixture, "src", "pages", "search.astro"), "");
-
-  return fixture;
 }
 
 async function runPublicBuildChecker(fixture) {
@@ -308,6 +317,31 @@ test("public build checker rejects a required resource directory in an isolated 
       );
       return true;
     });
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("public build checker fixture cleanup runs when setup fails", async () => {
+  let fixture;
+  await assert.rejects(
+    createPublicBuildCheckerFixture(async (createdFixture) => {
+      fixture = createdFixture;
+      throw new Error("fixture setup failed");
+    }),
+    /fixture setup failed/,
+  );
+  await assert.rejects(stat(fixture), { code: "ENOENT" });
+});
+
+test("public build checker clearly reports a missing dist directory", async () => {
+  const fixture = await createPublicBuildCheckerFixture();
+  try {
+    await rm(join(fixture, "dist"), { recursive: true });
+    await assert.rejects(
+      runPublicBuildChecker(fixture),
+      /dist directory is missing; run npm run build first/i,
+    );
   } finally {
     await rm(fixture, { recursive: true, force: true });
   }
