@@ -382,13 +382,14 @@ select set_config(
   )::text,
   true
 );
-select results_eq(
-  $$select id from public.incidents
+select is(
+  pg_temp.count_rows($query$
+    select id from public.incidents
      where child_id = '00000000-0000-4000-8000-000000000205'::uuid
         or child_id = '00000000-0000-4000-8000-000000000218'::uuid
-     order by id$$,
-  $$values ('00000000-0000-4000-8000-000000000501'::uuid)$$,
-  'worker A sees incidents only for assigned children'
+  $query$),
+  0::bigint,
+  'worker A cannot see incidents, even for assigned children'
 );
 
 select set_config(

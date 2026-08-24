@@ -942,7 +942,17 @@ create policy child_allergens_select_tenant on public.child_allergens for select
 create policy child_allergens_admin_insert on public.child_allergens for insert to authenticated with check (public.current_user_role() = 'admin' and private.allergen_is_tenant_private(allergen_id, public.current_school_id()) and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = child_allergens.child_id and cl.school_id = public.current_school_id()));
 create policy child_allergens_admin_update on public.child_allergens for update to authenticated using (public.current_user_role() = 'admin' and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = child_allergens.child_id and cl.school_id = public.current_school_id())) with check (public.current_user_role() = 'admin' and private.allergen_is_tenant_private(allergen_id, public.current_school_id()) and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = child_allergens.child_id and cl.school_id = public.current_school_id()));
 create policy child_allergens_admin_delete on public.child_allergens for delete to authenticated using (public.current_user_role() = 'admin' and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = child_allergens.child_id and cl.school_id = public.current_school_id()));
-create policy incidents_select_tenant on public.incidents for select to authenticated using (private.current_user_can_access_child(child_id));
+create policy incidents_select_tenant on public.incidents for select to authenticated using (
+  public.current_user_active()
+  and public.current_user_role() in ('admin', 'supervisor')
+  and exists (
+    select 1
+      from public.children ch
+      join public.classes cl on cl.id = ch.class_id
+     where ch.id = incidents.child_id
+       and cl.school_id = public.current_school_id()
+  )
+);
 create policy incidents_admin_insert on public.incidents for insert to authenticated with check (public.current_user_active() and public.current_user_role() in ('admin', 'supervisor') and private.incident_relations_are_tenant_safe(monitor_id, child_id) and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = incidents.child_id and cl.school_id = public.current_school_id()));
 create policy incidents_admin_update on public.incidents for update to authenticated using (public.current_user_active() and public.current_user_role() in ('admin', 'supervisor') and private.incident_relations_are_tenant_safe(monitor_id, child_id) and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = incidents.child_id and cl.school_id = public.current_school_id())) with check (public.current_user_active() and public.current_user_role() in ('admin', 'supervisor') and private.incident_relations_are_tenant_safe(monitor_id, child_id) and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = incidents.child_id and cl.school_id = public.current_school_id()));
 create policy incidents_admin_delete on public.incidents for delete to authenticated using (public.current_user_active() and public.current_user_role() in ('admin', 'supervisor') and private.incident_relations_are_tenant_safe(monitor_id, child_id) and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = incidents.child_id and cl.school_id = public.current_school_id()));
