@@ -30,13 +30,25 @@ test("web manifest exposes the standalone app contract", async () => {
         src: "/icons/icon-192.png",
         sizes: "192x192",
         type: "image/png",
-        purpose: "any maskable",
+        purpose: "any",
+      },
+      {
+        src: "/icons/icon-192-maskable.png",
+        sizes: "192x192",
+        type: "image/png",
+        purpose: "maskable",
       },
       {
         src: "/icons/icon-512.png",
         sizes: "512x512",
         type: "image/png",
-        purpose: "any maskable",
+        purpose: "any",
+      },
+      {
+        src: "/icons/icon-512-maskable.png",
+        sizes: "512x512",
+        type: "image/png",
+        purpose: "maskable",
       },
     ],
   );
@@ -91,7 +103,7 @@ test("MainLayout declares iOS metadata and registers the root service worker", a
   );
   assert.match(
     layout,
-    /navigator\s*\.\s*serviceWorker\s*\.\s*register\s*\(\s*["']\/sw\.js["']\s*\)/,
+    /navigator\s*\.\s*serviceWorker\s*\.\s*register\s*\(\s*["']\/sw\.js["']\s*,\s*\{\s*scope:\s*["']\/["']\s*\}\s*\)/,
   );
 });
 
@@ -102,8 +114,8 @@ test("built PWA resources are published at the required paths", async () => {
     "dist/icons/icon-192.png",
     "dist/icons/icon-512.png",
     "dist/icons/apple-touch-icon.png",
-    "dist/splash/ipad-landscape.png",
-    "dist/splash/ipad-portrait.png",
+    "dist/splash/ipad-landscape.svg",
+    "dist/splash/ipad-portrait.svg",
   ];
 
   await Promise.all(resources.map((path) => access(new URL(path, root))));
