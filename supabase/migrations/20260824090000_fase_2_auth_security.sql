@@ -322,6 +322,56 @@ begin
 end
 $$;
 
+create or replace function public.menu_is_tenant_private(
+  p_menu_id uuid,
+  p_school_id uuid
+)
+returns boolean
+language plpgsql
+volatile
+security definer
+set search_path = pg_catalog, public, pg_temp
+as $$
+begin
+  perform pg_advisory_xact_lock(2147483647, 42042);
+
+  return exists (
+    select 1
+      from public.menus_schools ms
+     where ms.menu_id = p_menu_id
+  ) and not exists (
+    select 1
+      from public.menus_schools ms
+     where ms.menu_id = p_menu_id
+       and (ms.school_id is null or p_school_id is null or ms.school_id <> p_school_id)
+  );
+end
+$$;
+
+create or replace function public.enforce_menu_school_tenant()
+returns trigger
+language plpgsql
+volatile
+security definer
+set search_path = pg_catalog, public, pg_temp
+as $$
+begin
+  perform pg_advisory_xact_lock(2147483647, 42042);
+
+  if new.school_id is null or exists (
+    select 1
+      from public.menus_schools ms
+     where ms.menu_id = new.menu_id
+       and ms.school_id is distinct from new.school_id
+  ) then
+    raise exception 'menus_schools cannot associate a menu across schools'
+      using errcode = '23514';
+  end if;
+
+  return new;
+end
+$$;
+
 create or replace function public.enforce_child_allergen_tenant()
 returns trigger
 language plpgsql
@@ -498,6 +548,7 @@ alter function public.current_user_has_assigned_child(uuid) set schema private;
 alter function public.current_user_can_access_class(uuid) set schema private;
 alter function public.user_role_change_is_safe(uuid, text) set schema private;
 alter function public.allergen_is_tenant_private(uuid, uuid) set schema private;
+alter function public.menu_is_tenant_private(uuid, uuid) set schema private;
 alter function public.monitor_assignments_are_tenant_safe(uuid, uuid) set schema private;
 alter function public.incident_relations_are_tenant_safe(uuid, uuid) set schema private;
 
@@ -506,23 +557,27 @@ revoke execute on function private.current_user_has_assigned_child(uuid) from pu
 revoke execute on function private.current_user_can_access_class(uuid) from public, anon;
 revoke execute on function private.user_role_change_is_safe(uuid, text) from public, anon;
 revoke execute on function private.allergen_is_tenant_private(uuid, uuid) from public, anon;
+revoke execute on function private.menu_is_tenant_private(uuid, uuid) from public, anon;
 revoke execute on function private.monitor_assignments_are_tenant_safe(uuid, uuid) from public, anon;
 revoke execute on function public.enforce_monitor_assignment_tenant() from public, anon, authenticated, service_role;
 revoke execute on function public.enforce_monitor_school_tenant() from public, anon, authenticated, service_role;
 revoke execute on function private.incident_relations_are_tenant_safe(uuid, uuid) from public, anon;
 revoke execute on function public.enforce_incident_tenant() from public, anon, authenticated, service_role;
 revoke execute on function public.enforce_child_allergen_tenant() from public, anon, authenticated, service_role;
+revoke execute on function public.enforce_menu_school_tenant() from public, anon, authenticated, service_role;
 grant execute on function private.current_user_can_access_child(uuid) to authenticated, service_role;
 grant execute on function private.current_user_has_assigned_child(uuid) to authenticated, service_role;
 grant execute on function private.current_user_can_access_class(uuid) to authenticated, service_role;
 grant execute on function private.user_role_change_is_safe(uuid, text) to authenticated, service_role;
 grant execute on function private.allergen_is_tenant_private(uuid, uuid) to authenticated, service_role;
+grant execute on function private.menu_is_tenant_private(uuid, uuid) to authenticated, service_role;
 grant execute on function private.monitor_assignments_are_tenant_safe(uuid, uuid) to authenticated, service_role;
 grant execute on function public.enforce_monitor_assignment_tenant() to postgres;
 grant execute on function public.enforce_monitor_school_tenant() to postgres;
 grant execute on function private.incident_relations_are_tenant_safe(uuid, uuid) to authenticated, service_role;
 grant execute on function public.enforce_incident_tenant() to postgres;
 grant execute on function public.enforce_child_allergen_tenant() to postgres;
+grant execute on function public.enforce_menu_school_tenant() to postgres;
 
 create trigger monitors_schools_same_school
 before insert or update on public.monitors_schools
@@ -536,6 +591,9 @@ for each row execute function public.enforce_incident_tenant();
 create trigger child_allergens_same_school
 before insert or update on public.child_allergens
 for each row execute function public.enforce_child_allergen_tenant();
+create trigger menus_schools_same_school
+before insert or update on public.menus_schools
+for each row execute function public.enforce_menu_school_tenant();
 
 create or replace function public.custom_access_token_hook(event jsonb)
 returns jsonb
@@ -842,8 +900,8 @@ create policy menus_select_tenant on public.menus for select to authenticated us
   select 1 from public.menus_schools ms where ms.menu_id = menus.id and ms.school_id = public.current_school_id()
 ) and public.current_user_role() in ('admin', 'supervisor', 'padre'));
 create policy menus_admin_insert on public.menus for insert to authenticated with check (public.current_user_role() = 'admin');
-create policy menus_admin_update on public.menus for update to authenticated using (public.current_user_role() = 'admin' and exists (select 1 from public.menus_schools ms where ms.menu_id = menus.id and ms.school_id = public.current_school_id())) with check (public.current_user_role() = 'admin');
-create policy menus_admin_delete on public.menus for delete to authenticated using (public.current_user_role() = 'admin' and exists (select 1 from public.menus_schools ms where ms.menu_id = menus.id and ms.school_id = public.current_school_id()));
+create policy menus_admin_update on public.menus for update to authenticated using (public.current_user_role() = 'admin' and private.menu_is_tenant_private(menus.id, public.current_school_id())) with check (public.current_user_role() = 'admin' and private.menu_is_tenant_private(menus.id, public.current_school_id()));
+create policy menus_admin_delete on public.menus for delete to authenticated using (public.current_user_role() = 'admin' and private.menu_is_tenant_private(menus.id, public.current_school_id()));
 create policy menus_schools_select_tenant on public.menus_schools for select to authenticated using (
   school_id = public.current_school_id()
   and (public.current_user_role() in ('admin', 'supervisor') or exists (
@@ -853,9 +911,9 @@ create policy menus_schools_select_tenant on public.menus_schools for select to 
     where cl.school_id = menus_schools.school_id and pc.parent_id = public.current_user_id()
   ))
 );
-create policy menus_schools_admin_insert on public.menus_schools for insert to authenticated with check (public.current_user_role() = 'admin' and school_id = public.current_school_id());
-create policy menus_schools_admin_update on public.menus_schools for update to authenticated using (public.current_user_role() = 'admin' and school_id = public.current_school_id()) with check (public.current_user_role() = 'admin' and school_id = public.current_school_id());
-create policy menus_schools_admin_delete on public.menus_schools for delete to authenticated using (public.current_user_role() = 'admin' and school_id = public.current_school_id());
+create policy menus_schools_admin_insert on public.menus_schools for insert to authenticated with check (public.current_user_role() = 'admin' and school_id = public.current_school_id() and not exists (select 1 from public.menus_schools existing where existing.menu_id = menus_schools.menu_id and (existing.school_id is null or existing.school_id <> public.current_school_id())));
+create policy menus_schools_admin_update on public.menus_schools for update to authenticated using (public.current_user_role() = 'admin' and private.menu_is_tenant_private(menus_schools.menu_id, public.current_school_id())) with check (public.current_user_role() = 'admin' and school_id = public.current_school_id() and not exists (select 1 from public.menus_schools existing where existing.menu_id = menus_schools.menu_id and (existing.school_id is null or existing.school_id <> public.current_school_id())));
+create policy menus_schools_admin_delete on public.menus_schools for delete to authenticated using (public.current_user_role() = 'admin' and private.menu_is_tenant_private(menus_schools.menu_id, public.current_school_id()));
 
 create policy allergens_select_tenant on public.allergens for select to authenticated using (
   public.current_user_role() in ('admin', 'supervisor') and exists (select 1 from public.child_allergens ca join public.children ch on ch.id = ca.child_id join public.classes cl on cl.id = ch.class_id where ca.allergen_id = allergens.id and cl.school_id = public.current_school_id())

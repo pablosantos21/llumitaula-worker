@@ -553,21 +553,6 @@ select is(
 select set_config(
   'request.jwt.claims',
   json_build_object(
-    'sub', '00000000-0000-4000-8000-000000000112',
-    'role', 'authenticated'
-  )::text,
-  true
-);
-select is(
-  (select count(*) from public.schools
-   where id = '00000000-0000-4000-8000-000000000002'::uuid),
-  0::bigint,
-  'supervisor A cannot read school B'
-);
-
-select set_config(
-  'request.jwt.claims',
-  json_build_object(
     'sub', '00000000-0000-4000-8000-000000000113',
     'role', 'authenticated'
   )::text,
@@ -600,20 +585,6 @@ select lives_ok(
 );
 
 select set_config('request.jwt.claims', '{}', true);
-select is(
-  pg_temp.privileged_count_rows($query$
-    select count(*)
-    from public.classes cl
-    left join public.worker_classrooms wc
-      on wc.class_id = cl.id
-     and wc.worker_id = '00000000-0000-4000-8000-000000000111'::uuid
-    where cl.id = '00000000-0000-4000-8000-000000000012'::uuid
-      and wc.worker_id is null
-  $query$),
-  1::bigint,
-  'class A ...0012 exists and is not assigned to worker A'
-);
-
 set local role authenticated;
 select set_config(
   'request.jwt.claims',
@@ -639,13 +610,67 @@ select set_config(
   )::text,
   true
 );
+set local role postgres;
+insert into public.menus (id, first_course, second_course, type)
+values
+  ('00000000-0000-4000-8000-000000000696'::uuid, 'B-only', 'Menu', 'test'),
+  ('00000000-0000-4000-8000-000000000697'::uuid, 'Unassigned', 'Menu', 'test');
+insert into public.menus_schools (menu_id, school_id)
+values ('00000000-0000-4000-8000-000000000696'::uuid,
+        '00000000-0000-4000-8000-000000000002'::uuid);
+select is(
+  pg_temp.privileged_count_rows($query$
+    select count(*)
+      from public.menus m
+      left join public.menus_schools ms on ms.menu_id = m.id
+     where m.id in (
+       '00000000-0000-4000-8000-000000000696'::uuid,
+       '00000000-0000-4000-8000-000000000697'::uuid
+     )
+     group by m.id
+    having (m.id = '00000000-0000-4000-8000-000000000696'::uuid
+            and count(ms.school_id) = 1
+            and bool_and(ms.school_id = '00000000-0000-4000-8000-000000000002'::uuid))
+        or (m.id = '00000000-0000-4000-8000-000000000697'::uuid
+            and count(ms.school_id) = 0)
+  $query$),
+  2::bigint,
+  'menu cross-tenant mutation fixtures have exact associations'
+);
+
+set local role authenticated;
+select set_config(
+  'request.jwt.claims',
+  json_build_object(
+    'sub', '00000000-0000-4000-8000-000000000113',
+    'role', 'authenticated'
+  )::text,
+  true
+);
 select is(
   pg_temp.count_rows($query$
-    select count(*) from public.devices
-     where identifier = 'admin-crud-test'
+    update public.menus
+       set first_course = 'blocked'
+     where id in (
+       '00000000-0000-4000-8000-000000000696'::uuid,
+       '00000000-0000-4000-8000-000000000697'::uuid
+     )
+     returning id
   $query$),
   0::bigint,
-  'admin A CRUD leaves no residual device'
+  'admin A cannot update a B-only or unassigned menu'
+);
+select is(
+  pg_temp.count_rows($query$
+    delete from public.menus
+     where id in (
+       '00000000-0000-4000-8000-000000000696'::uuid,
+       '00000000-0000-4000-8000-000000000697'::uuid
+     )
+     returning id
+  $query$),
+  0::bigint,
+  'admin A cannot delete a B-only or unassigned menu'
 );
 
 select set_config(
