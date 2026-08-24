@@ -230,6 +230,15 @@ insert into public.child_allergens (child_id, allergen_id)
 values ('00000000-0000-4000-8000-000000000202'::uuid,
         '00000000-0000-4000-8000-000000000401'::uuid)
 on conflict (child_id, allergen_id) do nothing;
+insert into public.children (id, first_name, last_name, class_id)
+values ('00000000-0000-4000-8000-000000000227'::uuid,
+        'Allergy', 'Class Change',
+        '00000000-0000-4000-8000-000000000011'::uuid)
+on conflict (id) do nothing;
+insert into public.child_allergens (child_id, allergen_id)
+values ('00000000-0000-4000-8000-000000000227'::uuid,
+        '00000000-0000-4000-8000-000000000401'::uuid)
+on conflict (child_id, allergen_id) do nothing;
 
 set local role authenticated;
 select set_config(
@@ -801,14 +810,34 @@ select set_config(
   )::text,
   true
 );
-select is(
-  pg_temp.count_rows($query$
-    select count(*)
-      from public.allergens a
-     where a.id = '00000000-0000-4000-8000-000000000498'::uuid
-  $query$),
-  0::bigint,
-  'worker cannot read an allergen attached only to an unassigned class'
+set local role postgres;
+do $$
+begin
+  if not exists (
+    select 1 from public.children
+     where id = '00000000-0000-4000-8000-000000000226'::uuid
+       and class_id is null
+  )
+  or not exists (
+    select 1 from public.allergens
+     where id = '00000000-0000-4000-8000-000000000401'::uuid
+  )
+  or exists (
+    select 1 from public.child_allergens
+     where child_id = '00000000-0000-4000-8000-000000000226'::uuid
+       and allergen_id = '00000000-0000-4000-8000-000000000401'::uuid
+  ) then
+    raise exception 'child without class allergy fixtures are not exact';
+  end if;
+end
+$$;
+set local role service_role;
+select throws_ok(
+  $$insert into public.child_allergens (child_id, allergen_id)
+    values ('00000000-0000-4000-8000-000000000226'::uuid,
+            '00000000-0000-4000-8000-000000000401'::uuid)$$,
+  '23514',
+  'direct child_allergens insert rejects a child without a class'
 );
 
 set local role postgres;
@@ -884,14 +913,31 @@ select throws_ok(
   'admin A cannot update an A association to a B-only allergen'
 );
 
-select is(
-  pg_temp.count_rows($query$
-    select count(*)
-      from public.children
-     where id = '00000000-0000-4000-8000-000000000226'::uuid
-  $query$),
-  0::bigint,
-  'a child without a class is not visible to a worker'
+set local role postgres;
+do $$
+begin
+  if not exists (
+    select 1
+      from public.children c
+      join public.classes cl on cl.id = c.class_id
+     where c.id = '00000000-0000-4000-8000-000000000227'::uuid
+       and cl.id = '00000000-0000-4000-8000-000000000011'::uuid
+       and cl.school_id = '00000000-0000-4000-8000-000000000001'::uuid
+  )
+  or (select count(*) from public.child_allergens
+       where child_id = '00000000-0000-4000-8000-000000000227'::uuid
+         and allergen_id = '00000000-0000-4000-8000-000000000401'::uuid) <> 1 then
+    raise exception 'child class allergy fixtures are not exact';
+  end if;
+end
+$$;
+set local role service_role;
+select throws_ok(
+  $$update public.children
+       set class_id = '00000000-0000-4000-8000-000000000021'::uuid
+     where id = '00000000-0000-4000-8000-000000000227'::uuid$$,
+  '23514',
+  'direct child class change rejects an allergy tenant mismatch'
 );
 
 set local role postgres;

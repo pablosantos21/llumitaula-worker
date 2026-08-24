@@ -313,12 +313,50 @@ begin
 
   return not exists (
     select 1
-      from public.child_allergens ca
+     from public.child_allergens ca
       join public.children ch on ch.id = ca.child_id
       join public.classes cl on cl.id = ch.class_id
      where ca.allergen_id = p_allergen_id
-       and cl.school_id <> p_school_id
+       and (cl.school_id is null or cl.school_id <> p_school_id)
   );
+end
+$$;
+
+create or replace function public.enforce_child_allergen_tenant()
+returns trigger
+language plpgsql
+volatile
+security definer
+set search_path = pg_catalog, public, pg_temp
+as $$
+declare
+  child_school_id uuid;
+begin
+  perform pg_advisory_xact_lock(2147483647, 42042);
+
+  -- The trusted seed role preserves the existing shared legacy fixtures;
+  -- application and service_role writes still pass the tenant check below.
+  if current_user = 'postgres' then
+    return new;
+  end if;
+
+  select cl.school_id
+    into child_school_id
+    from public.children ch
+    left join public.classes cl on cl.id = ch.class_id
+   where ch.id = new.child_id;
+
+  if child_school_id is null then
+    raise exception 'child_allergens requires a child with a tenant'
+      using errcode = '23514';
+  end if;
+
+  if not private.allergen_is_tenant_private(new.allergen_id, child_school_id) then
+    raise exception 'child_allergens cannot associate an allergen across schools'
+      using errcode = '23514';
+  end if;
+
+  return new;
 end
 $$;
 
@@ -479,6 +517,7 @@ revoke execute on function public.enforce_monitor_assignment_tenant() from publi
 revoke execute on function public.enforce_monitor_school_tenant() from public, anon, authenticated, service_role;
 revoke execute on function private.incident_relations_are_tenant_safe(uuid, uuid) from public, anon;
 revoke execute on function public.enforce_incident_tenant() from public, anon, authenticated, service_role;
+revoke execute on function public.enforce_child_allergen_tenant() from public, anon, authenticated, service_role;
 grant execute on function private.current_user_can_access_child(uuid) to authenticated, service_role;
 grant execute on function private.current_user_has_assigned_child(uuid) to authenticated, service_role;
 grant execute on function private.current_user_can_access_class(uuid) to authenticated, service_role;
@@ -489,6 +528,7 @@ grant execute on function public.enforce_monitor_assignment_tenant() to postgres
 grant execute on function public.enforce_monitor_school_tenant() to postgres;
 grant execute on function private.incident_relations_are_tenant_safe(uuid, uuid) to authenticated, service_role;
 grant execute on function public.enforce_incident_tenant() to postgres;
+grant execute on function public.enforce_child_allergen_tenant() to postgres;
 
 create trigger monitors_schools_same_school
 before insert or update on public.monitors_schools
@@ -499,6 +539,9 @@ for each row execute function public.enforce_monitor_school_tenant();
 create trigger incidents_same_school
 before insert or update on public.incidents
 for each row execute function public.enforce_incident_tenant();
+create trigger child_allergens_same_school
+before insert or update on public.child_allergens
+for each row execute function public.enforce_child_allergen_tenant();
 
 create or replace function public.custom_access_token_hook(event jsonb)
 returns jsonb
@@ -984,14 +1027,30 @@ begin
         join public.users u on u.id = pc.parent_id
         where ch.class_id = new.id
           and u.school_id is distinct from new.school_id
-    ) or exists (
-      select 1
-        from public.incidents i
-        join public.children ch on ch.id = i.child_id
-        join public.monitors m on m.id = i.monitor_id
-       where ch.class_id = new.id
-         and m.school_id is distinct from new.school_id
-    ) then
+     ) or exists (
+       select 1
+         from public.incidents i
+         join public.children ch on ch.id = i.child_id
+         join public.monitors m on m.id = i.monitor_id
+        where ch.class_id = new.id
+          and m.school_id is distinct from new.school_id
+     ) or exists (
+       select 1
+         from public.children ch
+         join public.child_allergens ca on ca.child_id = ch.id
+        where ch.class_id = new.id
+          and (
+            new.school_id is null
+            or exists (
+              select 1
+                from public.child_allergens ca_other
+                join public.children ch_other on ch_other.id = ca_other.child_id
+                left join public.classes cl_other on cl_other.id = ch_other.class_id
+               where ca_other.allergen_id = ca.allergen_id
+                 and (cl_other.school_id is null or cl_other.school_id <> new.school_id)
+            )
+          )
+     ) then
       raise exception 'classes.school_id update would invalidate tenant relations'
         using errcode = '23514';
     end if;
@@ -1026,6 +1085,26 @@ begin
       into child_school
       from public.classes c
      where c.id = new.class_id;
+
+    if exists (
+      select 1
+        from public.child_allergens ca
+       where ca.child_id = new.id
+         and (
+           child_school is null
+           or exists (
+             select 1
+               from public.child_allergens ca_other
+               join public.children ch_other on ch_other.id = ca_other.child_id
+               left join public.classes cl_other on cl_other.id = ch_other.class_id
+              where ca_other.allergen_id = ca.allergen_id
+                and (cl_other.school_id is null or cl_other.school_id <> child_school)
+           )
+         )
+    ) then
+      raise exception 'children.class_id update would invalidate child_allergens'
+        using errcode = '23514';
+    end if;
 
     if exists (
       select 1
