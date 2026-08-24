@@ -217,9 +217,13 @@ set local role postgres;
 select lives_ok(
   $$insert into public.parents_children (parent_id, child_id)
     values ('00000000-0000-4000-8000-000000000111'::uuid,
-            '00000000-0000-4000-8000-000000000207'::uuid)$$,
+            '00000000-0000-4000-8000-000000000213'::uuid)$$,
   'fixture can give worker A an unrelated parental link'
 );
+insert into public.child_allergens (child_id, allergen_id)
+values ('00000000-0000-4000-8000-000000000213'::uuid,
+        '00000000-0000-4000-8000-000000000401'::uuid)
+on conflict (child_id, allergen_id) do nothing;
 select lives_ok(
   $$insert into public.worker_classrooms (worker_id, class_id)
     values ('00000000-0000-4000-8000-000000000116'::uuid,
@@ -239,7 +243,7 @@ select set_config(
 select is(
   pg_temp.count_rows($query$
     select 1 from public.children
-     where id = '00000000-0000-4000-8000-000000000207'::uuid
+     where id = '00000000-0000-4000-8000-000000000213'::uuid
   $query$),
   0::bigint,
   'worker A parental links do not grant access to unassigned children'
@@ -247,7 +251,7 @@ select is(
 select is(
   pg_temp.count_rows($query$
     select 1 from public.child_allergens
-     where child_id = '00000000-0000-4000-8000-000000000207'::uuid
+     where child_id = '00000000-0000-4000-8000-000000000213'::uuid
   $query$),
   0::bigint,
   'worker A parental links do not grant access to unassigned child allergens'
@@ -273,7 +277,8 @@ select set_config(
 select results_eq(
   $$select worker_id, class_id from public.worker_classrooms
      where class_id in ('00000000-0000-4000-8000-000000000011'::uuid,
-                        '00000000-0000-4000-8000-000000000012'::uuid)
+                        '00000000-0000-4000-8000-000000000012'::uuid,
+                        '00000000-0000-4000-8000-000000000021'::uuid)
      order by worker_id, class_id$$,
   $$values
     ('00000000-0000-4000-8000-000000000111'::uuid,
