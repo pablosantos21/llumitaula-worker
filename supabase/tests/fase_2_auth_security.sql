@@ -1781,7 +1781,7 @@ select ok(
   'rate-limit attempts retain a counter and a bounded window'
 );
 
-select set local role postgres;
+set local role postgres;
 select lives_ok(
   $$insert into public.device_setup_codes
       (id, school_id, code_hash, expires_at, max_uses, uses, active)
@@ -1891,7 +1891,7 @@ select is(
   'a rejected second claim cannot increment a single-use code'
 );
 
-select set local role postgres;
+set local role postgres;
 select lives_ok(
   $$update public.devices
        set active = false
@@ -1909,7 +1909,7 @@ select ok(
   'successful re-claim reactivates the device'
 );
 
-select set local role postgres;
+set local role postgres;
 select lives_ok(
    $$insert into public.device_setup_codes
       (id, school_id, code_hash, expires_at, max_uses, uses, active)
@@ -1933,7 +1933,7 @@ select ok(
   'a device is never assigned outside the code school'
 );
 
-select set local role postgres;
+set local role postgres;
 select lives_ok(
   $$insert into public.device_setup_codes
       (id, school_id, code_hash, expires_at, max_uses, uses, active)
@@ -1959,7 +1959,7 @@ select throws_ok(
   'P0001',
   'failed device creation rejects the claim atomically'
 );
-select set local role postgres;
+set local role postgres;
 select is(
   (select uses from public.device_setup_codes where id = '00000000-0000-4000-8000-000000000707'::uuid),
   0,
