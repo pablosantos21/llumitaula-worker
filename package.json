@@ -20,6 +20,7 @@
     "test:pwa:unit": "node --test tests/pwa.test.mjs",
     "test:pwa:contract": "npm run build && npm run test:public-data && npm run test:pwa:unit",
     "test:pwa": "npm run test:pwa:contract",
+    "test:device-setup": "node --test tests/device-setup.test.mjs",
     "test:public-data": "node scripts/check-public-build.mjs",
     "format": "prettier . --write",
     "format:check": "prettier . --check"
