@@ -75,8 +75,7 @@ begin
     p_recorded_at, p_status, p_notes
   )
   on conflict (child_id, meal_type_id, recorded_date) do update
-    set recorded_by = excluded.recorded_by,
-        recorded_at = excluded.recorded_at,
+    set recorded_at = excluded.recorded_at,
         status = excluded.status,
         notes = excluded.notes
   returning * into saved_meal;

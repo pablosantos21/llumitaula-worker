@@ -1,6 +1,6 @@
 begin;
 
-select plan(76);
+select plan(82);
 
 set local role postgres;
 
@@ -805,6 +805,92 @@ select is(
   $query$),
   0::bigint,
   'worker A cannot update a record older than 24 hours'
+);
+
+select set_config(
+  'request.jwt.claims',
+  json_build_object(
+    'sub', '00000000-0000-4000-8000-000000000113',
+    'role', 'authenticated'
+  )::text,
+  true
+);
+select throws_ok(
+  $$insert into public.meal_records
+      (id, child_id, meal_type_id, recorded_by, recorded_date, recorded_at, status)
+    values
+      ('00000000-0000-4000-8000-000000000631'::uuid,
+       '00000000-0000-4000-8000-000000000204'::uuid,
+       '00000000-0000-4000-8000-000000000611'::uuid,
+       '00000000-0000-4000-8000-000000000111'::uuid,
+       current_date - 1, now(), 'bien')$$,
+  '42501',
+  'admin cannot insert a meal record for another author'
+);
+
+select set_config(
+  'request.jwt.claims',
+  json_build_object(
+    'sub', '00000000-0000-4000-8000-000000000112',
+    'role', 'authenticated'
+  )::text,
+  true
+);
+select throws_ok(
+  $$insert into public.meal_records
+      (id, child_id, meal_type_id, recorded_by, recorded_date, recorded_at, status)
+    values
+      ('00000000-0000-4000-8000-000000000632'::uuid,
+       '00000000-0000-4000-8000-000000000205'::uuid,
+       '00000000-0000-4000-8000-000000000611'::uuid,
+       '00000000-0000-4000-8000-000000000111'::uuid,
+       current_date - 1, now(), 'bien')$$,
+  '42501',
+  'supervisor cannot insert a meal record for another author'
+);
+
+select set_config(
+  'request.jwt.claims',
+  json_build_object(
+    'sub', '00000000-0000-4000-8000-000000000113',
+    'role', 'authenticated'
+  )::text,
+  true
+);
+select throws_ok(
+  $$update public.meal_records
+       set recorded_by = '00000000-0000-4000-8000-000000000111'::uuid
+     where id = '00000000-0000-4000-8000-000000000625'::uuid$$,
+  '42501',
+  'admin cannot change the author of a meal record'
+);
+
+select set_config(
+  'request.jwt.claims',
+  json_build_object(
+    'sub', '00000000-0000-4000-8000-000000000112',
+    'role', 'authenticated'
+  )::text,
+  true
+);
+select throws_ok(
+  $$update public.meal_records
+       set recorded_by = '00000000-0000-4000-8000-000000000111'::uuid
+     where id = '00000000-0000-4000-8000-000000000622'::uuid$$,
+  '42501',
+  'supervisor cannot change the author of a meal record'
+);
+select lives_ok(
+  $$update public.meal_records
+       set status = 'mal', notes = 'supervisor may edit content'
+     where id = '00000000-0000-4000-8000-000000000622'::uuid$$,
+  'supervisor can edit status and notes without changing authorship'
+);
+select is(
+  (select recorded_by from public.meal_records
+    where id = '00000000-0000-4000-8000-000000000622'::uuid),
+  '00000000-0000-4000-8000-000000000112'::uuid,
+  'supervisor content update preserves the original author'
 );
 
 select set_config(

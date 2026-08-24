@@ -195,6 +195,21 @@ as $$
   select coalesce((select u.active from public.users u where u.id = auth.uid()), false)
 $$;
 
+create or replace function private.meal_record_author_is_unchanged(
+  p_record_id uuid,
+  p_recorded_by uuid
+)
+returns boolean
+language sql
+stable
+security definer
+set search_path = pg_catalog, public, pg_temp
+as $$
+  select mr.recorded_by = p_recorded_by
+    from public.meal_records mr
+   where mr.id = p_record_id
+$$;
+
 revoke execute on function public.current_user_id() from public, anon;
 revoke execute on function public.current_school_id() from public, anon;
 revoke execute on function public.current_user_role() from public, anon;
@@ -203,6 +218,8 @@ grant execute on function public.current_user_id() to authenticated, service_rol
 grant execute on function public.current_school_id() to authenticated, service_role;
 grant execute on function public.current_user_role() to authenticated, service_role;
 grant execute on function public.current_user_active() to authenticated, service_role;
+revoke execute on function private.meal_record_author_is_unchanged(uuid, uuid) from public, anon;
+grant execute on function private.meal_record_author_is_unchanged(uuid, uuid) to authenticated, service_role;
 
 create or replace function public.current_user_can_access_child(p_child_id uuid)
 returns boolean
@@ -884,10 +901,10 @@ using (public.current_user_active() and exists (
      ) or meal_records.recorded_by = public.current_user_id())
 ));
 create policy meal_records_admin_supervisor_insert on public.meal_records for insert to authenticated
-with check (public.current_user_active() and public.current_user_role() in ('admin', 'supervisor') and exists (
-  select 1 from public.children ch join public.classes cl on cl.id = ch.class_id join public.meal_types mt on mt.id = meal_records.meal_type_id
-   where ch.id = meal_records.child_id and cl.school_id = public.current_school_id() and mt.school_id = cl.school_id
-   ) and recorded_at <= now());
+ with check (public.current_user_active() and public.current_user_role() in ('admin', 'supervisor') and exists (
+   select 1 from public.children ch join public.classes cl on cl.id = ch.class_id join public.meal_types mt on mt.id = meal_records.meal_type_id
+    where ch.id = meal_records.child_id and cl.school_id = public.current_school_id() and mt.school_id = cl.school_id
+    ) and recorded_by = public.current_user_id() and recorded_at <= now());
 create policy meal_records_worker_insert on public.meal_records for insert to authenticated
  with check (public.current_user_active() and public.current_user_role() = 'worker' and recorded_by = public.current_user_id() and recorded_at <= now() and exists (
   select 1 from public.children ch join public.classes cl on cl.id = ch.class_id join public.worker_classrooms wc on wc.class_id = cl.id join public.meal_types mt on mt.id = meal_records.meal_type_id
@@ -895,10 +912,10 @@ create policy meal_records_worker_insert on public.meal_records for insert to au
 ));
 create policy meal_records_admin_supervisor_update on public.meal_records for update to authenticated
 using (public.current_user_active() and public.current_user_role() in ('admin', 'supervisor') and exists (
-  select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = meal_records.child_id and cl.school_id = public.current_school_id()
-   ) and recorded_at <= now()) with check (public.current_user_active() and public.current_user_role() in ('admin', 'supervisor') and recorded_at <= now() and exists (
-  select 1 from public.children ch join public.classes cl on cl.id = ch.class_id join public.meal_types mt on mt.id = meal_records.meal_type_id where ch.id = meal_records.child_id and cl.school_id = public.current_school_id() and mt.school_id = cl.school_id
-));
+   select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = meal_records.child_id and cl.school_id = public.current_school_id()
+    ) and recorded_at <= now()) with check (public.current_user_active() and public.current_user_role() in ('admin', 'supervisor') and recorded_at <= now() and exists (
+   select 1 from public.children ch join public.classes cl on cl.id = ch.class_id join public.meal_types mt on mt.id = meal_records.meal_type_id where ch.id = meal_records.child_id and cl.school_id = public.current_school_id() and mt.school_id = cl.school_id
+   ) and private.meal_record_author_is_unchanged(meal_records.id, meal_records.recorded_by));
 create policy meal_records_worker_update on public.meal_records for update to authenticated
 using (public.current_user_active() and public.current_user_role() = 'worker' and recorded_by = public.current_user_id() and recorded_at >= now() - interval '24 hours' and private.current_user_has_assigned_child(child_id))
 with check (public.current_user_active() and public.current_user_role() = 'worker' and recorded_by = public.current_user_id() and recorded_at >= now() - interval '24 hours' and recorded_at <= now() and private.current_user_has_assigned_child(child_id));
@@ -1328,6 +1345,65 @@ grant execute on function public.enforce_meal_record_date_boundaries() to postgr
 create trigger meal_records_date_boundaries
 before insert or update on public.meal_records
 for each row execute function public.enforce_meal_record_date_boundaries();
+
+create or replace function public.enforce_meal_record_authorship()
+returns trigger
+language plpgsql
+security definer
+set search_path = pg_catalog, public, pg_temp
+as $$
+declare
+  child_school_id uuid;
+  meal_type_school_id uuid;
+  author_school_id uuid;
+begin
+  if tg_op = 'INSERT'
+     and auth.uid() is not null
+     and new.recorded_by is distinct from auth.uid() then
+    raise exception 'meal_records.recorded_by must be the authenticated user'
+      using errcode = '42501';
+  end if;
+
+  if tg_op = 'UPDATE'
+     and new.recorded_by is distinct from old.recorded_by then
+    raise exception 'meal_records.recorded_by cannot be changed'
+      using errcode = '42501';
+  end if;
+
+  select cl.school_id
+    into child_school_id
+    from public.children ch
+    join public.classes cl on cl.id = ch.class_id
+   where ch.id = new.child_id;
+
+  select mt.school_id
+    into meal_type_school_id
+    from public.meal_types mt
+   where mt.id = new.meal_type_id;
+
+  select u.school_id
+    into author_school_id
+    from public.users u
+   where u.id = new.recorded_by
+     and u.active;
+
+  if child_school_id is null
+     or meal_type_school_id is distinct from child_school_id
+     or author_school_id is distinct from child_school_id then
+    raise exception 'meal_records.recorded_by must be a valid author in the child tenant'
+      using errcode = '23514';
+  end if;
+
+  return new;
+end
+$$;
+
+revoke execute on function public.enforce_meal_record_authorship() from public, anon, authenticated, service_role;
+grant execute on function public.enforce_meal_record_authorship() to postgres;
+
+create trigger meal_records_authorship
+before insert or update on public.meal_records
+for each row execute function public.enforce_meal_record_authorship();
 
 create trigger parents_children_same_school
 before insert or update on public.parents_children
