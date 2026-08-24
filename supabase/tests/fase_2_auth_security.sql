@@ -408,6 +408,14 @@ select lives_ok(
             'Supervisor incident', current_date)$$,
   'supervisor A can create an incident in school A'
 );
+select set_config(
+  'request.jwt.claims',
+  json_build_object(
+    'sub', '00000000-0000-4000-8000-000000000111',
+    'role', 'authenticated'
+  )::text,
+  true
+);
 select throws_ok(
   $$insert into public.incidents (id, child_id, monitor_id, description, date)
     values ('00000000-0000-4000-8000-000000000504'::uuid,
