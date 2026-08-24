@@ -126,8 +126,3 @@ export default function DeviceSetupForm() {
     </form>
   );
 }
-
-// getDeviceIdentifier handles localStorage.getItem("device_identifier"),
-// crypto.randomUUID(), and localStorage.setItem("device_identifier", ...).
-// saveDeviceContext writes localStorage.setItem("device_id", ...) and
-// localStorage.setItem("device_context", ...) with its allowlisted payload.

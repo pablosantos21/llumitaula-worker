@@ -30,29 +30,46 @@ test("device setup form submits the code through the secure RPC", async () => {
 });
 
 test("setup creates or reuses a random device identifier and persists only safe context", async () => {
-  const [form, page] = await Promise.all([
+  const [form, lib, page] = await Promise.all([
     source("src/components/DeviceSetupForm.tsx"),
+    source("src/lib/deviceSetup.ts"),
     source("src/pages/setup.astro"),
   ]);
 
-  assert.match(form, /crypto\.randomUUID\(\)/);
-  assert.match(form, /localStorage\.getItem\(["']device_identifier["']\)/);
-  assert.match(form, /localStorage\.setItem\(["']device_identifier["']/);
-  assert.match(form, /localStorage\.setItem\(["']device_id["']/);
-  assert.match(form, /localStorage\.setItem\(["']device_context["']/);
+  assert.match(lib, /crypto\.randomUUID\(\)/);
+  assert.match(lib, /const deviceIdentifierKey = ["']device_identifier["']/);
+  assert.match(lib, /localStorage\.getItem\(deviceIdentifierKey\)/);
+  assert.match(lib, /localStorage\.setItem\(deviceIdentifierKey/);
+  assert.match(lib, /localStorage\.setItem\(["']device_id["']/);
+  assert.match(lib, /localStorage\.setItem\(["']device_context["']/);
   assert.doesNotMatch(
-    form,
+    lib,
     /localStorage\.setItem\(["'](?:code|password|access_token|anon_key|service_role|PUBLIC_SUPABASE_SERVICE)/i,
   );
   assert.doesNotMatch(form, /password|service_role|PUBLIC_SUPABASE_SERVICE/i);
   assert.doesNotMatch(
-    form,
+    lib,
     /localStorage\.setItem\(["']device_context["'][\s\S]*?(?:code|password|access_token)/i,
   );
   assert.doesNotMatch(
     page,
     /PUBLIC_SUPABASE_(?:SERVICE|SECRET)|service_role|password/i,
   );
+});
+
+test("setup replaces a missing or manipulated persisted identifier", async () => {
+  const lib = await source("src/lib/deviceSetup.ts");
+
+  assert.match(
+    lib,
+    /const uuidPattern\s*=\s*\/\^\[0-9a-f\]\{8\}-\[0-9a-f\]\{4\}-\[1-5\]\[0-9a-f\]\{3\}-\[89ab\]\[0-9a-f\]\{3\}-\[0-9a-f\]\{12\}\$\/i/,
+  );
+  assert.match(
+    lib,
+    /storedIdentifier[\s\S]*uuid[\s\S]*test\(storedIdentifier\)/i,
+  );
+  assert.match(lib, /if \(storedIdentifier &&[\s\S]*return storedIdentifier/);
+  assert.match(lib, /const identifier = crypto\.randomUUID\(\)/);
 });
 
 test("setup keeps retry available on generic RPC errors and redirects after success", async () => {
