@@ -697,12 +697,15 @@ select throws_ok(
   '42501',
   'admin A cannot associate a B-only menu with school A'
 );
-select throws_ok(
-  $$update public.menus_schools
+select is(
+  pg_temp.count_rows($query$
+    update public.menus_schools
        set school_id = '00000000-0000-4000-8000-000000000001'::uuid
      where menu_id = '00000000-0000-4000-8000-000000000696'::uuid
-       and school_id = '00000000-0000-4000-8000-000000000002'::uuid$$,
-  '42501',
+       and school_id = '00000000-0000-4000-8000-000000000002'::uuid
+     returning menu_id
+  $query$),
+  0::bigint,
   'admin A cannot move a B-only menu association to school A'
 );
 select is(
