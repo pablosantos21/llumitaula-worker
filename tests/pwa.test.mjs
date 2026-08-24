@@ -18,40 +18,38 @@ test("web manifest exposes the standalone app contract", async () => {
   assert.equal(manifest.orientation, "any");
   assert.ok(manifest.theme_color);
   assert.ok(manifest.background_color);
-  assert.deepEqual(
-    manifest.icons.map(({ src, sizes, type, purpose }) => ({
-      src,
-      sizes,
-      type,
-      purpose,
-    })),
-    [
-      {
-        src: "/icons/icon-192.png",
-        sizes: "192x192",
-        type: "image/png",
-        purpose: "any",
-      },
-      {
-        src: "/icons/icon-192-maskable.png",
-        sizes: "192x192",
-        type: "image/png",
-        purpose: "maskable",
-      },
-      {
-        src: "/icons/icon-512.png",
-        sizes: "512x512",
-        type: "image/png",
-        purpose: "any",
-      },
-      {
-        src: "/icons/icon-512-maskable.png",
-        sizes: "512x512",
-        type: "image/png",
-        purpose: "maskable",
-      },
-    ],
-  );
+  assert.equal(manifest.icons.length, 4);
+  for (const expected of [
+    {
+      src: "/icons/icon-192.png",
+      sizes: "192x192",
+      type: "image/png",
+      purpose: "any",
+    },
+    {
+      src: "/icons/icon-192-maskable.png",
+      sizes: "192x192",
+      type: "image/png",
+      purpose: "maskable",
+    },
+    {
+      src: "/icons/icon-512.png",
+      sizes: "512x512",
+      type: "image/png",
+      purpose: "any",
+    },
+    {
+      src: "/icons/icon-512-maskable.png",
+      sizes: "512x512",
+      type: "image/png",
+      purpose: "maskable",
+    },
+  ]) {
+    assert.deepEqual(
+      manifest.icons.find(({ src }) => src === expected.src),
+      expected,
+    );
+  }
 });
 
 test("PWA artwork and asset generation contract is present", async () => {
@@ -105,6 +103,14 @@ test("MainLayout declares iOS metadata and registers the root service worker", a
     layout,
     /navigator\s*\.\s*serviceWorker\s*\.\s*register\s*\(\s*["']\/sw\.js["']\s*,\s*\{\s*scope:\s*["']\/["']\s*\}\s*\)/,
   );
+  assert.match(
+    layout,
+    /href="\/splash\/ipad-portrait\.png"\s+media="\(orientation: portrait\) and \(device-width: 1024px\) and \(device-height: 1366px\)"/,
+  );
+  assert.match(
+    layout,
+    /href="\/splash\/ipad-landscape\.png"\s+media="\(orientation: landscape\) and \(device-width: 1366px\) and \(device-height: 1024px\)"/,
+  );
 });
 
 test("built PWA resources are published at the required paths", async () => {
@@ -114,8 +120,8 @@ test("built PWA resources are published at the required paths", async () => {
     "dist/icons/icon-192.png",
     "dist/icons/icon-512.png",
     "dist/icons/apple-touch-icon.png",
-    "dist/splash/ipad-landscape.svg",
-    "dist/splash/ipad-portrait.svg",
+    "dist/splash/ipad-landscape.png",
+    "dist/splash/ipad-portrait.png",
   ];
 
   await Promise.all(resources.map((path) => access(new URL(path, root))));
