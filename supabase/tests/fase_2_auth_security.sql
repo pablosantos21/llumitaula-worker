@@ -788,7 +788,7 @@ select is(
      returning id
   $query$),
   0::bigint,
-  'admin cannot update an allergen shared with another school'
+  'admin cannot update a B-only allergen from another school'
 );
 
 select is(
@@ -798,7 +798,7 @@ select is(
      returning id
   $query$),
   0::bigint,
-  'admin cannot delete an allergen shared with another school'
+  'admin cannot delete a B-only allergen from another school'
 );
 
 select set_config(
@@ -894,9 +894,9 @@ select set_config(
 select throws_ok(
   $$insert into public.child_allergens (child_id, allergen_id)
     values ('00000000-0000-4000-8000-000000000202'::uuid,
-            '00000000-0000-4000-8000-000000000498'::uuid)$$,
+            '00000000-0000-4000-8000-000000000499'::uuid)$$,
   '42501',
-  'admin A cannot associate a B-only allergen with a school A child'
+  'admin A cannot associate allergen 499 from B with a school A child'
 );
 select set_config(
   'request.jwt.claims',
