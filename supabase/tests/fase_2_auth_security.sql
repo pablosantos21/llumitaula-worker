@@ -1,6 +1,6 @@
 begin;
 
-select plan(114);
+select plan(124);
 
 set local role postgres;
 
@@ -1630,16 +1630,14 @@ select ok(
   ),
   'device setup codes are stored in an RLS-protected table'
 );
-select ok(
-  exists (
-    select 1
-      from pg_attribute
-     where attrelid = to_regclass('public.device_setup_codes')
-       and attname in ('code_hash', 'school_id', 'expires_at', 'max_uses', 'uses', 'active', 'claimed_at', 'last_seen_at')
-       and not attisdropped
-  ),
-  'device setup codes contain hashed, scoped, expiring, and audited state'
-);
+select has_column('public', 'device_setup_codes', 'code_hash', 'device setup codes store only a hash');
+select has_column('public', 'device_setup_codes', 'school_id', 'device setup codes are scoped to a school');
+select has_column('public', 'device_setup_codes', 'expires_at', 'device setup codes expire');
+select has_column('public', 'device_setup_codes', 'max_uses', 'device setup codes define a usage limit');
+select has_column('public', 'device_setup_codes', 'uses', 'device setup codes track usage');
+select has_column('public', 'device_setup_codes', 'active', 'device setup codes have an active state');
+select has_column('public', 'device_setup_codes', 'claimed_at', 'device setup codes audit first claim time');
+select has_column('public', 'device_setup_codes', 'last_seen_at', 'device setup codes audit last use time');
 select ok(
   exists (
     select 1
@@ -1657,6 +1655,14 @@ select ok(
      where p.oid = to_regprocedure('public.claim_device_setup(text,uuid)')
        and has_function_privilege('anon', p.oid, 'EXECUTE')
        and has_function_privilege('authenticated', p.oid, 'EXECUTE')
+       and not has_function_privilege('service_role', p.oid, 'EXECUTE')
+       and not has_function_privilege('postgres', p.oid, 'EXECUTE')
+       and not exists (
+         select 1
+           from aclexplode(coalesce(p.proacl, '{}'::aclitem[])) acl
+          where acl.grantee = 0
+            and acl.privilege_type = 'EXECUTE'
+       )
   ),
   'claim_device_setup is executable only by anon and authenticated roles'
 );
@@ -1676,9 +1682,9 @@ select throws_ok(
   'invalid setup codes are rejected without exposing validation details'
 );
 select throws_ok(
-  $$select * from public.claim_device_setup('valid-code', 'not-a-uuid')$$,
-  '22P02',
-  'malformed device identifiers are rejected'
+  $$select * from public.claim_device_setup('valid-code', null)$$,
+  'P0001',
+  'a null device identifier is rejected by the typed RPC'
 );
 select throws_ok(
   $$select * from public.claim_device_setup('valid-code', '00000000-0000-0000-0000-000000000000'::uuid)$$,
@@ -1693,10 +1699,13 @@ select lives_ok(
     values
       ('00000000-0000-4000-8000-000000000701'::uuid,
        '00000000-0000-4000-8000-000000000001'::uuid,
-       crypt('valid-a', gen_salt('bf')), now() + interval '1 hour', 1, 0, true),
+       crypt('device-a', gen_salt('bf')), now() + interval '1 hour', 1, 0, true),
       ('00000000-0000-4000-8000-000000000708'::uuid,
        '00000000-0000-4000-8000-000000000001'::uuid,
        crypt('reactivate-a', gen_salt('bf')), now() + interval '1 hour', 1, 0, true),
+      ('00000000-0000-4000-8000-000000000709'::uuid,
+       '00000000-0000-4000-8000-000000000001'::uuid,
+       crypt('response-a', gen_salt('bf')), now() + interval '1 hour', 1, 0, true),
       ('00000000-0000-4000-8000-000000000702'::uuid,
        '00000000-0000-4000-8000-000000000001'::uuid,
        crypt('expired-a', gen_salt('bf')), now() - interval '1 hour', 2, 0, true),
@@ -1711,8 +1720,31 @@ select lives_ok(
 set local role anon;
 select set_config('request.jwt.claims', '{}', true);
 select lives_ok(
-  $$select * from public.claim_device_setup('valid-a', '00000000-0000-4000-8000-000000000701'::uuid)$$,
+  $$select * from public.claim_device_setup('device-a', '00000000-0000-4000-8000-000000000701'::uuid)$$,
   'a valid setup code can be claimed'
+);
+select is(
+  (select uses from public.device_setup_codes where id = '00000000-0000-4000-8000-000000000701'::uuid),
+  1,
+  'a successful claim consumes exactly one use'
+);
+select ok(
+  (with claimed as materialized (
+     select to_jsonb(response) as payload
+       from public.claim_device_setup(
+         'response-a', '00000000-0000-4000-8000-000000000709'::uuid
+       ) response
+   )
+   select exists (
+     select 1 from claimed
+      where payload ->> 'school_id' = '00000000-0000-4000-8000-000000000001'
+   )
+   and not exists (
+     select 1 from claimed
+      where payload::text like '%School B%'
+         or payload::text like '%00000000-0000-4000-8000-000000000002%'
+   )),
+  'a successful response contains school A only and no school B name or workers'
 );
 select ok(
   exists (
@@ -1740,9 +1772,14 @@ select throws_ok(
   'inactive setup codes are rejected'
 );
 select throws_ok(
-  $$select * from public.claim_device_setup('valid-a', '00000000-0000-4000-8000-000000000701'::uuid)$$,
+  $$select * from public.claim_device_setup('device-a', '00000000-0000-4000-8000-000000000701'::uuid)$$,
   'P0001',
   'a single-use setup code cannot be reused'
+);
+select is(
+  (select uses from public.device_setup_codes where id = '00000000-0000-4000-8000-000000000701'::uuid),
+  1,
+  'a rejected second claim cannot increment a single-use code'
 );
 
 select set local role postgres;
@@ -1768,12 +1805,12 @@ select lives_ok(
       (id, school_id, code_hash, expires_at, max_uses, uses, active)
     values ('00000000-0000-4000-8000-000000000705'::uuid,
             '00000000-0000-4000-8000-000000000002'::uuid,
-            crypt('valid-b', gen_salt('bf')), now() + interval '1 hour', 2, 0, true)$$,
+            crypt('device-b', gen_salt('bf')), now() + interval '1 hour', 2, 0, true)$$,
   'a second-school setup code is available for isolation checks'
 );
 set local role anon;
 select lives_ok(
-  $$select * from public.claim_device_setup('valid-b', '00000000-0000-4000-8000-000000000705'::uuid)$$,
+  $$select * from public.claim_device_setup('device-b', '00000000-0000-4000-8000-000000000705'::uuid)$$,
   'a second-school code can claim its own device'
 );
 select ok(

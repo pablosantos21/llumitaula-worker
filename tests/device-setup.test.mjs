@@ -22,9 +22,10 @@ test("device setup form submits the code through the secure RPC", async () => {
 
   assert.match(form, /<form[\s\S]*onSubmit/);
   assert.match(form, /name=["']code["']/);
-  assert.match(form, /\.rpc\(["']claim_device_setup["']/);
-  assert.match(form, /code/);
-  assert.match(form, /device_identifier/);
+  assert.match(
+    form,
+    /\.rpc\(["']claim_device_setup["']\s*,\s*\{\s*p_code:\s*code\.trim\(\)\s*,\s*p_device_identifier:\s*identifier\s*\}\s*\)/s,
+  );
   assert.doesNotMatch(form, /school_id\s*:/);
 });
 
@@ -44,6 +45,10 @@ test("setup creates or reuses a random device identifier and persists only safe 
     /localStorage\.setItem\(["'](?:code|password|access_token|anon_key|service_role)/i,
   );
   assert.doesNotMatch(
+    form,
+    /localStorage\.setItem\(["']device_context["'][\s\S]*?(?:code|password|access_token)/i,
+  );
+  assert.doesNotMatch(
     page,
     /PUBLIC_SUPABASE_(?:SERVICE|SECRET)|service_role|password/i,
   );
@@ -57,8 +62,9 @@ test("setup keeps retry available on generic RPC errors and redirects after succ
     form,
     /No se ha podido configurar|int[eé]ntalo de nuevo|c[oó]digo no v[aá]lido/i,
   );
-  assert.match(form, /window\.location\.(?:assign|href)/);
-  assert.match(form, /worker|trabajador/i);
+  assert.match(form, /["']\/app\/workers["']/);
+  assert.doesNotMatch(form, /console\.(?:error|log|warn)\([\s\S]*error/i);
+  assert.doesNotMatch(form, /\{\s*error\s*\}/);
   assert.doesNotMatch(form, /error\.(?:message|details|hint)/);
 });
 
