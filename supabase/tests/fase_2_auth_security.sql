@@ -699,21 +699,27 @@ select throws_ok(
 );
 select is(
   pg_temp.count_rows($query$
-    update public.menus_schools
-       set school_id = '00000000-0000-4000-8000-000000000001'::uuid
-     where menu_id = '00000000-0000-4000-8000-000000000696'::uuid
-       and school_id = '00000000-0000-4000-8000-000000000002'::uuid
-     returning menu_id
+    with changed as (
+      update public.menus_schools
+         set school_id = '00000000-0000-4000-8000-000000000001'::uuid
+       where menu_id = '00000000-0000-4000-8000-000000000696'::uuid
+         and school_id = '00000000-0000-4000-8000-000000000002'::uuid
+       returning menu_id
+    )
+    select count(*)::bigint from changed
   $query$),
   0::bigint,
   'admin A cannot move a B-only menu association to school A'
 );
 select is(
   pg_temp.count_rows($query$
-    delete from public.menus_schools
-     where menu_id = '00000000-0000-4000-8000-000000000696'::uuid
-       and school_id = '00000000-0000-4000-8000-000000000002'::uuid
-     returning menu_id
+    with changed as (
+      delete from public.menus_schools
+       where menu_id = '00000000-0000-4000-8000-000000000696'::uuid
+         and school_id = '00000000-0000-4000-8000-000000000002'::uuid
+       returning menu_id
+    )
+    select count(*)::bigint from changed
   $query$),
   0::bigint,
   'admin A cannot delete a B-only menu association'
