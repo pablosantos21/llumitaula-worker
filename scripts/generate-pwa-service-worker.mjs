@@ -69,7 +69,7 @@ if (
   output.includes("__PRECACHE_URLS__")
 ) {
   throw new Error(
-    "Service worker generation left __PRECACHE_URLS__ unresolved",
+    "Service worker generation left replacement tokens unresolved",
   );
 }
 

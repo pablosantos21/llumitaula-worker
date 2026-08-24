@@ -60,6 +60,21 @@ npx supabase db reset
 
 `npx supabase db reset` es destructivo para la base local: recrea el esquema y vuelve a ejecutar `supabase/seed.sql`. No lo ejecutes contra una base de datos de produccion. El seed crea cuentas Auth de desarrollo, pero no contiene credenciales productivas ni secretos.
 
+### Configuracion del dispositivo
+
+Abre `/setup` en la aplicacion para vincular el dispositivo. En el entorno local, despues de ejecutar `npx supabase db reset`, usa el codigo `123456`. Este codigo es solo para desarrollo local y no es una credencial valida para produccion.
+
+El formulario envia el codigo a la RPC `claim_device_setup` de Supabase. La validacion, caducidad, limite de usos y vinculacion con el colegio ocurren en Supabase; el navegador no consulta ni modifica directamente las tablas de codigos. En un entorno que no sea local debe usarse un codigo de configuracion emitido para ese entorno, nunca el codigo del seed local.
+
+La RPC aplica una defensa global basica de 30 intentos por ventana de 15 minutos,
+ademas del limite de 5 intentos por identificador. Esto dificulta la rotacion de
+`device_identifier`, pero no constituye una proteccion perfecta contra abuso;
+los controles de red o una Edge Function quedan fuera de este flujo.
+
+Tras una vinculacion correcta, el navegador conserva en `localStorage` un contexto operativo no sensible: identificadores del dispositivo y del colegio, nombre del colegio y la lista publica de trabajadores. No guardes contrasenas, tokens, claves API, datos de menores ni otros secretos en ese contexto o en `localStorage`. El contexto no sustituye la validacion de Supabase ni las politicas RLS.
+
+La clave `service_role` esta terminantemente prohibida en el navegador, en el frontend y en variables `PUBLIC_*`. El cliente solo debe usar la URL de Supabase y la clave publishable/anon; `service_role` omite RLS y solo puede existir en un backend protegido.
+
 ### Auth y roles locales
 
 El seed de desarrollo crea cuentas email/password en dos colegios. Todas usan la
