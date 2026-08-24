@@ -1,6 +1,7 @@
 import { useEffect, useState, type SubmitEvent } from "react";
 
 import {
+  assertDeviceStorageAvailable,
   getDeviceIdentifier,
   saveDeviceContext,
   type DeviceContext,
@@ -62,9 +63,11 @@ export default function DeviceSetupForm() {
 
     setState("submitting");
     try {
-      // prettier-ignore
+      assertDeviceStorageAvailable();
       const { data, error } = await supabase.rpc("claim_device_setup", {
-        p_code: code.trim(), p_device_identifier: identifier });
+        p_code: code.trim(),
+        p_device_identifier: identifier,
+      });
       if (error || !data || !isDeviceContext(data)) {
         setCode("");
         setState("error");

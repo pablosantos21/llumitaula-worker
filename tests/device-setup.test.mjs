@@ -24,7 +24,7 @@ test("device setup form submits the code through the secure RPC", async () => {
   assert.match(form, /name=["']code["']/);
   assert.match(
     form,
-    /\.rpc\(["']claim_device_setup["']\s*,\s*\{\s*p_code:\s*code\.trim\(\)\s*,\s*p_device_identifier:\s*identifier\s*\}\s*\)/s,
+    /\.rpc\(["']claim_device_setup["']\s*,\s*\{[\s\S]*p_code:\s*code\.trim\(\)[\s\S]*p_device_identifier:\s*identifier[\s\S]*\}\s*\)/s,
   );
   assert.doesNotMatch(form, /school_id\s*:/);
 });
@@ -40,7 +40,6 @@ test("setup creates or reuses a random device identifier and persists only safe 
   assert.match(lib, /const deviceIdentifierKey = ["']device_identifier["']/);
   assert.match(lib, /localStorage\.getItem\(deviceIdentifierKey\)/);
   assert.match(lib, /localStorage\.setItem\(deviceIdentifierKey/);
-  assert.match(lib, /localStorage\.setItem\(["']device_id["']/);
   assert.match(lib, /localStorage\.setItem\(["']device_context["']/);
   assert.doesNotMatch(
     lib,
@@ -70,6 +69,37 @@ test("setup replaces a missing or manipulated persisted identifier", async () =>
   );
   assert.match(lib, /if \(storedIdentifier &&[\s\S]*return storedIdentifier/);
   assert.match(lib, /const identifier = crypto\.randomUUID\(\)/);
+});
+
+test("setup preflights storage and persists the handoff context atomically", async () => {
+  const [lib, form] = await Promise.all([
+    source("src/lib/deviceSetup.ts"),
+    source("src/components/DeviceSetupForm.tsx"),
+  ]);
+
+  assert.match(lib, /export function assertDeviceStorageAvailable\(\)/);
+  assert.match(lib, /localStorage\.setItem\(["']__device_setup_probe__["']/);
+  assert.match(
+    lib,
+    /localStorage\.removeItem\(["']__device_setup_probe__["']\)/,
+  );
+  assert.match(
+    lib,
+    /localStorage\.setItem\(["']device_context["'],\s*JSON\.stringify\(safeContext\)\)/,
+  );
+  assert.doesNotMatch(lib, /localStorage\.setItem\(["']device_id["']/);
+  assert.match(
+    form,
+    /assertDeviceStorageAvailable\(\)[\s\S]*?\.rpc\(["']claim_device_setup["']/,
+  );
+});
+
+test("workers handoff page is publicly available and contains no business selection logic", async () => {
+  const page = await source("src/pages/app/workers.astro");
+
+  assert.match(page, /MainLayout[\s\S]*requiresAuth=\{false\}/);
+  assert.match(page, /<h1[\s\S]*worker|preparando|dispositivo/i);
+  assert.doesNotMatch(page, /BusinessApp|selected|MOCK_STUDENTS|data-student/);
 });
 
 test("setup keeps retry available on generic RPC errors and redirects after success", async () => {
