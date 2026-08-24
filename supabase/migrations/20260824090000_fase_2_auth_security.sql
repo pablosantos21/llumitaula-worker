@@ -110,10 +110,24 @@ create table if not exists public.meal_records (
   child_id uuid not null references public.children(id),
   meal_type_id uuid not null references public.meal_types(id),
   recorded_by uuid not null references public.users(id),
+  recorded_date date not null default current_date,
   recorded_at timestamptz not null default now(),
   status public.meal_status not null,
-  notes text
+  notes text,
+  constraint meal_records_child_meal_type_date_key unique (child_id, meal_type_id, recorded_date)
 );
+
+alter table public.meal_records
+  add column if not exists recorded_date date;
+update public.meal_records
+   set recorded_date = recorded_at::date
+ where recorded_date is null;
+alter table public.meal_records
+  alter column recorded_date set default current_date,
+  alter column recorded_date set not null;
+alter table public.meal_records
+  drop constraint if exists meal_records_child_meal_type_date_key,
+  add constraint meal_records_child_meal_type_date_key unique (child_id, meal_type_id, recorded_date);
 
 -- Auth user removal must remove every profile-owned dependent row first.
 alter table public.parents_children
@@ -929,9 +943,9 @@ create policy child_allergens_admin_insert on public.child_allergens for insert 
 create policy child_allergens_admin_update on public.child_allergens for update to authenticated using (public.current_user_role() = 'admin' and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = child_allergens.child_id and cl.school_id = public.current_school_id())) with check (public.current_user_role() = 'admin' and private.allergen_is_tenant_private(allergen_id, public.current_school_id()) and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = child_allergens.child_id and cl.school_id = public.current_school_id()));
 create policy child_allergens_admin_delete on public.child_allergens for delete to authenticated using (public.current_user_role() = 'admin' and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = child_allergens.child_id and cl.school_id = public.current_school_id()));
 create policy incidents_select_tenant on public.incidents for select to authenticated using (private.current_user_can_access_child(child_id));
-create policy incidents_admin_insert on public.incidents for insert to authenticated with check (public.current_user_active() and public.current_user_role() = 'admin' and private.incident_relations_are_tenant_safe(monitor_id, child_id) and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = incidents.child_id and cl.school_id = public.current_school_id()));
-create policy incidents_admin_update on public.incidents for update to authenticated using (public.current_user_active() and public.current_user_role() = 'admin' and private.incident_relations_are_tenant_safe(monitor_id, child_id) and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = incidents.child_id and cl.school_id = public.current_school_id())) with check (public.current_user_active() and public.current_user_role() = 'admin' and private.incident_relations_are_tenant_safe(monitor_id, child_id) and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = incidents.child_id and cl.school_id = public.current_school_id()));
-create policy incidents_admin_delete on public.incidents for delete to authenticated using (public.current_user_active() and public.current_user_role() = 'admin' and private.incident_relations_are_tenant_safe(monitor_id, child_id) and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = incidents.child_id and cl.school_id = public.current_school_id()));
+create policy incidents_admin_insert on public.incidents for insert to authenticated with check (public.current_user_active() and public.current_user_role() in ('admin', 'supervisor') and private.incident_relations_are_tenant_safe(monitor_id, child_id) and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = incidents.child_id and cl.school_id = public.current_school_id()));
+create policy incidents_admin_update on public.incidents for update to authenticated using (public.current_user_active() and public.current_user_role() in ('admin', 'supervisor') and private.incident_relations_are_tenant_safe(monitor_id, child_id) and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = incidents.child_id and cl.school_id = public.current_school_id())) with check (public.current_user_active() and public.current_user_role() in ('admin', 'supervisor') and private.incident_relations_are_tenant_safe(monitor_id, child_id) and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = incidents.child_id and cl.school_id = public.current_school_id()));
+create policy incidents_admin_delete on public.incidents for delete to authenticated using (public.current_user_active() and public.current_user_role() in ('admin', 'supervisor') and private.incident_relations_are_tenant_safe(monitor_id, child_id) and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = incidents.child_id and cl.school_id = public.current_school_id()));
 
 -- Keep API privileges no broader than the policy matrix. service_role is the
 -- separate backend path; anon receives no table access.
@@ -995,6 +1009,7 @@ create index if not exists meal_records_child_id_idx on public.meal_records (chi
 create index if not exists meal_records_meal_type_id_idx on public.meal_records (meal_type_id);
 create index if not exists meal_records_recorded_by_idx on public.meal_records (recorded_by);
 create index if not exists meal_records_recorded_at_idx on public.meal_records (recorded_at);
+create index if not exists meal_records_child_meal_date_idx on public.meal_records (child_id, meal_type_id, recorded_date);
 
 -- These checks run for direct SQL writes as well as API writes. They deliberately
 -- do not rely on RLS, which is added by Task 3.
@@ -1216,6 +1231,11 @@ begin
         using errcode = '23514';
     end if;
   elsif tg_table_name = 'meal_records' then
+    if tg_op = 'UPDATE' and old.recorded_date is distinct from new.recorded_date then
+      raise exception 'meal_records.recorded_date cannot be changed'
+        using errcode = '23514';
+    end if;
+
     select cl.school_id
       into child_school
       from public.children c

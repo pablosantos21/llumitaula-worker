@@ -22,6 +22,9 @@ export default function BusinessApp({ page }: { page: Page }) {
   const [children, setChildren] = useState<Child[]>([]);
   const [records, setRecords] = useState<MealRecord[]>([]);
   const [mealTypes, setMealTypes] = useState<MealType[]>([]);
+  const [userRole, setUserRole] = useState<
+    Database["public"]["Enums"]["user_role"] | null
+  >(null);
   const [query, setQuery] = useState("");
   const [selectedChild, setSelectedChild] = useState<Child | null>(null);
   const [toast, setToast] = useState<{
@@ -44,7 +47,7 @@ export default function BusinessApp({ page }: { page: Page }) {
         return;
       }
 
-      const [childrenResult, recordsResult, mealTypesResult] =
+      const [childrenResult, recordsResult, mealTypesResult, userResult] =
         await Promise.all([
           supabase
             .from("children")
@@ -53,20 +56,26 @@ export default function BusinessApp({ page }: { page: Page }) {
           supabase
             .from("meal_records")
             .select(
-              "id, child_id, meal_type_id, notes, recorded_at, recorded_by, status",
+              "id, child_id, meal_type_id, notes, recorded_date, recorded_at, recorded_by, status",
             )
-            .gte("recorded_at", new Date().toISOString().slice(0, 10)),
+            .eq("recorded_date", new Date().toISOString().slice(0, 10)),
           supabase
             .from("meal_types")
             .select("id, name, active, school_id, sort_order, created_at")
             .eq("active", true)
             .order("sort_order"),
+          supabase
+            .from("users")
+            .select("role")
+            .eq("id", session.user.id)
+            .single(),
         ]);
       if (!active) return;
       if (
         childrenResult.error ||
         recordsResult.error ||
-        mealTypesResult.error
+        mealTypesResult.error ||
+        userResult.error
       ) {
         setState("error");
         return;
@@ -74,6 +83,7 @@ export default function BusinessApp({ page }: { page: Page }) {
       setChildren(childrenResult.data ?? []);
       setRecords(recordsResult.data ?? []);
       setMealTypes(mealTypesResult.data ?? []);
+      setUserRole(userResult.data.role);
       setState("ready");
     }
 
@@ -102,34 +112,19 @@ export default function BusinessApp({ page }: { page: Page }) {
       return;
     }
     const date = new Date().toISOString().slice(0, 10);
-    const dateStart = `${date}T00:00:00.000Z`;
-    const dateEnd = `${date}T23:59:59.999Z`;
-    const currentResult = await supabase
-      .from("meal_records")
-      .select("id")
-      .eq("child_id", child.id)
-      .eq("meal_type_id", mealTypeId)
-      .gte("recorded_at", dateStart)
-      .lt("recorded_at", dateEnd)
-      .limit(1);
-    if (currentResult.error) {
-      setToast({ message: "No se ha podido guardar el estado", type: "error" });
-      return;
-    }
-    const currentRecord = currentResult.data[0];
     const result = await supabase
       .from("meal_records")
       .upsert(
         {
-          ...(currentRecord ? { id: currentRecord.id } : {}),
           child_id: child.id,
           meal_type_id: mealTypeId,
+          recorded_date: date,
           recorded_by: session.user.id,
           status,
           notes,
           recorded_at: `${date}T12:00:00.000Z`,
         },
-        { onConflict: "id" },
+        { onConflict: "child_id,meal_type_id,recorded_date" },
       )
       .select()
       .single();
@@ -154,7 +149,7 @@ export default function BusinessApp({ page }: { page: Page }) {
 
   async function saveIncident(child: Child, details: { comments: string }) {
     const { data: sessionData } = await supabase.auth.getSession();
-    if (!sessionData.session) {
+    if (!sessionData.session || !canManageIncidents) {
       setToast({
         message: "No se puede registrar la incidencia",
         type: "error",
@@ -225,6 +220,7 @@ export default function BusinessApp({ page }: { page: Page }) {
         .toLowerCase()
         .includes(query.toLowerCase()),
   );
+  const canManageIncidents = userRole === "admin" || userRole === "supervisor";
   return (
     <>
       <header className="sticky top-0 z-40 flex items-center justify-between border-b border-slate-200 bg-white/90 px-4 py-3 shadow-sm backdrop-blur-md">
@@ -279,6 +275,7 @@ export default function BusinessApp({ page }: { page: Page }) {
         <IncidentModal
           studentName={`${selectedChild.first_name} ${selectedChild.last_name}`}
           mealTypes={mealTypes}
+          canManageIncidents={canManageIncidents}
           onClose={() => setSelectedChild(null)}
           onSave={({
             mealTypeId,

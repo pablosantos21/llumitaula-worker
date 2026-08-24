@@ -384,13 +384,13 @@ begin
   if exists (
     select 1 from public.meal_records mr
     join (values
-      ('00000000-0000-4000-8000-000000000621'::uuid, '00000000-0000-4000-8000-000000000225'::uuid, '00000000-0000-4000-8000-000000000612'::uuid, '00000000-0000-4000-8000-000000000114'::uuid, timestamp '2026-09-01 10:00:00+00', 'bien'::public.meal_status, 'School B record'),
-      ('00000000-0000-4000-8000-000000000622'::uuid, '00000000-0000-4000-8000-000000000201'::uuid, '00000000-0000-4000-8000-000000000611'::uuid, '00000000-0000-4000-8000-000000000112'::uuid, timestamp '2026-09-01 10:00:00+00', 'regular'::public.meal_status, 'Supervisor review'),
-      ('00000000-0000-4000-8000-000000000623'::uuid, '00000000-0000-4000-8000-000000000202'::uuid, '00000000-0000-4000-8000-000000000611'::uuid, '00000000-0000-4000-8000-000000000111'::uuid, timestamp '2026-01-01 10:00:00+00', 'mal'::public.meal_status, 'Old worker record'),
-      ('00000000-0000-4000-8000-000000000624'::uuid, '00000000-0000-4000-8000-000000000203'::uuid, '00000000-0000-4000-8000-000000000611'::uuid, '00000000-0000-4000-8000-000000000116'::uuid, timestamp '2026-09-01 10:00:00+00', 'bien'::public.meal_status, 'Other worker record')
-    ) expected(id, child_id, meal_type_id, recorded_by, recorded_at, status, notes) on expected.id = mr.id
-    where (mr.child_id, mr.meal_type_id, mr.recorded_by, mr.recorded_at, mr.status, mr.notes) is distinct from
-          (expected.child_id, expected.meal_type_id, expected.recorded_by, expected.recorded_at, expected.status, expected.notes)
+       ('00000000-0000-4000-8000-000000000621'::uuid, '00000000-0000-4000-8000-000000000225'::uuid, '00000000-0000-4000-8000-000000000612'::uuid, '00000000-0000-4000-8000-000000000114'::uuid, date '2026-09-01', timestamp '2026-09-01 10:00:00+00', 'bien'::public.meal_status, 'School B record'),
+       ('00000000-0000-4000-8000-000000000622'::uuid, '00000000-0000-4000-8000-000000000201'::uuid, '00000000-0000-4000-8000-000000000611'::uuid, '00000000-0000-4000-8000-000000000112'::uuid, date '2026-09-01', timestamp '2026-09-01 10:00:00+00', 'regular'::public.meal_status, 'Supervisor review'),
+       ('00000000-0000-4000-8000-000000000623'::uuid, '00000000-0000-4000-8000-000000000202'::uuid, '00000000-0000-4000-8000-000000000611'::uuid, '00000000-0000-4000-8000-000000000111'::uuid, date '2026-01-01', timestamp '2026-01-01 10:00:00+00', 'mal'::public.meal_status, 'Old worker record'),
+       ('00000000-0000-4000-8000-000000000624'::uuid, '00000000-0000-4000-8000-000000000203'::uuid, '00000000-0000-4000-8000-000000000611'::uuid, '00000000-0000-4000-8000-000000000116'::uuid, date '2026-09-01', timestamp '2026-09-01 10:00:00+00', 'bien'::public.meal_status, 'Other worker record')
+     ) expected(id, child_id, meal_type_id, recorded_by, recorded_date, recorded_at, status, notes) on expected.id = mr.id
+     where (mr.child_id, mr.meal_type_id, mr.recorded_by, mr.recorded_date, mr.recorded_at, mr.status, mr.notes) is distinct from
+           (expected.child_id, expected.meal_type_id, expected.recorded_by, expected.recorded_date, expected.recorded_at, expected.status, expected.notes)
   ) then
     raise exception 'seed collision in public.meal_records';
   end if;
@@ -659,9 +659,9 @@ insert into public.meal_types (id, school_id, name, sort_order, created_at) valu
   ('00000000-0000-4000-8000-000000000612', '00000000-0000-4000-8000-000000000002', 'Comida B', 1, timestamp '2026-01-01 00:00:00+00')
 on conflict (id) do nothing;
 
-insert into public.meal_records (id, child_id, meal_type_id, recorded_by, recorded_at, status, notes) values
-  ('00000000-0000-4000-8000-000000000621', '00000000-0000-4000-8000-000000000225', '00000000-0000-4000-8000-000000000612', '00000000-0000-4000-8000-000000000114', timestamp '2026-09-01 10:00:00+00', 'bien', 'School B record'),
-  ('00000000-0000-4000-8000-000000000622', '00000000-0000-4000-8000-000000000201', '00000000-0000-4000-8000-000000000611', '00000000-0000-4000-8000-000000000112', timestamp '2026-09-01 10:00:00+00', 'regular', 'Supervisor review'),
-  ('00000000-0000-4000-8000-000000000623', '00000000-0000-4000-8000-000000000202', '00000000-0000-4000-8000-000000000611', '00000000-0000-4000-8000-000000000111', timestamp '2026-01-01 10:00:00+00', 'mal', 'Old worker record'),
-  ('00000000-0000-4000-8000-000000000624', '00000000-0000-4000-8000-000000000203', '00000000-0000-4000-8000-000000000611', '00000000-0000-4000-8000-000000000116', timestamp '2026-09-01 10:00:00+00', 'bien', 'Other worker record')
+insert into public.meal_records (id, child_id, meal_type_id, recorded_by, recorded_date, recorded_at, status, notes) values
+  ('00000000-0000-4000-8000-000000000621', '00000000-0000-4000-8000-000000000225', '00000000-0000-4000-8000-000000000612', '00000000-0000-4000-8000-000000000114', date '2026-09-01', timestamp '2026-09-01 10:00:00+00', 'bien', 'School B record'),
+  ('00000000-0000-4000-8000-000000000622', '00000000-0000-4000-8000-000000000201', '00000000-0000-4000-8000-000000000611', '00000000-0000-4000-8000-000000000112', date '2026-09-01', timestamp '2026-09-01 10:00:00+00', 'regular', 'Supervisor review'),
+  ('00000000-0000-4000-8000-000000000623', '00000000-0000-4000-8000-000000000202', '00000000-0000-4000-8000-000000000611', '00000000-0000-4000-8000-000000000111', date '2026-01-01', timestamp '2026-01-01 10:00:00+00', 'mal', 'Old worker record'),
+  ('00000000-0000-4000-8000-000000000624', '00000000-0000-4000-8000-000000000203', '00000000-0000-4000-8000-000000000611', '00000000-0000-4000-8000-000000000116', date '2026-09-01', timestamp '2026-09-01 10:00:00+00', 'bien', 'Other worker record')
 on conflict (id) do nothing;

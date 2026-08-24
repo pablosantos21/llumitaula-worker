@@ -190,6 +190,7 @@ export type Database = {
           id: string;
           meal_type_id: string;
           notes: string | null;
+          recorded_date: string;
           recorded_at: string;
           recorded_by: string;
           status: Database["public"]["Enums"]["meal_status"];
@@ -199,6 +200,7 @@ export type Database = {
           id?: string;
           meal_type_id: string;
           notes?: string | null;
+          recorded_date?: string;
           recorded_at?: string;
           recorded_by: string;
           status: Database["public"]["Enums"]["meal_status"];
@@ -208,6 +210,7 @@ export type Database = {
           id?: string;
           meal_type_id?: string;
           notes?: string | null;
+          recorded_date?: string;
           recorded_at?: string;
           recorded_by?: string;
           status?: Database["public"]["Enums"]["meal_status"];

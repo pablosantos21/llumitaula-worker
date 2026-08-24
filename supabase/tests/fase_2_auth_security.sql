@@ -1,6 +1,6 @@
 begin;
 
-select plan(51);
+select plan(59);
 
 set local role postgres;
 
@@ -96,6 +96,39 @@ select ok(
      )
      and relrowsecurity),
   'all sensitive and phase 2 tables have RLS enabled'
+);
+
+select ok(
+  exists (
+    select 1
+      from information_schema.columns
+     where table_schema = 'public'
+       and table_name = 'meal_records'
+       and column_name = 'recorded_date'
+       and is_nullable = 'NO'
+       and column_default = 'CURRENT_DATE'
+  ),
+  'meal_records has a required current-date default'
+);
+select ok(
+  exists (
+    select 1
+      from pg_constraint
+     where conrelid = 'public.meal_records'::regclass
+       and contype = 'u'
+       and conname = 'meal_records_child_meal_type_date_key'
+  ),
+  'meal_records has a daily composite uniqueness constraint'
+);
+select ok(
+  exists (
+    select 1
+      from pg_indexes
+     where schemaname = 'public'
+       and tablename = 'meal_records'
+       and indexname = 'meal_records_child_meal_date_idx'
+  ),
+  'meal_records has a daily lookup index'
 );
 
 select set_config('request.jwt.claims', '{}', true);
@@ -346,6 +379,32 @@ select results_eq(
 select set_config(
   'request.jwt.claims',
   json_build_object(
+    'sub', '00000000-0000-4000-8000-000000000112',
+    'role', 'authenticated'
+  )::text,
+  true
+);
+select lives_ok(
+  $$insert into public.incidents (id, child_id, monitor_id, description, date)
+    values ('00000000-0000-4000-8000-000000000503'::uuid,
+            '00000000-0000-4000-8000-000000000201'::uuid,
+            '00000000-0000-4000-8000-000000000021'::uuid,
+            'Supervisor incident', current_date)$$,
+  'supervisor A can create an incident in school A'
+);
+select throws_ok(
+  $$insert into public.incidents (id, child_id, monitor_id, description, date)
+    values ('00000000-0000-4000-8000-000000000504'::uuid,
+            '00000000-0000-4000-8000-000000000201'::uuid,
+            '00000000-0000-4000-8000-000000000021'::uuid,
+            'Worker incident', current_date)$$,
+  '42501',
+  'worker A cannot create an incident'
+);
+
+select set_config(
+  'request.jwt.claims',
+  json_build_object(
     'sub', '00000000-0000-4000-8000-000000000111',
     'role', 'authenticated'
   )::text,
@@ -382,6 +441,47 @@ select lives_ok(
        '00000000-0000-4000-8000-000000000111'::uuid,
        'bien'$sql$)$$,
   'worker A can insert a meal record for an assigned child'
+);
+
+select set_config(
+  'request.jwt.claims',
+  json_build_object(
+    'sub', '00000000-0000-4000-8000-000000000113',
+    'role', 'authenticated'
+  )::text,
+  true
+);
+select throws_ok(
+  $$insert into public.meal_records
+      (id, child_id, meal_type_id, recorded_by, recorded_date, status)
+    values
+      ('00000000-0000-4000-8000-000000000614'::uuid,
+       '00000000-0000-4000-8000-000000000201'::uuid,
+       '00000000-0000-4000-8000-000000000611'::uuid,
+       '00000000-0000-4000-8000-000000000113'::uuid,
+       date '2026-09-01',
+       'bien')$$,
+  '23505',
+  'a child and meal type cannot have two records on one date'
+);
+select lives_ok(
+  $$insert into public.meal_records
+      (id, child_id, meal_type_id, recorded_by, recorded_date, status)
+    values
+      ('00000000-0000-4000-8000-000000000615'::uuid,
+       '00000000-0000-4000-8000-000000000201'::uuid,
+       '00000000-0000-4000-8000-000000000611'::uuid,
+       '00000000-0000-4000-8000-000000000113'::uuid,
+       date '2026-09-02',
+       'bien')$$,
+  'a child and meal type may have records on different dates'
+);
+select throws_ok(
+  $$update public.meal_records
+      set recorded_date = current_date
+    where id = '00000000-0000-4000-8000-000000000622'::uuid$$,
+  '23514',
+  'a meal record date cannot be changed after creation'
 );
 
 select set_config(

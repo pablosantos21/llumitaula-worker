@@ -3,6 +3,7 @@ import { useState } from "react";
 interface Props {
   studentName: string;
   mealTypes: { id: string; name: string }[];
+  canManageIncidents: boolean;
   onClose: () => void;
   onSave: (details: {
     mealTypeId: string;
@@ -17,6 +18,7 @@ interface Props {
 export default function IncidentModal({
   studentName,
   mealTypes,
+  canManageIncidents,
   onClose,
   onSave,
 }: Props) {
@@ -75,31 +77,33 @@ export default function IncidentModal({
               ))}
             </select>
           </label>
-          <div className="space-y-3">
-            {[
-              ["No ha comido primero", noFirst, setNoFirst],
-              ["No ha comido segundo", noSecond, setNoSecond],
-              ["No ha comido guarnición", noGarnish, setNoGarnish],
-              ["No ha comido postre", noDessert, setNoDessert],
-            ].map(([label, checked, setChecked]) => (
-              <label
-                key={label as string}
-                className="flex cursor-pointer items-center justify-between rounded-xl border-2 border-slate-100 p-4 font-medium text-slate-700 has-[:checked]:border-red-100 has-[:checked]:bg-red-50"
-              >
-                {label as string}
-                <input
-                  type="checkbox"
-                  checked={checked as boolean}
-                  onChange={(event) =>
-                    (setChecked as (value: boolean) => void)(
-                      event.target.checked,
-                    )
-                  }
-                  className="h-6 w-6 rounded border-slate-300 text-red-600"
-                />
-              </label>
-            ))}
-          </div>
+          {canManageIncidents && (
+            <div className="space-y-3">
+              {[
+                ["No ha comido primero", noFirst, setNoFirst],
+                ["No ha comido segundo", noSecond, setNoSecond],
+                ["No ha comido guarnición", noGarnish, setNoGarnish],
+                ["No ha comido postre", noDessert, setNoDessert],
+              ].map(([label, checked, setChecked]) => (
+                <label
+                  key={label as string}
+                  className="flex cursor-pointer items-center justify-between rounded-xl border-2 border-slate-100 p-4 font-medium text-slate-700 has-[:checked]:border-red-100 has-[:checked]:bg-red-50"
+                >
+                  {label as string}
+                  <input
+                    type="checkbox"
+                    checked={checked as boolean}
+                    onChange={(event) =>
+                      (setChecked as (value: boolean) => void)(
+                        event.target.checked,
+                      )
+                    }
+                    className="h-6 w-6 rounded border-slate-300 text-red-600"
+                  />
+                </label>
+              ))}
+            </div>
+          )}
           <label className="block text-sm font-medium text-slate-700">
             Comentarios adicionales
             <textarea
