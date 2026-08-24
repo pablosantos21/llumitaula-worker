@@ -6,6 +6,15 @@ const CACHE_NAME = "llumitaula-shell-v1";
 // Replaced with the build's root-relative asset list.
 const PRECACHE_URLS = __PRECACHE_URLS__;
 
+function cacheResponse(request, response, event) {
+  event.waitUntil(
+    caches
+      .open(CACHE_NAME)
+      .then((cache) => cache.put(request, response))
+      .catch((error) => console.warn("PWA runtime cache write failed", error)),
+  );
+}
+
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then(async (cache) => {
@@ -48,14 +57,14 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(
       fetch(request)
         .then((response) => {
-          if (response.ok) {
-            caches
-              .open(CACHE_NAME)
-              .then((cache) => cache.put("/index.html", response.clone()));
+          if (response.ok && url.pathname === "/") {
+            cacheResponse("/index.html", response.clone(), event);
           }
           return response;
         })
-        .catch(() => caches.match("/index.html")),
+        .catch(() =>
+          caches.open(CACHE_NAME).then((cache) => cache.match("/index.html")),
+        ),
     );
     return;
   }
@@ -65,12 +74,11 @@ self.addEventListener("fetch", (event) => {
   }
 
   event.respondWith(
-    caches.match(request).then((cached) => {
+    caches.open(CACHE_NAME).then((cache) => {
+      const cached = cache.match(request);
       const network = fetch(request).then((response) => {
         if (response.ok) {
-          caches
-            .open(CACHE_NAME)
-            .then((cache) => cache.put(request, response.clone()));
+          cacheResponse(request, response.clone(), event);
         }
         return response;
       });

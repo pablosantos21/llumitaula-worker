@@ -1,5 +1,5 @@
 import { readdir, readFile, stat, writeFile } from "node:fs/promises";
-import { extname, relative, resolve } from "node:path";
+import { extname, relative, resolve, sep } from "node:path";
 import process from "node:process";
 import { fileURLToPath, URL } from "node:url";
 
@@ -48,7 +48,14 @@ try {
 }
 
 const urls = (await filesIn(dist))
-  .map((path) => `/${relative(dist, path).split("\\").join("/")}`)
+  .map(
+    (path) =>
+      `/${relative(dist, path)
+        .split(sep)
+        .filter(Boolean)
+        .map(encodeURIComponent)
+        .join("/")}`,
+  )
   .sort();
 const template = await readFile(templatePath, "utf8");
 const output = template.replace("__PRECACHE_URLS__", JSON.stringify(urls));

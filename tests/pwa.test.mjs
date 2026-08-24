@@ -159,8 +159,14 @@ test("service worker template declares the shell cache and safe request boundari
   assert.match(template, /index\.html/);
   assert.match(
     template,
-    /catch\(\(\)\s*=>\s*caches\.match\(["']\/index\.html["']\)/,
+    /caches\.open\(CACHE_NAME\)[\s\S]*cache\.match\(["']\/index\.html["']\)/,
   );
+  assert.match(template, /caches\.open\(CACHE_NAME\).*cache\.match/s);
+  assert.doesNotMatch(template, /caches\.match\(/);
+  assert.match(template, /url\.pathname\s*===\s*["']\/["']/);
+  assert.match(template, /event\.waitUntil\(/);
+  assert.match(template, /event\.waitUntil\([\s\S]*cache\.put[\s\S]*catch/);
+  assert.match(template, /console\.warn/);
   assert.match(template, /request\.mode\s*===\s*["']navigate["']/);
   assert.match(template, /request\.method\s*!==\s*["']GET["']/);
   assert.match(template, /url\.origin\s*!==\s*self\.location\.origin/);
@@ -181,6 +187,7 @@ test("service worker generator recursively precaches supported dist files", asyn
       "favicon.ico",
       "manifest.webmanifest",
       "font.woff2",
+      "safe name #?.js",
     ]) {
       await writeFile(join(fixture, "nested", "assets", path), "asset");
     }
@@ -210,6 +217,7 @@ test("service worker generator recursively precaches supported dist files", asyn
     ]) {
       assert.match(generated, new RegExp(`\\"/nested/assets/${path}\\"`));
     }
+    assert.match(generated, /"\/nested\/assets\/safe%20name%20%23%3F\.js"/);
     assert.doesNotMatch(generated, /ignored\.txt|\/sw\.js|__PRECACHE_URLS__/);
     assert.doesNotMatch(generated, /PWA_DIST_DIR|dist[\\/]/);
   } finally {
