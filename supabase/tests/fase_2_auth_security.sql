@@ -214,22 +214,22 @@ select is(
 );
 
 set local role postgres;
-select lives_ok(
-  $$insert into public.parents_children (parent_id, child_id)
-    values ('00000000-0000-4000-8000-000000000111'::uuid,
-            '00000000-0000-4000-8000-000000000213'::uuid)$$,
-  'fixture can give worker A an unrelated parental link'
-);
+insert into public.parents_children (parent_id, child_id)
+values ('00000000-0000-4000-8000-000000000111'::uuid,
+        '00000000-0000-4000-8000-000000000213'::uuid)
+on conflict (parent_id, child_id) do nothing;
 insert into public.child_allergens (child_id, allergen_id)
 values ('00000000-0000-4000-8000-000000000213'::uuid,
         '00000000-0000-4000-8000-000000000401'::uuid)
 on conflict (child_id, allergen_id) do nothing;
-select lives_ok(
-  $$insert into public.worker_classrooms (worker_id, class_id)
-    values ('00000000-0000-4000-8000-000000000116'::uuid,
-            '00000000-0000-4000-8000-000000000011'::uuid)$$,
-  'fixture can add another worker assignment to worker A class'
-);
+insert into public.worker_classrooms (worker_id, class_id)
+values ('00000000-0000-4000-8000-000000000116'::uuid,
+        '00000000-0000-4000-8000-000000000011'::uuid)
+on conflict (worker_id, class_id) do nothing;
+insert into public.child_allergens (child_id, allergen_id)
+values ('00000000-0000-4000-8000-000000000202'::uuid,
+        '00000000-0000-4000-8000-000000000401'::uuid)
+on conflict (child_id, allergen_id) do nothing;
 
 set local role authenticated;
 select set_config(
@@ -836,6 +836,9 @@ begin
            '00000000-0000-4000-8000-000000000201'::uuid,
            '00000000-0000-4000-8000-000000000225'::uuid
          )) <> 2
+  or (select count(*) from public.child_allergens ca
+       where ca.child_id = '00000000-0000-4000-8000-000000000202'::uuid
+         and ca.allergen_id = '00000000-0000-4000-8000-000000000401'::uuid) <> 1
   or exists (
     select 1 from public.child_allergens
      where child_id = '00000000-0000-4000-8000-000000000202'::uuid
@@ -860,13 +863,25 @@ select set_config(
 );
 select throws_ok(
   $$insert into public.child_allergens (child_id, allergen_id)
-    values
-      ('00000000-0000-4000-8000-000000000202'::uuid,
-       '00000000-0000-4000-8000-000000000498'::uuid),
-      ('00000000-0000-4000-8000-000000000202'::uuid,
-       '00000000-0000-4000-8000-000000000499'::uuid)$$,
+    values ('00000000-0000-4000-8000-000000000202'::uuid,
+            '00000000-0000-4000-8000-000000000498'::uuid)$$,
   '42501',
-  'admin A cannot associate B-only or shared allergens with a school A child'
+  'admin A cannot associate a B-only allergen with a school A child'
+);
+select throws_ok(
+  $$insert into public.child_allergens (child_id, allergen_id)
+    values ('00000000-0000-4000-8000-000000000202'::uuid,
+            '00000000-0000-4000-8000-000000000499'::uuid)$$,
+  '42501',
+  'admin A cannot associate a shared allergen with a school A child'
+);
+select throws_ok(
+  $$update public.child_allergens
+       set allergen_id = '00000000-0000-4000-8000-000000000498'::uuid
+     where child_id = '00000000-0000-4000-8000-000000000202'::uuid
+       and allergen_id = '00000000-0000-4000-8000-000000000401'::uuid$$,
+  '42501',
+  'admin A cannot update an A association to a B-only allergen'
 );
 
 select is(

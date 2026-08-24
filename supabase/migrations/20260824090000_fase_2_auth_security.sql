@@ -303,19 +303,23 @@ create or replace function public.allergen_is_tenant_private(
   p_school_id uuid
 )
 returns boolean
-language sql
-stable
+language plpgsql
+volatile
 security definer
 set search_path = pg_catalog, public, pg_temp
 as $$
-  select not exists (
+begin
+  perform pg_advisory_xact_lock(2147483647, 42042);
+
+  return not exists (
     select 1
       from public.child_allergens ca
       join public.children ch on ch.id = ca.child_id
       join public.classes cl on cl.id = ch.class_id
      where ca.allergen_id = p_allergen_id
        and cl.school_id <> p_school_id
-  )
+  );
+end
 $$;
 
 create or replace function public.monitor_assignments_are_tenant_safe(
