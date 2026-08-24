@@ -123,7 +123,7 @@ export default function BusinessApp({ page }: { page: Page }) {
           recorded_by: session.user.id,
           status,
           notes,
-          recorded_at: `${date}T12:00:00.000`,
+          recorded_at: new Date().toISOString(),
         },
         { onConflict: "child_id,meal_type_id,recorded_date" },
       )

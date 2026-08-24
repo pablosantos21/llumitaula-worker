@@ -1,6 +1,6 @@
 begin;
 
-select plan(64);
+select plan(65);
 
 set local role postgres;
 
@@ -546,7 +546,7 @@ select set_config(
   )::text,
   true
 );
-select throws_ok(
+select lives_ok(
   $$insert into public.meal_records
       (id, child_id, meal_type_id, recorded_by, recorded_date, recorded_at, status)
     values
@@ -554,11 +554,24 @@ select throws_ok(
        '00000000-0000-4000-8000-000000000201'::uuid,
        '00000000-0000-4000-8000-000000000611'::uuid,
        '00000000-0000-4000-8000-000000000111'::uuid,
-       current_date + 1,
-        now(),
+       (now() at time zone 'UTC')::date + 1,
+       now(),
        'bien')$$,
-  '42501',
-  'worker A cannot insert a future recorded date'
+  'worker A can insert a valid browser-local date ahead of UTC date'
+);
+select throws_ok(
+  $$insert into public.meal_records
+      (id, child_id, meal_type_id, recorded_by, recorded_date, recorded_at, status)
+    values
+      ('00000000-0000-4000-8000-000000000618'::uuid,
+       '00000000-0000-4000-8000-000000000201'::uuid,
+       '00000000-0000-4000-8000-000000000611'::uuid,
+       '00000000-0000-4000-8000-000000000111'::uuid,
+       (now() at time zone 'UTC')::date + 2,
+       now(),
+       'bien')$$,
+  '23514',
+  'worker A cannot insert a date outside the local date envelope'
 );
 select throws_ok(
   $$update public.meal_records

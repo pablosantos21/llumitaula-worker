@@ -95,13 +95,14 @@ test("worker meal types are tenant-scoped and incidents never use meal records",
   assert.match(app, /No se puede registrar la incidencia/);
 });
 
-test("local meal timestamps use the browser date without a fixed UTC date", async () => {
+test("local meal dates use the browser date and timestamps use ISO UTC", async () => {
   const helper = await source("src/lib/local-date.ts");
   const app = await source("src/components/BusinessApp.tsx");
 
   assert.match(helper, /localDateString/);
   assert.match(helper, /getFullYear\(\)/);
   assert.match(helper, /padStart\(2, "0"\)/);
-  assert.match(app, /recorded_at:\s*`\$\{date\}T12:00:00\.000`/);
-  assert.doesNotMatch(app, /recorded_at:[\s\S]*toISOString/);
+  assert.match(app, /recorded_date: date/);
+  assert.match(app, /recorded_at:\s*new Date\(\)\.toISOString\(\)/);
+  assert.match(new Date().toISOString(), /Z$/);
 });
