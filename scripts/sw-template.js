@@ -64,6 +64,9 @@ self.addEventListener("fetch", (event) => {
 
   if (request.mode === "navigate") {
     // Network-first navigation keeps deployed HTML current when online.
+    const routePath = url.pathname.endsWith("/")
+      ? `${url.pathname}index.html`
+      : `${url.pathname}/index.html`;
     event.respondWith(
       fetch(request)
         .then((response) => {
@@ -76,8 +79,12 @@ self.addEventListener("fetch", (event) => {
           readCache(request).then(
             (cached) =>
               cached ||
-              readCache("/index.html").then(
-                (shell) => shell || Response.error(),
+              readCache(routePath).then(
+                (route) =>
+                  route ||
+                  readCache("/index.html").then(
+                    (shell) => shell || Response.error(),
+                  ),
               ),
           ),
         ),

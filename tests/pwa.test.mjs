@@ -481,6 +481,30 @@ test("service worker serves a cached navigation before falling back to the shell
   assert.equal(await response.text(), "login");
 });
 
+test("service worker resolves Astro static route variants offline", async () => {
+  const cache = {
+    async match(path) {
+      const key = typeof path === "string" ? path : path.url;
+      if (key === "/login/index.html") return new Response("login route");
+      if (key === "/index.html") return new Response("root shell");
+      return undefined;
+    },
+    async put() {},
+  };
+  const { fetchHandler } = await loadServiceWorker({
+    cache,
+    fetch: async () => {
+      throw new Error("offline");
+    },
+  });
+
+  const response = await dispatch(
+    fetchHandler,
+    request("/login/", { mode: "navigate", destination: "document" }),
+  );
+  assert.equal(await response.text(), "login route");
+});
+
 test("service worker completes install and activate lifecycle safely", async () => {
   const cache = {
     added: [],
