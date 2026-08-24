@@ -1,6 +1,6 @@
 begin;
 
-select plan(33);
+select plan(42);
 
 set local role postgres;
 
@@ -211,6 +211,96 @@ select is(
   $query$),
   0::bigint,
   'worker A cannot see B children, devices, meal types, or meal records'
+);
+
+set local role postgres;
+select lives_ok(
+  $$insert into public.parents_children (parent_id, child_id)
+    values ('00000000-0000-4000-8000-000000000111'::uuid,
+            '00000000-0000-4000-8000-000000000207'::uuid)$$,
+  'fixture can give worker A an unrelated parental link'
+);
+select lives_ok(
+  $$insert into public.worker_classrooms (worker_id, class_id)
+    values ('00000000-0000-4000-8000-000000000116'::uuid,
+            '00000000-0000-4000-8000-000000000011'::uuid)$$,
+  'fixture can add another worker assignment to worker A class'
+);
+
+set local role authenticated;
+select set_config(
+  'request.jwt.claims',
+  json_build_object(
+    'sub', '00000000-0000-4000-8000-000000000111',
+    'role', 'authenticated'
+  )::text,
+  true
+);
+select is(
+  pg_temp.count_rows($query$
+    select 1 from public.children
+     where id = '00000000-0000-4000-8000-000000000207'::uuid
+  $query$),
+  0::bigint,
+  'worker A parental links do not grant access to unassigned children'
+);
+select is(
+  pg_temp.count_rows($query$
+    select 1 from public.child_allergens
+     where child_id = '00000000-0000-4000-8000-000000000207'::uuid
+  $query$),
+  0::bigint,
+  'worker A parental links do not grant access to unassigned child allergens'
+);
+select results_eq(
+  $$select worker_id, class_id from public.worker_classrooms
+     where class_id = '00000000-0000-4000-8000-000000000011'::uuid
+     order by worker_id$$,
+  $$values ('00000000-0000-4000-8000-000000000111'::uuid,
+            '00000000-0000-4000-8000-000000000011'::uuid)$$,
+  'worker A sees only their own classroom assignments'
+);
+
+set local role authenticated;
+select set_config(
+  'request.jwt.claims',
+  json_build_object(
+    'sub', '00000000-0000-4000-8000-000000000113',
+    'role', 'authenticated'
+  )::text,
+  true
+);
+select results_eq(
+  $$select worker_id, class_id from public.worker_classrooms
+     where class_id in ('00000000-0000-4000-8000-000000000011'::uuid,
+                        '00000000-0000-4000-8000-000000000012'::uuid)
+     order by worker_id, class_id$$,
+  $$values
+    ('00000000-0000-4000-8000-000000000111'::uuid,
+     '00000000-0000-4000-8000-000000000011'::uuid),
+    ('00000000-0000-4000-8000-000000000116'::uuid,
+     '00000000-0000-4000-8000-000000000011'::uuid),
+    ('00000000-0000-4000-8000-000000000116'::uuid,
+     '00000000-0000-4000-8000-000000000012'::uuid)$$,
+  'admin A sees all assignments in school A and no school B assignments'
+);
+
+set local role authenticated;
+select set_config(
+  'request.jwt.claims',
+  json_build_object(
+    'sub', '00000000-0000-4000-8000-000000000111',
+    'role', 'authenticated'
+  )::text,
+  true
+);
+select results_eq(
+  $$select id from public.incidents
+     where child_id = '00000000-0000-4000-8000-000000000205'::uuid
+        or child_id = '00000000-0000-4000-8000-000000000218'::uuid
+     order by id$$,
+  $$values ('00000000-0000-4000-8000-000000000501'::uuid)$$,
+  'worker A sees incidents only for assigned children'
 );
 
 select set_config(
@@ -734,6 +824,34 @@ select is(
   $query$),
   0::bigint,
   'a child without a class is not visible to a worker'
+);
+
+set local role postgres;
+select lives_ok(
+  $$delete from auth.users
+     where id = '00000000-0000-4000-8000-000000000111'::uuid$$,
+  'deleting Auth user with profile relations does not raise a foreign-key error'
+);
+select is(
+  (select count(*)
+     from (
+       select 1 from auth.users
+        where id = '00000000-0000-4000-8000-000000000111'::uuid
+       union all
+       select 1 from public.users
+        where id = '00000000-0000-4000-8000-000000000111'::uuid
+       union all
+       select 1 from public.parents_children
+        where parent_id = '00000000-0000-4000-8000-000000000111'::uuid
+       union all
+       select 1 from public.worker_classrooms
+        where worker_id = '00000000-0000-4000-8000-000000000111'::uuid
+       union all
+       select 1 from public.meal_records
+        where recorded_by = '00000000-0000-4000-8000-000000000111'::uuid
+     ) remaining),
+  0::bigint,
+  'deleting Auth user cascades profile and dependent relations'
 );
 
 select * from finish();

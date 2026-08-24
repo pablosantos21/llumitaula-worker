@@ -115,6 +115,20 @@ create table if not exists public.meal_records (
   notes text
 );
 
+-- Auth user removal must remove every profile-owned dependent row first.
+alter table public.parents_children
+  drop constraint if exists parents_children_parent_id_fkey,
+  add constraint parents_children_parent_id_fkey
+    foreign key (parent_id) references public.users(id) on delete cascade;
+alter table public.worker_classrooms
+  drop constraint if exists worker_classrooms_worker_id_fkey,
+  add constraint worker_classrooms_worker_id_fkey
+    foreign key (worker_id) references public.users(id) on delete cascade;
+alter table public.meal_records
+  drop constraint if exists meal_records_recorded_by_fkey,
+  add constraint meal_records_recorded_by_fkey
+    foreign key (recorded_by) references public.users(id) on delete cascade;
+
 create schema if not exists private;
 revoke all on schema private from public;
 grant usage on schema private to authenticated, service_role;
@@ -190,20 +204,22 @@ as $$
          join public.classes cl on cl.id = ch.class_id
         where ch.id = p_child_id
           and cl.school_id = public.current_school_id()
-          and (
-            public.current_user_role()::text in ('admin', 'supervisor')
-            or exists (
-              select 1 from public.worker_classrooms wc
-               where wc.class_id = cl.id
-                 and wc.worker_id = public.current_user_id()
-            )
-            or exists (
-              select 1 from public.parents_children pc
-               where pc.child_id = ch.id
-                 and pc.parent_id = public.current_user_id()
-            )
-          )
-     )
+           and case public.current_user_role()
+             when 'admin' then true
+             when 'supervisor' then true
+             when 'worker' then exists (
+               select 1 from public.worker_classrooms wc
+                where wc.class_id = cl.id
+                  and wc.worker_id = public.current_user_id()
+             )
+             when 'padre' then exists (
+               select 1 from public.parents_children pc
+                where pc.child_id = ch.id
+                  and pc.parent_id = public.current_user_id()
+             )
+             else false
+           end
+      )
 $$;
 
 create or replace function public.current_user_has_assigned_child(p_child_id uuid)
@@ -712,7 +728,12 @@ using (public.current_user_role() = 'admin' and school_id = public.current_schoo
 
 create policy worker_classrooms_select_tenant on public.worker_classrooms for select to authenticated
 using (public.current_user_active() and (
-  private.current_user_can_access_class(class_id) or worker_id = public.current_user_id()
+  (public.current_user_role() = 'worker' and worker_id = public.current_user_id())
+  or (public.current_user_role() = 'admin' and exists (
+    select 1 from public.classes cl
+     where cl.id = worker_classrooms.class_id
+       and cl.school_id = public.current_school_id()
+  ))
 ));
 create policy worker_classrooms_admin_insert on public.worker_classrooms for insert to authenticated
 with check (public.current_user_role() = 'admin' and exists (
@@ -807,7 +828,7 @@ create policy child_allergens_select_tenant on public.child_allergens for select
 create policy child_allergens_admin_insert on public.child_allergens for insert to authenticated with check (public.current_user_role() = 'admin' and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = child_allergens.child_id and cl.school_id = public.current_school_id()));
 create policy child_allergens_admin_update on public.child_allergens for update to authenticated using (public.current_user_role() = 'admin' and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = child_allergens.child_id and cl.school_id = public.current_school_id())) with check (public.current_user_role() = 'admin' and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = child_allergens.child_id and cl.school_id = public.current_school_id()));
 create policy child_allergens_admin_delete on public.child_allergens for delete to authenticated using (public.current_user_role() = 'admin' and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = child_allergens.child_id and cl.school_id = public.current_school_id()));
-create policy incidents_select_tenant on public.incidents for select to authenticated using (public.current_user_active() and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = incidents.child_id and cl.school_id = public.current_school_id() and (public.current_user_role() in ('admin', 'supervisor') or exists (select 1 from public.parents_children pc where pc.child_id = ch.id and pc.parent_id = public.current_user_id()))));
+create policy incidents_select_tenant on public.incidents for select to authenticated using (private.current_user_can_access_child(child_id));
 create policy incidents_admin_insert on public.incidents for insert to authenticated with check (public.current_user_active() and public.current_user_role() = 'admin' and private.incident_relations_are_tenant_safe(monitor_id, child_id) and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = incidents.child_id and cl.school_id = public.current_school_id()));
 create policy incidents_admin_update on public.incidents for update to authenticated using (public.current_user_active() and public.current_user_role() = 'admin' and private.incident_relations_are_tenant_safe(monitor_id, child_id) and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = incidents.child_id and cl.school_id = public.current_school_id())) with check (public.current_user_active() and public.current_user_role() = 'admin' and private.incident_relations_are_tenant_safe(monitor_id, child_id) and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = incidents.child_id and cl.school_id = public.current_school_id()));
 create policy incidents_admin_delete on public.incidents for delete to authenticated using (public.current_user_active() and public.current_user_role() = 'admin' and private.incident_relations_are_tenant_safe(monitor_id, child_id) and exists (select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = incidents.child_id and cl.school_id = public.current_school_id()));
