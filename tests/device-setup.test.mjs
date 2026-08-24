@@ -42,8 +42,9 @@ test("setup creates or reuses a random device identifier and persists only safe 
   assert.match(form, /localStorage\.setItem\(["']device_context["']/);
   assert.doesNotMatch(
     form,
-    /localStorage\.setItem\(["'](?:code|password|access_token|anon_key|service_role)/i,
+    /localStorage\.setItem\(["'](?:code|password|access_token|anon_key|service_role|PUBLIC_SUPABASE_SERVICE)/i,
   );
+  assert.doesNotMatch(form, /password|service_role|PUBLIC_SUPABASE_SERVICE/i);
   assert.doesNotMatch(
     form,
     /localStorage\.setItem\(["']device_context["'][\s\S]*?(?:code|password|access_token)/i,

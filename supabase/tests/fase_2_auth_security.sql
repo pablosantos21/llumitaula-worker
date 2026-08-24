@@ -1,6 +1,6 @@
 begin;
 
-select plan(132);
+select plan(136);
 
 set local role postgres;
 
@@ -1656,8 +1656,12 @@ select has_column('public', 'device_setup_codes', 'expires_at', 'device setup co
 select has_column('public', 'device_setup_codes', 'max_uses', 'device setup codes define a usage limit');
 select has_column('public', 'device_setup_codes', 'uses', 'device setup codes track usage');
 select has_column('public', 'device_setup_codes', 'active', 'device setup codes have an active state');
-select has_column('public', 'device_setup_codes', 'claimed_at', 'device setup codes audit first claim time');
-select has_column('public', 'device_setup_codes', 'last_seen_at', 'device setup codes audit last use time');
+select has_column('public', 'device_setup_codes', 'created_at', 'device setup codes audit creation time');
+select has_column('public', 'device_setup_codes', 'last_claimed_at', 'device setup codes audit last claim time');
+select has_column('public', 'device_setup_attempts', 'device_identifier', 'attempts are keyed by device identifier');
+select has_column('public', 'device_setup_attempts', 'window_started_at', 'attempts track the rate-limit window');
+select has_column('public', 'device_setup_attempts', 'attempt_count', 'attempts track the counter');
+select has_column('public', 'device_setup_attempts', 'last_attempt_at', 'attempts audit the last attempt');
 select ok(
   exists (
     select 1
@@ -1763,6 +1767,7 @@ select throws_ok(
   'P0001',
   'the sixth setup attempt is rejected by the rate limit'
 );
+set local role postgres;
 select ok(
   exists (
     select 1
@@ -1805,11 +1810,13 @@ select lives_ok(
   $$select * from public.claim_device_setup('123456', '00000000-0000-4000-8000-000000000701'::uuid)$$,
   'a valid setup code can be claimed'
 );
+set local role postgres;
 select is(
   (select uses from public.device_setup_codes where id = '00000000-0000-4000-8000-000000000601'::uuid),
   1,
   'a successful claim consumes exactly one use'
 );
+set local role anon;
 select ok(
   (with claimed as materialized (
      select to_jsonb(response) as payload
@@ -1831,9 +1838,17 @@ select ok(
           where payload::text like '%School B%'
              or payload::text like '%Worker B%'
              or payload::text like '%00000000-0000-4000-8000-000000000002%'
+             or payload ? 'code'
+             or payload ? 'code_hash'
+             or payload ? 'access_token'
+             or payload ? 'refresh_token'
+             or payload ? 'password'
+             or payload ? 'service_role'
+             or lower(payload::text) like '%service_role%'
    )),
   'a successful response contains school A only and no school B name or workers'
 );
+set local role postgres;
 select ok(
   exists (
     select 1 from public.devices
@@ -1844,6 +1859,7 @@ select ok(
   ),
   'a valid claim creates a device in the code school and records last seen'
 );
+set local role anon;
 select throws_ok(
   $$select * from public.claim_device_setup('123456', '00000000-0000-4000-8000-000000000702'::uuid)$$,
   'P0001',
@@ -1859,11 +1875,14 @@ select throws_ok(
   'P0001',
   'inactive setup codes are rejected'
 );
+-- pgTAP runs in one session, so this sequential second claim is the valid
+-- equivalent here; true two-session concurrency requires an external runner.
 select throws_ok(
   $$select * from public.claim_device_setup('123456', '00000000-0000-4000-8000-000000000701'::uuid)$$,
   'P0001',
   'a single-use setup code cannot be reused'
 );
+set local role postgres;
 select is(
   (select uses from public.device_setup_codes where id = '00000000-0000-4000-8000-000000000601'::uuid),
   1,
@@ -1882,6 +1901,7 @@ select lives_ok(
   $$select * from public.claim_device_setup('123456', '00000000-0000-4000-8000-000000000701'::uuid)$$,
   'a valid claim can reactivate the same device identifier'
 );
+set local role postgres;
 select ok(
   (select active from public.devices where identifier = '00000000-0000-4000-8000-000000000701'),
   'successful re-claim reactivates the device'
@@ -1901,6 +1921,7 @@ select lives_ok(
   $$select * from public.claim_device_setup('123456', '00000000-0000-4000-8000-000000000705'::uuid)$$,
   'a second-school code can claim its own device'
 );
+set local role postgres;
 select ok(
   not exists (
     select 1 from public.devices
