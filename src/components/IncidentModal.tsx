@@ -2,8 +2,10 @@ import { useState } from "react";
 
 interface Props {
   studentName: string;
+  mealTypes: { id: string; name: string }[];
   onClose: () => void;
   onSave: (details: {
+    mealTypeId: string;
     noFirst: boolean;
     noSecond: boolean;
     noGarnish: boolean;
@@ -12,16 +14,22 @@ interface Props {
   }) => void;
 }
 
-export default function IncidentModal({ studentName, onClose, onSave }: Props) {
+export default function IncidentModal({
+  studentName,
+  mealTypes,
+  onClose,
+  onSave,
+}: Props) {
   const [noFirst, setNoFirst] = useState(false);
   const [noSecond, setNoSecond] = useState(false);
   const [noGarnish, setNoGarnish] = useState(false);
   const [noDessert, setNoDessert] = useState(false);
   const [comments, setComments] = useState("");
+  const [mealTypeId, setMealTypeId] = useState(mealTypes[0]?.id ?? "");
 
   const save = (event: { preventDefault: () => void }) => {
     event.preventDefault();
-    onSave({ noFirst, noSecond, noGarnish, noDessert, comments });
+    onSave({ noFirst, noSecond, noGarnish, noDessert, comments, mealTypeId });
   };
 
   return (
@@ -52,6 +60,21 @@ export default function IncidentModal({ studentName, onClose, onSave }: Props) {
           </button>
         </div>
         <form onSubmit={save} className="space-y-6">
+          <label className="block text-sm font-medium text-slate-700">
+            Tipo de comida
+            <select
+              value={mealTypeId}
+              onChange={(event) => setMealTypeId(event.target.value)}
+              className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 outline-none focus:border-emerald-500"
+              required
+            >
+              {mealTypes.map((mealType) => (
+                <option key={mealType.id} value={mealType.id}>
+                  {mealType.name}
+                </option>
+              ))}
+            </select>
+          </label>
           <div className="space-y-3">
             {[
               ["No ha comido primero", noFirst, setNoFirst],
@@ -91,6 +114,7 @@ export default function IncidentModal({ studentName, onClose, onSave }: Props) {
               type="button"
               onClick={() =>
                 onSave({
+                  mealTypeId,
                   noFirst: false,
                   noSecond: false,
                   noGarnish: false,

@@ -50,6 +50,32 @@ test("React business UI restores card, meal status, incident and toast component
   assert.match(modal, /Comentarios adicionales/);
   assert.match(toast, /role="status"/);
   assert.match(app, /Incidencia registrada/);
-  assert.match(app, /meal_records.*update|update.*meal_records/s);
+  assert.match(app, /meal_records.*upsert|upsert.*meal_records/s);
   assert.match(app, /recorded_by/);
+});
+
+test("worker meal types are tenant-scoped and incidents never use meal records", async () => {
+  const migration = await source(
+    "supabase/migrations/20260824100000_scope_worker_meal_types.sql",
+  );
+  const app = await source("src/components/BusinessApp.tsx");
+
+  assert.match(migration, /meal_types_select_worker/);
+  assert.match(migration, /current_user_role\(\) = 'worker'/);
+  assert.match(migration, /school_id = public\.current_school_id\(\)/);
+  assert.match(app, /from\("incidents"\)/);
+  assert.match(app, /from\("meal_records"\)/);
+  assert.match(app, /\.upsert\(/);
+  assert.match(app, /onConflict/);
+  assert.match(app, /mealTypeId/);
+  assert.match(app, /meal_type_id/);
+  assert.match(app, /\.eq\("meal_type_id", mealTypeId\)/);
+  assert.match(app, /\.gte\("recorded_at"/);
+  assert.match(app, /\.lt\("recorded_at"/);
+  assert.match(app, /recorded_by/);
+  assert.match(app, /recorded_at/);
+  assert.doesNotMatch(app, /\.from\("meal_records"\)\n\s*\.update\(\{ status/);
+  assert.doesNotMatch(app, /\.in\(\s*"id"/);
+  assert.match(app, /monitor_id/);
+  assert.match(app, /No se puede registrar la incidencia/);
 });

@@ -91,56 +91,109 @@ export default function BusinessApp({ page }: { page: Page }) {
 
   async function saveStatus(
     child: Child,
+    mealTypeId: string,
     status: Database["public"]["Enums"]["meal_status"],
     notes: string,
   ) {
     const { data: sessionData } = await supabase.auth.getSession();
     const session = sessionData.session;
-    if (!session || mealTypes.length === 0) {
+    if (!session || !mealTypeId) {
       setToast({ message: "No se ha podido guardar el estado", type: "error" });
       return;
     }
-    const childRecords = records.filter(
-      (record) => record.child_id === child.id,
-    );
-    const result = childRecords.length
-      ? await supabase
-          .from("meal_records")
-          .update({ status, notes, recorded_by: session.user.id })
-          .in(
-            "id",
-            childRecords.map((record) => record.id),
-          )
-          .select()
-      : await supabase
-          .from("meal_records")
-          .insert({
-            child_id: child.id,
-            meal_type_id: mealTypes[0].id,
-            recorded_by: session.user.id,
-            status,
-            notes,
-          })
-          .select();
+    const date = new Date().toISOString().slice(0, 10);
+    const dateStart = `${date}T00:00:00.000Z`;
+    const dateEnd = `${date}T23:59:59.999Z`;
+    const currentResult = await supabase
+      .from("meal_records")
+      .select("id")
+      .eq("child_id", child.id)
+      .eq("meal_type_id", mealTypeId)
+      .gte("recorded_at", dateStart)
+      .lt("recorded_at", dateEnd)
+      .limit(1);
+    if (currentResult.error) {
+      setToast({ message: "No se ha podido guardar el estado", type: "error" });
+      return;
+    }
+    const currentRecord = currentResult.data[0];
+    const result = await supabase
+      .from("meal_records")
+      .upsert(
+        {
+          ...(currentRecord ? { id: currentRecord.id } : {}),
+          child_id: child.id,
+          meal_type_id: mealTypeId,
+          recorded_by: session.user.id,
+          status,
+          notes,
+          recorded_at: `${date}T12:00:00.000Z`,
+        },
+        { onConflict: "id" },
+      )
+      .select()
+      .single();
     if (result.error) {
       setToast({ message: "No se ha podido guardar el estado", type: "error" });
       return;
     }
-    const saved = result.data ?? [];
+    const saved = result.data;
     setRecords((current) => [
-      ...current.filter(
-        (record) => !childRecords.some((old) => old.id === record.id),
-      ),
-      ...saved,
+      ...current.filter((record) => record.id !== saved.id),
+      saved,
     ]);
     setSelectedChild(null);
     setToast({
       message:
         status === "bien"
           ? 'Marcado como "Ha comido bien"'
-          : "Incidencia registrada",
+          : "Estado de comida guardado",
       type: status === "bien" ? "success" : "warning",
     });
+  }
+
+  async function saveIncident(child: Child, details: { comments: string }) {
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (!sessionData.session) {
+      setToast({
+        message: "No se puede registrar la incidencia",
+        type: "error",
+      });
+      return;
+    }
+
+    const monitorsResult = await supabase
+      .from("monitors")
+      .select("id")
+      .limit(1);
+    const monitorId = monitorsResult.data?.[0]?.id;
+    if (monitorsResult.error || !monitorId) {
+      setToast({
+        message: "No se puede registrar la incidencia",
+        type: "error",
+      });
+      return;
+    }
+
+    const result = await supabase
+      .from("incidents")
+      .insert({
+        child_id: child.id,
+        monitor_id: monitorId,
+        description: details.comments || "Incidencia de comida",
+        date: new Date().toISOString().slice(0, 10),
+      })
+      .select()
+      .single();
+    if (result.error) {
+      setToast({
+        message: "No se puede registrar la incidencia",
+        type: "error",
+      });
+      return;
+    }
+    setSelectedChild(null);
+    setToast({ message: "Incidencia registrada", type: "warning" });
   }
 
   if (state === "loading")
@@ -225,14 +278,27 @@ export default function BusinessApp({ page }: { page: Page }) {
       {selectedChild && (
         <IncidentModal
           studentName={`${selectedChild.first_name} ${selectedChild.last_name}`}
+          mealTypes={mealTypes}
           onClose={() => setSelectedChild(null)}
-          onSave={({ noFirst, noSecond, noGarnish, noDessert, comments }) => {
+          onSave={({
+            mealTypeId,
+            noFirst,
+            noSecond,
+            noGarnish,
+            noDessert,
+            comments,
+          }) => {
             const incident = noFirst || noSecond || noGarnish || noDessert;
-            void saveStatus(
-              selectedChild,
-              incident ? "mal" : comments ? "regular" : "bien",
-              comments,
-            );
+            if (incident) {
+              void saveIncident(selectedChild, { comments });
+            } else {
+              void saveStatus(
+                selectedChild,
+                mealTypeId,
+                comments ? "regular" : "bien",
+                comments,
+              );
+            }
           }}
         />
       )}

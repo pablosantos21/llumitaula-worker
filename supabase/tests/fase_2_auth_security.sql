@@ -191,6 +191,24 @@ select set_config(
 );
 select is(
   pg_temp.count_rows($query$
+    select 1 from public.meal_types
+     where school_id = '00000000-0000-4000-8000-000000000001'::uuid
+  $query$),
+  1::bigint,
+  'worker A can read meal types from their school'
+);
+
+select throws_ok(
+  $$insert into public.meal_types (id, school_id, name)
+    values ('00000000-0000-4000-8000-000000000699'::uuid,
+            '00000000-0000-4000-8000-000000000001'::uuid,
+            'Worker write must fail')$$,
+  '42501',
+  'worker meal types access is read-only'
+);
+
+select is(
+  pg_temp.count_rows($query$
     select count(*)
     from (
      select 1 from public.children
