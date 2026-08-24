@@ -125,6 +125,18 @@ npm run format:check
 
 Para formatear archivos localmente usa `npm run format`.
 
+## Despliegue y verificacion PWA
+
+Despliega `dist/` mediante HTTPS. Para instalar Llumitaula en Safari de iPad:
+
+1. Abre la URL HTTPS en Safari.
+2. Pulsa **Compartir** y selecciona **Añadir a pantalla de inicio**.
+3. Abre Llumitaula desde el nuevo icono y comprueba que se inicia en modo independiente, sin la interfaz de pestañas de Safari.
+4. Prueba la aplicación en orientación vertical y horizontal.
+5. Con el app shell cargado, activa el modo avión y vuelve a abrir la aplicación para verificar que la carcasa de la interfaz arranca sin conexión.
+
+El modo avión solo permite comprobar el app shell cacheado. Los datos de Supabase y las mutaciones no están disponibles sin conexión y no se guardan ni se cachean offline; las vistas y operaciones que los necesitan requieren red.
+
 ## Estructura
 
 ```text

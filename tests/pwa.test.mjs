@@ -197,6 +197,28 @@ test("built PWA resources are published at the required paths", async () => {
   await Promise.all(resources.map((path) => access(new URL(path, root))));
 });
 
+test("public build checker validates the complete PWA output contract", async () => {
+  const checker = await source("scripts/check-public-build.mjs");
+  const packageJson = JSON.parse(await source("package.json"));
+
+  assert.equal(
+    packageJson.scripts["test:pwa"],
+    "npm run build && npm run test:public-data && node --test tests/pwa.test.mjs",
+  );
+  assert.match(checker, /manifest\.webmanifest/);
+  assert.match(checker, /display.*standalone/s);
+  assert.match(checker, /index\.html/);
+  assert.match(checker, /sw\.js/);
+  assert.match(checker, /icon-192\.png/);
+  assert.match(checker, /icon-512\.png/);
+  assert.match(checker, /apple-touch-icon\.png/);
+  assert.match(checker, /ipad-landscape\.png/);
+  assert.match(checker, /ipad-portrait\.png/);
+  assert.match(checker, /supabase/);
+  assert.match(checker, /service_role/);
+  assert.match(checker, /sensitiveMockValues/);
+});
+
 test("service worker template declares the shell cache and safe request boundaries", async () => {
   const template = await source("scripts/sw-template.js");
 

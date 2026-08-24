@@ -1,10 +1,23 @@
-import { readFile, readdir } from "node:fs/promises";
+import { access, readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { stdout } from "node:process";
 import { URL } from "node:url";
 
 const distDirectory = new URL("../dist/", import.meta.url);
 const publicHtml = [];
+
+const requiredPwaAssets = [
+  "index.html",
+  "manifest.webmanifest",
+  "sw.js",
+  "icons/icon-192.png",
+  "icons/icon-192-maskable.png",
+  "icons/icon-512.png",
+  "icons/icon-512-maskable.png",
+  "icons/apple-touch-icon.png",
+  "splash/ipad-portrait.png",
+  "splash/ipad-landscape.png",
+];
 
 async function collectHtml(directory) {
   for (const entry of await readdir(directory, { withFileTypes: true })) {
@@ -31,6 +44,25 @@ for (const html of publicHtml) {
       throw new Error(`Sensitive mock value found in generated HTML: ${value}`);
     }
   }
+}
+
+const manifest = JSON.parse(
+  await readFile(new URL("manifest.webmanifest", distDirectory), "utf8"),
+);
+if (manifest.display !== "standalone") {
+  throw new Error('Generated manifest must use display: "standalone"');
+}
+
+await Promise.all(
+  requiredPwaAssets.map((path) => access(new URL(path, distDirectory))),
+);
+
+const generatedServiceWorker = await readFile(
+  new URL("sw.js", distDirectory),
+  "utf8",
+);
+if (/supabase|service_role/i.test(generatedServiceWorker)) {
+  throw new Error("Generated service worker must not contain Supabase secrets");
 }
 
 const source = await Promise.all(
