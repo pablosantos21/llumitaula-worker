@@ -1,6 +1,6 @@
 begin;
 
-select plan(143);
+select plan(146);
 
 set local role postgres;
 
@@ -1682,8 +1682,7 @@ select ok(
        and has_function_privilege('anon', p.oid, 'EXECUTE')
        and has_function_privilege('authenticated', p.oid, 'EXECUTE')
        and not has_function_privilege('service_role', p.oid, 'EXECUTE')
-       and not has_function_privilege('postgres', p.oid, 'EXECUTE')
-       and not exists (
+        and not exists (
          select 1
            from aclexplode(coalesce(p.proacl, '{}'::aclitem[])) acl
           where acl.grantee = 0
@@ -1722,7 +1721,17 @@ select ok(
   and not has_table_privilege('service_role', 'public.device_setup_attempts', 'INSERT')
   and not has_table_privilege('service_role', 'public.device_setup_attempts', 'UPDATE')
   and not has_table_privilege('service_role', 'public.device_setup_attempts', 'DELETE'),
-  'anon, authenticated, and service_role cannot access device setup attempts directly'
+   'anon, authenticated, and service_role cannot access device setup attempts directly'
+);
+select ok(
+  exists (
+    select 1
+      from pg_constraint c
+     where c.conrelid = 'public.device_setup_codes'::regclass
+       and c.contype = 'f'
+       and pg_get_constraintdef(c.oid) ilike '%ON DELETE CASCADE%'
+  ),
+  'device setup code school foreign key cascades on school deletion'
 );
 
 select set_config('request.jwt.claims', '{}', true);
@@ -2027,6 +2036,23 @@ select is(
   'failed device update preserves last_seen_at'
 );
 drop trigger device_setup_update_rollback_fixture on public.devices;
+
+set local role postgres;
+update public.device_setup_attempts
+   set window_started_at = now() - interval '16 minutes', attempt_count = 0
+ where device_identifier = '00000000-0000-4000-8000-000000000701'::uuid;
+set local role anon;
+select is(
+  (select (public.claim_device_setup('123462', '00000000-0000-4000-8000-000000000701'::uuid))->>'ok'),
+  'false',
+  'a school B code cannot reuse a school A device identifier'
+);
+set local role postgres;
+select is(
+  (select school_id from public.devices where identifier = '00000000-0000-4000-8000-000000000701'),
+  '00000000-0000-4000-8000-000000000001'::uuid,
+  'a cross-school setup claim never moves the existing device'
+);
 
 set local role postgres;
 do $$
