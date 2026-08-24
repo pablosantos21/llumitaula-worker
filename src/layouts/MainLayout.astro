@@ -1,11 +1,13 @@
 ---
 import "../styles/global.css";
+import AuthGuard from "../components/AuthGuard";
 interface Props {
   title: string;
   class?: string;
+  requiresAuth?: boolean;
 }
 
-const { title, class: className } = Astro.props;
+const { title, class: className, requiresAuth = true } = Astro.props;
 ---
 
 <!doctype html>
@@ -22,7 +24,10 @@ const { title, class: className } = Astro.props;
   </head>
   <body class="h-full flex flex-col text-gray-900">
     <main class={`flex-1 flex flex-col ${className || ""}`}>
-      <slot />
+      {requiresAuth && <AuthGuard client:load contentId="protected-content" />}
+      <div id="protected-content" hidden={requiresAuth} class="contents">
+        <slot />
+      </div>
     </main>
   </body>
 </html>

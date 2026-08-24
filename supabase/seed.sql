@@ -24,11 +24,11 @@ begin
       ('00000000-0000-4000-8000-000000000115'::uuid, 'admin.b@local.test', 'Admin B'),
       ('00000000-0000-4000-8000-000000000116'::uuid, 'worker.a2@local.test', 'Worker A Two')
     ) expected(id, email, full_name) on expected.id = au.id
-    where (au.instance_id, au.email, au.role, au.aud, au.aal, au.email_confirmed_at,
+    where (au.instance_id, au.email, au.role, au.aud, au.email_confirmed_at,
            au.raw_app_meta_data, au.raw_user_meta_data, au.created_at,
            au.updated_at, au.confirmed_at) is distinct from
           ('00000000-0000-0000-0000-000000000000'::uuid, expected.email,
-           'authenticated', 'authenticated', 'aal1',
+           'authenticated', 'authenticated',
            timestamp '2026-01-01 00:00:00+00',
            jsonb_build_object('provider', 'email', 'providers', jsonb_build_array('email')),
            jsonb_build_object('full_name', expected.full_name),
@@ -410,7 +410,7 @@ $$;
 
 insert into auth.users (
   id, instance_id, aud, role, email, encrypted_password,
-  email_confirmed_at, raw_app_meta_data, raw_user_meta_data, aal,
+  email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
   created_at, updated_at, confirmed_at
 )
 select account.id, '00000000-0000-0000-0000-000000000000'::uuid,
@@ -418,7 +418,7 @@ select account.id, '00000000-0000-0000-0000-000000000000'::uuid,
        '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy',
        timestamp '2026-01-01 00:00:00+00',
        jsonb_build_object('provider', 'email', 'providers', jsonb_build_array('email')),
-       jsonb_build_object('full_name', account.full_name), 'aal1',
+       jsonb_build_object('full_name', account.full_name),
        timestamp '2026-01-01 00:00:00+00', timestamp '2026-01-01 00:00:00+00',
        timestamp '2026-01-01 00:00:00+00'
   from (values

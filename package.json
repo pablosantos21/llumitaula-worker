@@ -13,6 +13,7 @@
     "check": "astro check",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
+    "test:auth-guard": "node --test tests/auth-guard.test.mjs",
     "format": "prettier . --write",
     "format:check": "prettier . --check"
   },
