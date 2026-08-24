@@ -19,6 +19,21 @@ const { title, class: className, requiresAuth = true } = Astro.props;
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
     />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#047857" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <link
+      rel="apple-touch-startup-image"
+      href="/splash/ipad-portrait.svg"
+      media="(orientation: portrait)"
+    />
+    <link
+      rel="apple-touch-startup-image"
+      href="/splash/ipad-landscape.svg"
+      media="(orientation: landscape)"
+    />
     <meta name="generator" content={Astro.generator} />
     <title>{title}</title>
   </head>
@@ -35,6 +50,16 @@ const { title, class: className, requiresAuth = true } = Astro.props;
     </main>
   </body>
 </html>
+
+<script>
+  if (typeof window !== "undefined" && "serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("/sw.js").catch((error) => {
+        console.warn("Service worker registration failed", error);
+      });
+    });
+  }
+</script>
 
 <style>
   /* Base styles for better mobile feel */
