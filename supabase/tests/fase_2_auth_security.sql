@@ -945,6 +945,18 @@ select throws_ok(
   'service_role cannot spoof the insert author'
 );
 select throws_ok(
+  $$insert into public.meal_records
+      (id, child_id, meal_type_id, recorded_by, recorded_date, recorded_at, status)
+    values
+      ('00000000-0000-4000-8000-000000000634'::uuid,
+       '00000000-0000-4000-8000-000000000204'::uuid,
+       '00000000-0000-4000-8000-000000000611'::uuid,
+       '00000000-0000-4000-8000-000000000111'::uuid,
+       current_date - 1, now(), 'bien')$$,
+  '42501',
+  'service_role cannot insert when sub matches the author'
+);
+select throws_ok(
   $$update public.meal_records
        set recorded_by = '00000000-0000-4000-8000-000000000111'::uuid
      where id = '00000000-0000-4000-8000-000000000625'::uuid$$,

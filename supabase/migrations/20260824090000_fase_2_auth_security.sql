@@ -1357,10 +1357,16 @@ declare
   meal_type_school_id uuid;
   author_school_id uuid;
 begin
+  if auth.role() = 'service_role' then
+    raise exception 'service_role cannot write meal_records through the API'
+      using errcode = '42501';
+  end if;
+
   if tg_op = 'INSERT'
      and session_user = 'postgres'
      and current_setting('role', true) = 'postgres'
-     and auth.uid() is null then
+     and auth.uid() is null
+     and auth.role() <> 'service_role' then
     return new;
   end if;
 
