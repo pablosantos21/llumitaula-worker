@@ -1,6 +1,6 @@
 begin;
 
-select plan(87);
+select plan(112);
 
 set local role postgres;
 
@@ -1617,6 +1617,197 @@ select throws_ok(
        and allergen_id = '00000000-0000-4000-8000-000000000401'::uuid$$,
   '42501',
   'admin A cannot update an A association to allergen 499 from B'
+);
+
+-- Delivery 1: device setup RPC security contract. The implementation is
+-- intentionally absent in this red phase; these assertions define its API.
+select ok(
+  exists (
+    select 1
+      from pg_class
+       where oid = to_regclass('public.device_setup_codes')
+       and relrowsecurity
+  ),
+  'device setup codes are stored in an RLS-protected table'
+);
+select ok(
+  exists (
+    select 1
+      from pg_attribute
+     where attrelid = to_regclass('public.device_setup_codes')
+       and attname in ('code_hash', 'school_id', 'expires_at', 'max_uses', 'uses', 'active', 'claimed_at', 'last_seen_at')
+       and not attisdropped
+  ),
+  'device setup codes contain hashed, scoped, expiring, and audited state'
+);
+select ok(
+  exists (
+    select 1
+      from pg_proc
+     where oid = to_regprocedure('public.claim_device_setup(text,uuid)')
+       and prosecdef
+       and proconfig @> array['search_path=pg_catalog, public, pg_temp']
+  ),
+  'claim_device_setup is a SECURITY DEFINER RPC with a fixed search path'
+);
+select ok(
+  exists (
+    select 1
+      from pg_proc p
+     where p.oid = to_regprocedure('public.claim_device_setup(text,uuid)')
+       and has_function_privilege('anon', p.oid, 'EXECUTE')
+       and has_function_privilege('authenticated', p.oid, 'EXECUTE')
+       and not has_function_privilege('public', p.oid, 'EXECUTE')
+  ),
+  'claim_device_setup is executable only by anon and authenticated roles'
+);
+select ok(
+  to_regclass('public.device_setup_codes') is not null
+  and not has_table_privilege('anon', 'public.device_setup_codes', 'SELECT')
+  and not has_table_privilege('authenticated', 'public.device_setup_codes', 'SELECT')
+  and not has_table_privilege('anon', 'public.device_setup_codes', 'INSERT')
+  and not has_table_privilege('authenticated', 'public.device_setup_codes', 'UPDATE'),
+  'clients cannot access device setup codes directly'
+);
+
+select set_config('request.jwt.claims', '{}', true);
+select throws_ok(
+  $$select * from public.claim_device_setup('invalid-code', '00000000-0000-4000-8000-000000000701'::uuid)$$,
+  'P0001',
+  'invalid setup codes are rejected without exposing validation details'
+);
+select throws_ok(
+  $$select * from public.claim_device_setup('valid-code', 'not-a-uuid'::uuid)$$,
+  '22P02',
+  'malformed device identifiers are rejected'
+);
+select throws_ok(
+  $$select * from public.claim_device_setup('valid-code', '00000000-0000-0000-0000-000000000000'::uuid)$$,
+  '22023',
+  'nil device identifiers are rejected'
+);
+
+select set local role postgres;
+select lives_ok(
+  $$insert into public.device_setup_codes
+      (id, school_id, code_hash, expires_at, max_uses, uses, active)
+    values
+      ('00000000-0000-4000-8000-000000000701'::uuid,
+       '00000000-0000-4000-8000-000000000001'::uuid,
+       crypt('valid-a', gen_salt('bf')), now() + interval '1 hour', 2, 0, true),
+      ('00000000-0000-4000-8000-000000000702'::uuid,
+       '00000000-0000-4000-8000-000000000001'::uuid,
+       crypt('expired-a', gen_salt('bf')), now() - interval '1 hour', 2, 0, true),
+      ('00000000-0000-4000-8000-000000000703'::uuid,
+       '00000000-0000-4000-8000-000000000001'::uuid,
+       crypt('exhausted-a', gen_salt('bf')), now() + interval '1 hour', 1, 1, true),
+      ('00000000-0000-4000-8000-000000000704'::uuid,
+       '00000000-0000-4000-8000-000000000001'::uuid,
+       crypt('inactive-a', gen_salt('bf')), now() + interval '1 hour', 2, 0, false)$$,
+  'test setup codes can be provisioned by a privileged issuer'
+);
+set local role anon;
+select set_config('request.jwt.claims', '{}', true);
+select lives_ok(
+  $$select * from public.claim_device_setup('valid-a', '00000000-0000-4000-8000-000000000701'::uuid)$$,
+  'a valid setup code can be claimed'
+);
+select ok(
+  exists (
+    select 1 from public.devices
+     where identifier = '00000000-0000-4000-8000-000000000701'
+       and school_id = '00000000-0000-4000-8000-000000000001'::uuid
+       and active
+       and last_seen_at is not null
+  ),
+  'a valid claim creates a device in the code school and records last seen'
+);
+select throws_ok(
+  $$select * from public.claim_device_setup('expired-a', '00000000-0000-4000-8000-000000000702'::uuid)$$,
+  'P0001',
+  'expired setup codes are rejected'
+);
+select throws_ok(
+  $$select * from public.claim_device_setup('exhausted-a', '00000000-0000-4000-8000-000000000703'::uuid)$$,
+  'P0001',
+  'exhausted setup codes are rejected'
+);
+select throws_ok(
+  $$select * from public.claim_device_setup('inactive-a', '00000000-0000-4000-8000-000000000704'::uuid)$$,
+  'P0001',
+  'inactive setup codes are rejected'
+);
+select throws_ok(
+  $$select * from public.claim_device_setup('valid-a', '00000000-0000-4000-8000-000000000701'::uuid)$$,
+  'P0001',
+  'a setup code cannot be reused after its usage limit is reached'
+);
+
+select set local role postgres;
+select lives_ok(
+  $$update public.devices
+       set active = false
+     where identifier = '00000000-0000-4000-8000-000000000701'$$,
+  'test can deactivate the claimed device'
+);
+set local role anon;
+select lives_ok(
+  $$select * from public.claim_device_setup('valid-a', '00000000-0000-4000-8000-000000000701'::uuid)$$,
+  'a valid claim can reactivate the same device identifier'
+);
+select ok(
+  (select active from public.devices where identifier = '00000000-0000-4000-8000-000000000701'),
+  'successful re-claim reactivates the device'
+);
+
+select set local role postgres;
+select lives_ok(
+  $$insert into public.device_setup_codes
+      (id, school_id, code_hash, expires_at, max_uses, uses, active)
+    values ('00000000-0000-4000-8000-000000000705'::uuid,
+            '00000000-0000-4000-8000-000000000002'::uuid,
+            crypt('valid-b', gen_salt('bf')), now() + interval '1 hour', 2, 0, true)$$,
+  'a second-school setup code is available for isolation checks'
+);
+set local role anon;
+select lives_ok(
+  $$select * from public.claim_device_setup('valid-b', '00000000-0000-4000-8000-000000000705'::uuid)$$,
+  'a second-school code can claim its own device'
+);
+select ok(
+  not exists (
+    select 1 from public.devices
+     where identifier = '00000000-0000-4000-8000-000000000705'
+       and school_id <> '00000000-0000-4000-8000-000000000002'::uuid
+  ),
+  'a device is never assigned outside the code school'
+);
+
+select set local role postgres;
+select lives_ok(
+  $$insert into public.device_setup_codes
+      (id, school_id, code_hash, expires_at, max_uses, uses, active)
+    values ('00000000-0000-4000-8000-000000000706'::uuid,
+            '00000000-0000-4000-8000-000000000001'::uuid,
+            crypt('rollback-a', gen_salt('bf')), now() + interval '1 hour', 1, 0, true)$$,
+  'a rollback setup code is available'
+);
+set local role anon;
+select throws_ok(
+  $$select * from public.claim_device_setup('rollback-a', '00000000-0000-4000-8000-000000000000'::uuid)$$,
+  '22023',
+  'failed device creation rejects the claim atomically'
+);
+select set local role postgres;
+select is(
+  (select uses from public.device_setup_codes where id = '00000000-0000-4000-8000-000000000706'::uuid),
+  0,
+  'failed device creation rolls back code consumption'
+);
+select is(
+  (select count(*) from public.devices where identifier = '00000000-0000-4000-8000-000000000000'),
+  0::bigint,
+  'failed device creation leaves no partial device'
 );
 
 set local role postgres;
