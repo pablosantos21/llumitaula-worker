@@ -2,7 +2,7 @@
 /* global caches, fetch, self, URL */
 /* eslint-disable no-undef */
 
-const CACHE_NAME = "llumitaula-shell-v1";
+const CACHE_NAME = "llumitaula-shell-__CACHE_VERSION__";
 // Replaced with the build's root-relative asset list.
 const PRECACHE_URLS = __PRECACHE_URLS__;
 
@@ -64,6 +64,9 @@ self.addEventListener("fetch", (event) => {
 
   if (request.mode === "navigate") {
     // Network-first navigation keeps deployed HTML current when online.
+    const routePath = url.pathname.endsWith("/")
+      ? `${url.pathname}index.html`
+      : `${url.pathname}/index.html`;
     event.respondWith(
       fetch(request)
         .then((response) => {
@@ -73,7 +76,17 @@ self.addEventListener("fetch", (event) => {
           return response;
         })
         .catch(() =>
-          readCache("/index.html").then((cached) => cached || Response.error()),
+          readCache(request).then(
+            (cached) =>
+              cached ||
+              readCache(routePath).then(
+                (route) =>
+                  route ||
+                  readCache("/index.html").then(
+                    (shell) => shell || Response.error(),
+                  ),
+              ),
+          ),
         ),
     );
     return;

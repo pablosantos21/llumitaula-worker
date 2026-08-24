@@ -25,7 +25,15 @@ async function source(path) {
   return readFile(new URL(path, root), "utf8");
 }
 
-async function loadServiceWorker({ cache, fetch, open = async () => cache }) {
+async function loadServiceWorker({
+  cache,
+  fetch,
+  open = async () => cache,
+  keys = async () => [],
+  deleteCache = async () => true,
+  precacheUrls = [],
+  cacheVersion = "test",
+}) {
   const listeners = new Map();
   const warnings = [];
   const self = {
@@ -38,8 +46,8 @@ async function loadServiceWorker({ cache, fetch, open = async () => cache }) {
   };
   const caches = {
     open,
-    keys: async () => [],
-    delete: async () => true,
+    keys,
+    delete: deleteCache,
   };
   const context = {
     caches,
@@ -51,8 +59,19 @@ async function loadServiceWorker({ cache, fetch, open = async () => cache }) {
   };
   const template = await source("scripts/sw-template.js");
 
-  vm.runInNewContext(template.replace("__PRECACHE_URLS__", "[]"), context);
-  return { fetchHandler: listeners.get("fetch"), warnings };
+  vm.runInNewContext(
+    template
+      .replace("__CACHE_VERSION__", cacheVersion)
+      .replace("__PRECACHE_URLS__", JSON.stringify(precacheUrls)),
+    context,
+  );
+  return {
+    activateHandler: listeners.get("activate"),
+    fetchHandler: listeners.get("fetch"),
+    installHandler: listeners.get("install"),
+    self,
+    warnings,
+  };
 }
 
 function request(url, { mode = "cors", destination = "script" } = {}) {
@@ -350,7 +369,7 @@ test("public build checker clearly reports a missing dist directory", async () =
 test("service worker template declares the shell cache and safe request boundaries", async () => {
   const template = await source("scripts/sw-template.js");
 
-  assert.match(template, /llumitaula-shell-v1/);
+  assert.match(template, /llumitaula-shell-__CACHE_VERSION__/);
   assert.match(template, /addAll|cache\.put/);
   assert.match(template, /catch/);
   assert.match(template, /self\.skipWaiting\(\)/);
@@ -407,7 +426,9 @@ test("service worker serves assets from a named cache on misses and hits", async
   const miss = await dispatch(fetchHandler, request("/app.js"));
   assert.equal(await miss.text(), "network data");
   assert.ok(cacheNames.length > 0);
-  assert.ok(cacheNames.every((name) => name === "llumitaula-shell-v1"));
+  assert.ok(
+    cacheNames.every((name) => /^llumitaula-shell-[a-z0-9-]+$/.test(name)),
+  );
   assert.deepEqual(putKeys, ["https://app.example/app.js"]);
   assert.ok(storedResponses.has("https://app.example/app.js"));
   const hit = await dispatch(fetchHandler, request("/app.js"));
@@ -434,6 +455,136 @@ test("service worker returns the named shell when navigation is offline", async 
     request("/login/", { mode: "navigate", destination: "document" }),
   );
   assert.equal(await response.text(), "shell");
+});
+
+test("service worker serves a cached navigation before falling back to the shell", async () => {
+  const cache = {
+    async match(path) {
+      const key = typeof path === "string" ? path : path.url;
+      if (key === "https://app.example/login/") return new Response("login");
+      if (key === "/index.html") return new Response("shell");
+      return undefined;
+    },
+    async put() {},
+  };
+  const { fetchHandler } = await loadServiceWorker({
+    cache,
+    fetch: async () => {
+      throw new Error("offline");
+    },
+  });
+
+  const response = await dispatch(
+    fetchHandler,
+    request("/login/", { mode: "navigate", destination: "document" }),
+  );
+  assert.equal(await response.text(), "login");
+});
+
+test("service worker resolves Astro static route variants offline", async () => {
+  const cache = {
+    async match(path) {
+      const key = typeof path === "string" ? path : path.url;
+      if (key === "/login/index.html") return new Response("login route");
+      if (key === "/index.html") return new Response("root shell");
+      return undefined;
+    },
+    async put() {},
+  };
+  const { fetchHandler } = await loadServiceWorker({
+    cache,
+    fetch: async () => {
+      throw new Error("offline");
+    },
+  });
+
+  const response = await dispatch(
+    fetchHandler,
+    request("/login/", { mode: "navigate", destination: "document" }),
+  );
+  assert.equal(await response.text(), "login route");
+});
+
+test("service worker completes install and activate lifecycle safely", async () => {
+  const cache = {
+    added: [],
+    async add(url) {
+      this.added.push(url);
+      if (url === "/missing.html") throw new Error("not found");
+    },
+    async match() {},
+    async put() {},
+  };
+  const deleted = [];
+  let skipped = false;
+  let claimed = false;
+  const { installHandler, activateHandler, self } = await loadServiceWorker({
+    cache,
+    keys: async () => [
+      "llumitaula-shell-old",
+      "unrelated-cache",
+      "llumitaula-runtime-old",
+    ],
+    deleteCache: async (name) => {
+      deleted.push(name);
+      return true;
+    },
+    precacheUrls: ["/index.html", "/missing.html"],
+  });
+  self.skipWaiting = async () => {
+    skipped = true;
+  };
+  self.clients.claim = async () => {
+    claimed = true;
+  };
+
+  const waits = [];
+  const event = {
+    waitUntil(value) {
+      waits.push(Promise.resolve(value));
+    },
+  };
+  installHandler(event);
+  await Promise.all(waits);
+  assert.ok(skipped);
+  assert.deepEqual(cache.added, ["/index.html", "/missing.html"]);
+
+  const activateEvent = {
+    waitUntil(value) {
+      waits.push(Promise.resolve(value));
+    },
+  };
+  activateHandler(activateEvent);
+  await Promise.all(waits.slice(1));
+  assert.ok(claimed);
+  assert.deepEqual(deleted, ["llumitaula-shell-old"]);
+});
+
+test("service worker does not intercept external, Supabase, or non-GET requests", async () => {
+  let fetches = 0;
+  const { fetchHandler } = await loadServiceWorker({
+    cache: { async match() {}, async put() {} },
+    fetch: async () => {
+      fetches += 1;
+      return new Response("network");
+    },
+  });
+
+  for (const requestValue of [
+    { ...request("/app.js"), url: "https://cdn.example/app.js" },
+    { ...request("/app.js"), url: "https://project.supabase.co/rest/v1/me" },
+    { ...request("/app.js"), method: "POST" },
+  ]) {
+    const event = {
+      request: requestValue,
+      respondWith() {
+        throw new Error("request should not be intercepted");
+      },
+      waitUntil() {},
+    };
+    fetchHandler(event);
+  }
+  assert.equal(fetches, 0);
 });
 
 test("service worker handles cache storage errors without rejecting a response", async () => {
@@ -556,5 +707,32 @@ test("service worker generator rejects an index.html directory", async () => {
     );
   } finally {
     await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("service worker generator stamps each output with a fresh cache version", async () => {
+  const outputs = [];
+  for (let index = 0; index < 2; index += 1) {
+    const fixture = await mkdtemp(join("/tmp", "llumitaula-pwa-"));
+    try {
+      await writeFile(join(fixture, "index.html"), "<main>shell</main>");
+      await execFileAsync(
+        process.execPath,
+        ["scripts/generate-pwa-service-worker.mjs"],
+        {
+          cwd: new URL("../", import.meta.url),
+          env: { ...process.env, PWA_DIST_DIR: fixture },
+        },
+      );
+      outputs.push(await readFile(join(fixture, "sw.js"), "utf8"));
+    } finally {
+      await rm(fixture, { recursive: true, force: true });
+    }
+  }
+
+  assert.notEqual(outputs[0], outputs[1]);
+  for (const output of outputs) {
+    assert.doesNotMatch(output, /__CACHE_VERSION__/);
+    assert.match(output, /llumitaula-shell-[a-z0-9-]+/);
   }
 });

@@ -1,6 +1,7 @@
 import { readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { extname, relative, resolve, sep } from "node:path";
 import process from "node:process";
+import { randomUUID } from "node:crypto";
 import { fileURLToPath, URL } from "node:url";
 
 const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
@@ -58,11 +59,17 @@ const urls = (await filesIn(dist))
   )
   .sort();
 const template = await readFile(templatePath, "utf8");
-const output = template.replace("__PRECACHE_URLS__", JSON.stringify(urls));
+const cacheVersion = `${Date.now().toString(36)}-${randomUUID()}`;
+const output = template
+  .replace("__CACHE_VERSION__", cacheVersion)
+  .replace("__PRECACHE_URLS__", JSON.stringify(urls));
 
-if (output.includes("__PRECACHE_URLS__")) {
+if (
+  output.includes("__CACHE_VERSION__") ||
+  output.includes("__PRECACHE_URLS__")
+) {
   throw new Error(
-    "Service worker generation left __PRECACHE_URLS__ unresolved",
+    "Service worker generation left replacement tokens unresolved",
   );
 }
 

@@ -9,6 +9,7 @@ export default [
       "dist/**",
       ".astro/**",
       "node_modules/**",
+      ".worktrees/**",
       "supabase/.branches/**",
       "supabase/.temp/**",
     ],
