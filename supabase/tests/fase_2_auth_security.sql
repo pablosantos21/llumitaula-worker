@@ -811,14 +811,62 @@ select is(
   'worker cannot read an allergen attached only to an unassigned class'
 );
 
-select is(
-  pg_temp.count_rows($query$
-    select count(*)
-      from public.allergens a
-     where a.id = '00000000-0000-4000-8000-000000000499'::uuid
-  $query$),
-  0::bigint,
-  'worker cannot read an allergen shared by schools A and B'
+set local role postgres;
+do $$
+begin
+  if not exists (
+    select 1
+      from public.children c
+      join public.classes cl on cl.id = c.class_id
+     where c.id = '00000000-0000-4000-8000-000000000202'::uuid
+       and cl.school_id = '00000000-0000-4000-8000-000000000001'::uuid
+  )
+  or not exists (
+    select 1
+      from public.child_allergens ca
+      join public.children c on c.id = ca.child_id
+      join public.classes cl on cl.id = c.class_id
+     where ca.child_id = '00000000-0000-4000-8000-000000000225'::uuid
+       and ca.allergen_id = '00000000-0000-4000-8000-000000000498'::uuid
+       and cl.school_id = '00000000-0000-4000-8000-000000000002'::uuid
+  )
+  or (select count(*) from public.child_allergens ca
+       where ca.allergen_id = '00000000-0000-4000-8000-000000000499'::uuid
+         and ca.child_id in (
+           '00000000-0000-4000-8000-000000000201'::uuid,
+           '00000000-0000-4000-8000-000000000225'::uuid
+         )) <> 2
+  or exists (
+    select 1 from public.child_allergens
+     where child_id = '00000000-0000-4000-8000-000000000202'::uuid
+       and allergen_id in (
+         '00000000-0000-4000-8000-000000000498'::uuid,
+         '00000000-0000-4000-8000-000000000499'::uuid
+       )
+  ) then
+    raise exception 'allergy association fixtures are not exact';
+  end if;
+end
+$$;
+
+set local role authenticated;
+select set_config(
+  'request.jwt.claims',
+  json_build_object(
+    'sub', '00000000-0000-4000-8000-000000000113',
+    'role', 'authenticated'
+  )::text,
+  true
+);
+select throws_ok(
+  $$insert into public.child_allergens (child_id, allergen_id)
+    values
+      ('00000000-0000-4000-8000-000000000202'::uuid,
+       '00000000-0000-4000-8000-000000000498'::uuid),
+      ('00000000-0000-4000-8000-000000000202'::uuid,
+       '00000000-0000-4000-8000-000000000499'::uuid)$$,
+  '42501',
+  'admin A cannot associate B-only or shared allergens with a school A child'
 );
 
 select is(
