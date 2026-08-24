@@ -142,6 +142,27 @@ export type Database = {
         };
         Relationships: [];
       };
+      device_setup_global_attempts: {
+        Row: {
+          attempt_count: number;
+          id: boolean;
+          last_attempt_at: string;
+          window_started_at: string;
+        };
+        Insert: {
+          attempt_count?: number;
+          id?: boolean;
+          last_attempt_at?: string;
+          window_started_at?: string;
+        };
+        Update: {
+          attempt_count?: number;
+          id?: boolean;
+          last_attempt_at?: string;
+          window_started_at?: string;
+        };
+        Relationships: [];
+      };
       device_setup_codes: {
         Row: {
           active: boolean;

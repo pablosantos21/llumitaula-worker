@@ -25,6 +25,20 @@ create table public.device_setup_attempts (
   constraint device_setup_attempts_count_valid check (attempt_count >= 0)
 );
 
+-- Basic global defense against rotating device UUIDs. This is not a perfect
+-- abuse-prevention mechanism; a trusted edge or network control is outside
+-- this RPC's scope.
+create table public.device_setup_global_attempts (
+  id boolean primary key default true,
+  window_started_at timestamptz not null default now(),
+  attempt_count integer not null default 0,
+  last_attempt_at timestamptz not null default now(),
+  constraint device_setup_global_attempts_singleton check (id),
+  constraint device_setup_global_attempts_count_valid check (attempt_count >= 0)
+);
+insert into public.device_setup_global_attempts (id)
+values (true);
+
 create index device_setup_codes_school_id_idx
   on public.device_setup_codes (school_id);
 create index device_setup_codes_active_expires_at_idx
@@ -34,9 +48,11 @@ create index device_setup_attempts_last_attempt_at_idx
 
 alter table public.device_setup_codes enable row level security;
 alter table public.device_setup_attempts enable row level security;
+alter table public.device_setup_global_attempts enable row level security;
 
 revoke all privileges on table public.device_setup_codes from public, anon, authenticated, service_role;
 revoke all privileges on table public.device_setup_attempts from public, anon, authenticated, service_role;
+revoke all privileges on table public.device_setup_global_attempts from public, anon, authenticated, service_role;
 
 create or replace function public.claim_device_setup(
   p_code text,
@@ -50,6 +66,7 @@ as $$
 declare
   v_code text := upper(btrim(coalesce(p_code, '')));
   v_code_hash text;
+  v_global_attempt public.device_setup_global_attempts%rowtype;
   v_attempt public.device_setup_attempts%rowtype;
   v_setup_code public.device_setup_codes%rowtype;
   v_device_id uuid;
@@ -58,6 +75,31 @@ declare
 begin
   if p_device_identifier is null then
     return jsonb_build_object('ok', false, 'error', 'Codigo no valido');
+  end if;
+
+  -- Keep this counter independent from the client-controlled identifier.
+  insert into public.device_setup_global_attempts (id, window_started_at, attempt_count, last_attempt_at)
+  values (true, now(), 1, now())
+  on conflict (id) do nothing;
+
+  select *
+    into v_global_attempt
+    from public.device_setup_global_attempts
+   where id
+   for update;
+
+  if v_global_attempt.window_started_at <= now() - interval '15 minutes' then
+    update public.device_setup_global_attempts
+       set window_started_at = now(), attempt_count = 1, last_attempt_at = now()
+     where id
+    returning * into v_global_attempt;
+  elsif v_global_attempt.attempt_count >= 30 then
+    return jsonb_build_object('ok', false, 'error', 'Codigo no valido');
+  else
+    update public.device_setup_global_attempts
+       set attempt_count = attempt_count + 1, last_attempt_at = now()
+     where id
+    returning * into v_global_attempt;
   end if;
 
   -- Lock the per-device counter before validating the code so invalid codes

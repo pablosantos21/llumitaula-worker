@@ -1,6 +1,6 @@
 begin;
 
-select plan(146);
+select plan(156);
 
 set local role postgres;
 
@@ -1721,7 +1721,39 @@ select ok(
   and not has_table_privilege('service_role', 'public.device_setup_attempts', 'INSERT')
   and not has_table_privilege('service_role', 'public.device_setup_attempts', 'UPDATE')
   and not has_table_privilege('service_role', 'public.device_setup_attempts', 'DELETE'),
-   'anon, authenticated, and service_role cannot access device setup attempts directly'
+  'anon, authenticated, and service_role cannot access device setup attempts directly'
+);
+select ok(
+  to_regclass('public.device_setup_global_attempts') is not null,
+  'global device setup attempts table exists'
+);
+select has_column('public', 'device_setup_global_attempts', 'id', 'global attempts use a singleton id');
+select has_column('public', 'device_setup_global_attempts', 'window_started_at', 'global attempts track the rate-limit window');
+select has_column('public', 'device_setup_global_attempts', 'attempt_count', 'global attempts track the counter');
+select has_column('public', 'device_setup_global_attempts', 'last_attempt_at', 'global attempts audit the last attempt');
+select ok(
+  exists (
+    select 1
+      from pg_class
+     where oid = to_regclass('public.device_setup_global_attempts')
+       and relrowsecurity
+  ),
+  'global device setup attempts have RLS enabled'
+);
+select ok(
+  not has_table_privilege('anon', 'public.device_setup_global_attempts', 'SELECT')
+  and not has_table_privilege('anon', 'public.device_setup_global_attempts', 'INSERT')
+  and not has_table_privilege('anon', 'public.device_setup_global_attempts', 'UPDATE')
+  and not has_table_privilege('anon', 'public.device_setup_global_attempts', 'DELETE')
+  and not has_table_privilege('authenticated', 'public.device_setup_global_attempts', 'SELECT')
+  and not has_table_privilege('authenticated', 'public.device_setup_global_attempts', 'INSERT')
+  and not has_table_privilege('authenticated', 'public.device_setup_global_attempts', 'UPDATE')
+  and not has_table_privilege('authenticated', 'public.device_setup_global_attempts', 'DELETE')
+  and not has_table_privilege('service_role', 'public.device_setup_global_attempts', 'SELECT')
+  and not has_table_privilege('service_role', 'public.device_setup_global_attempts', 'INSERT')
+  and not has_table_privilege('service_role', 'public.device_setup_global_attempts', 'UPDATE')
+  and not has_table_privilege('service_role', 'public.device_setup_global_attempts', 'DELETE'),
+  'API roles cannot access global device setup attempts directly'
 );
 select ok(
   exists (
@@ -2049,6 +2081,31 @@ select is(
   (select school_id from public.devices where identifier = '00000000-0000-4000-8000-000000000701'),
   '00000000-0000-4000-8000-000000000001'::uuid,
   'a cross-school setup claim never moves the existing device'
+);
+
+set local role postgres;
+update public.device_setup_global_attempts
+   set window_started_at = now() - interval '16 minutes', attempt_count = 0
+ where id;
+set local role anon;
+select lives_ok(
+  $$select public.claim_device_setup(
+           'rotated-code',
+           ('00000000-0000-4000-8000-' || lpad(attempt::text, 12, '0'))::uuid
+       )
+      from generate_series(1, 30) as attempts(attempt)$$,
+  'rotating device identifiers can consume the global attempt budget'
+);
+select is(
+  (select (public.claim_device_setup('rotated-code', '00000000-0000-4000-8000-000000000751'::uuid))->>'ok'),
+  'false',
+  'the global setup rate limit rejects attempt 31'
+);
+set local role postgres;
+select is(
+  (select attempt_count from public.device_setup_global_attempts where id),
+  30,
+  'the global rate-limit counter persists at its maximum'
 );
 
 set local role postgres;
