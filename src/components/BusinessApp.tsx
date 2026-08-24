@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import MealRecordModal from "./MealRecordModal";
 import { supabase } from "../lib/supabase/client";
 import { localDateString } from "../lib/local-date";
+import type { MealStatus } from "../lib/mealRecord";
 import type { Database } from "../types/database";
 import FeedbackToast from "./FeedbackToast";
 import StudentCard from "./StudentCard";
@@ -148,46 +149,112 @@ export default function BusinessApp({ page }: { page: Page }) {
     });
   }
 
-  async function saveIncident(child: Child, details: { comments: string }) {
+  async function saveIncident(
+    child: Child,
+    details: {
+      mealTypeId: string;
+      status: MealStatus;
+      notes: string;
+      noFirst: boolean;
+      noSecond: boolean;
+      noGarnish: boolean;
+      noDessert: boolean;
+      comments: string;
+    },
+  ) {
     const { data: sessionData } = await supabase.auth.getSession();
-    if (!sessionData.session || !canManageIncidents) {
+    const session = sessionData.session;
+    if (!session || !canManageIncidents || !details.mealTypeId) {
       setToast({
         message: "No se puede registrar la incidencia",
         type: "error",
       });
       return;
     }
+
+    const date = localDateString();
+    const mealResult = await supabase
+      .from("meal_records")
+      .upsert(
+        {
+          child_id: child.id,
+          meal_type_id: details.mealTypeId,
+          recorded_date: date,
+          recorded_by: session.user.id,
+          status: details.status,
+          notes: details.notes,
+          recorded_at: new Date().toISOString(),
+        },
+        { onConflict: "child_id,meal_type_id,recorded_date" },
+      )
+      .select()
+      .single();
 
     const monitorsResult = await supabase
       .from("monitors")
       .select("id")
       .limit(1);
     const monitorId = monitorsResult.data?.[0]?.id;
-    if (monitorsResult.error || !monitorId) {
+    const cleanComments = details.comments
+      .replace(/\p{Cc}/gu, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    const description = [
+      `No ha comido primero: ${details.noFirst ? "sí" : "no"}`,
+      `No ha comido segundo: ${details.noSecond ? "sí" : "no"}`,
+      `No ha comido guarnición: ${details.noGarnish ? "sí" : "no"}`,
+      `No ha comido postre: ${details.noDessert ? "sí" : "no"}`,
+      `Comentarios: ${cleanComments || "sin comentarios"}`,
+    ].join("; ");
+    let incidentError: unknown = monitorsResult.error;
+    let incidentSaved = false;
+    if (!incidentError && monitorId) {
+      const result = await supabase
+        .from("incidents")
+        .insert({
+          child_id: child.id,
+          monitor_id: monitorId,
+          description,
+          date,
+        })
+        .select()
+        .single();
+      incidentError = result.error;
+      incidentSaved = !result.error;
+    } else if (!monitorId) {
+      incidentError = new Error("No hay monitor disponible");
+    }
+
+    if (mealResult.error && incidentError) {
       setToast({
-        message: "No se puede registrar la incidencia",
+        message: "No se han podido guardar la comida ni la incidencia",
         type: "error",
       });
       return;
     }
 
-    const result = await supabase
-      .from("incidents")
-      .insert({
-        child_id: child.id,
-        monitor_id: monitorId,
-        description: details.comments || "Incidencia de comida",
-        date: localDateString(),
-      })
-      .select()
-      .single();
-    if (result.error) {
+    if (mealResult.error) {
       setToast({
-        message: "No se puede registrar la incidencia",
+        message:
+          "Incidencia registrada, pero no se ha podido guardar la comida",
         type: "error",
       });
       return;
     }
+
+    setRecords((current) => [
+      ...current.filter((record) => record.id !== mealResult.data.id),
+      mealResult.data,
+    ]);
+    if (incidentError || !incidentSaved) {
+      setToast({
+        message:
+          "Comida guardada, pero no se ha podido registrar la incidencia",
+        type: "error",
+      });
+      return;
+    }
+
     setSelectedChild(null);
     setToast({ message: "Incidencia registrada", type: "warning" });
   }
@@ -279,15 +346,12 @@ export default function BusinessApp({ page }: { page: Page }) {
         canManageIncidents={canManageIncidents}
         onClose={() => setSelectedChild(null)}
         onSave={(payload) => {
-          if (
-            "incident" in payload &&
-            payload.incident &&
-            (payload.incident.noFirst ||
-              payload.incident.noSecond ||
-              payload.incident.noGarnish ||
-              payload.incident.noDessert)
-          ) {
+          if ("incident" in payload && payload.incident) {
             void saveIncident(selectedChild!, {
+              mealTypeId: payload.mealTypeId,
+              status: payload.status,
+              notes: payload.notes ?? "",
+              ...payload.incident,
               comments: payload.incident.comments ?? "",
             });
             return;

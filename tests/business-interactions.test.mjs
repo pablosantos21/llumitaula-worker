@@ -109,3 +109,40 @@ test("local meal dates use the browser date and timestamps use ISO UTC", async (
   assert.match(app, /recorded_at:\s*new Date\(\)\.toISOString\(\)/);
   assert.match(new Date().toISOString(), /Z$/);
 });
+
+test("incidence saves the meal record before attempting the incident", async () => {
+  const app = await source("src/components/BusinessApp.tsx");
+
+  assert.match(app, /async function saveIncident\(/);
+  assert.match(app, /mealTypeId: string/);
+  assert.match(app, /status: MealStatus/);
+  assert.match(app, /noFirst: boolean/);
+  assert.match(app, /comments: string/);
+  assert.match(
+    app,
+    /saveIncident[\s\S]*?\.from\("meal_records"\)[\s\S]*?\.upsert\([\s\S]*?\.from\("incidents"\)[\s\S]*?\.insert\(/,
+  );
+  assert.match(app, /No se han podido guardar la comida ni la incidencia/);
+  assert.match(app, /no se ha podido registrar la incidencia/);
+});
+
+test("incidence descriptions preserve flags and comments as readable text", async () => {
+  const app = await source("src/components/BusinessApp.tsx");
+
+  assert.match(app, /No ha comido primero/);
+  assert.match(app, /No ha comido segundo/);
+  assert.match(app, /No ha comido guarnici[oó]n/);
+  assert.match(app, /No ha comido postre/);
+  assert.match(app, /Comentarios:/);
+  assert.match(app, /replace\([^\n]*\\s\+\/g/);
+});
+
+test("incident-capable users keep comments even when no flag is checked", async () => {
+  const app = await source("src/components/BusinessApp.tsx");
+
+  assert.match(
+    app,
+    /if \([\s\S]*?"incident" in payload[\s\S]*?payload\.incident[\s\S]*?\) \{[\s\S]*?saveIncident\(selectedChild!,[\s\S]*?return;/,
+  );
+  assert.match(app, /saveStatus\([\s\S]*?payload\.status/);
+});
