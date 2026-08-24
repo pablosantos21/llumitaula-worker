@@ -67,7 +67,7 @@ test("MainLayout declares iOS metadata and registers the root service worker", a
   );
   assert.match(
     layout,
-    /navigator\.serviceWorker\.register\(["']\/sw\.js["']\)/,
+    /navigator\s*\.\s*serviceWorker\s*\.\s*register\s*\(\s*["']\/sw\.js["']\s*\)/,
   );
 });
 

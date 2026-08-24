@@ -14,6 +14,7 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "test:auth-guard": "node --test tests/auth-guard.test.mjs",
+    "test:pwa:contract": "npm run build && node --test tests/pwa.test.mjs",
     "test:public-data": "node scripts/check-public-build.mjs",
     "format": "prettier . --write",
     "format:check": "prettier . --check"
