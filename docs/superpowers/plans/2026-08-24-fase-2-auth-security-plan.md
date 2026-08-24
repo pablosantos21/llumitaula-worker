@@ -24,6 +24,7 @@
 ### Task 1: Add failing RLS test fixtures
 
 **Files:**
+
 - Create: `supabase/tests/fase_2_auth_security.sql`
 
 - [ ] **Step 1: Escribir la suite pgTAP con expectativas de la fase**
@@ -60,6 +61,7 @@ git commit -m "test: define phase 2 tenant isolation"
 ### Task 2: Extend identity and create new tables
 
 **Files:**
+
 - Create: `supabase/migrations/20260824090000_fase_2_auth_security.sql`
 
 - [ ] **Step 1: Añadir columnas y enum sin borrar datos existentes**
@@ -100,6 +102,7 @@ fallando solo por políticas aún no implementadas.
 ### Task 3: Implement identity helpers, grants and RLS
 
 **Files:**
+
 - Modify: `supabase/migrations/20260824090000_fase_2_auth_security.sql`
 
 - [ ] **Step 1: Crear helpers seguros de autorización**
@@ -123,12 +126,12 @@ el colegio derivado de sus referencias.
 
 Usar esta matriz como contrato:
 
-| Rol | Lectura | Escritura |
-| --- | --- | --- |
-| admin | Todo su colegio | Todo su colegio; gestiona perfiles sin cambiar tenant ni elevar rol |
-| supervisor | Todo su colegio | Actualiza registros de comida de su colegio |
-| worker | Perfil, colegio, clases asignadas, niños asignados y registros permitidos | Crea registros de niños asignados; actualiza solo propios de las últimas 24h |
-| monitor/padre | Solo acceso seguro ya expresable por relaciones actuales | Sin permisos nuevos de worker/supervisor |
+| Rol           | Lectura                                                                   | Escritura                                                                    |
+| ------------- | ------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| admin         | Todo su colegio                                                           | Todo su colegio; gestiona perfiles sin cambiar tenant ni elevar rol          |
+| supervisor    | Todo su colegio                                                           | Actualiza registros de comida de su colegio                                  |
+| worker        | Perfil, colegio, clases asignadas, niños asignados y registros permitidos | Crea registros de niños asignados; actualiza solo propios de las últimas 24h |
+| monitor/padre | Solo acceso seguro ya expresable por relaciones actuales                  | Sin permisos nuevos de worker/supervisor                                     |
 
 - [ ] **Step 3: Activar RLS y cerrar grants**
 
@@ -154,6 +157,7 @@ git commit -m "feat: add tenant-aware auth and RLS"
 ### Task 4: Make local seed deterministic and authenticated
 
 **Files:**
+
 - Modify: `supabase/seed.sql`
 - Modify: `supabase/config.toml`
 
@@ -196,6 +200,7 @@ git commit -m "test: seed authenticated multi-tenant fixtures"
 ### Task 5: Connect the login page to Supabase Auth
 
 **Files:**
+
 - Modify: `src/pages/login.astro`
 - Create: `src/components/AuthLoginForm.tsx` for the interactive client island.
 
@@ -230,6 +235,7 @@ git commit -m "feat: connect login to supabase auth"
 ### Task 6: Regenerate types and document the workflow
 
 **Files:**
+
 - Modify: `src/types/database.ts`
 - Modify: `README.md`
 
@@ -258,6 +264,7 @@ git commit -m "docs: document phase 2 auth workflow"
 ### Task 7: Run the complete verification suite
 
 **Files:**
+
 - No new files; inspect all files changed above.
 
 - [ ] **Step 1: Validate database from scratch**
