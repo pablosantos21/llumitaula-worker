@@ -1,6 +1,6 @@
 begin;
 
-select plan(44);
+select plan(51);
 
 set local role postgres;
 
@@ -264,6 +264,14 @@ select is(
   $query$),
   0::bigint,
   'worker A parental links do not grant access to unassigned child allergens'
+);
+select is(
+  pg_temp.count_rows($query$
+    select 1 from public.classes
+     where id = '00000000-0000-4000-8000-000000000012'::uuid
+  $query$),
+  0::bigint,
+  'worker A cannot see the unassigned class in school A'
 );
 select results_eq(
   $$select worker_id, class_id from public.worker_classrooms
@@ -673,6 +681,51 @@ select is(
   'admin A cannot delete a B-only or unassigned menu'
 );
 
+select is(
+  pg_temp.count_rows($query$
+    select 1 from public.menus_schools
+     where menu_id = '00000000-0000-4000-8000-000000000696'::uuid
+       and school_id = '00000000-0000-4000-8000-000000000002'::uuid
+  $query$),
+  0::bigint,
+  'admin A cannot read a B-only menu association'
+);
+select throws_ok(
+  $$insert into public.menus_schools (menu_id, school_id)
+    values ('00000000-0000-4000-8000-000000000696'::uuid,
+            '00000000-0000-4000-8000-000000000001'::uuid)$$,
+  '42501',
+  'admin A cannot associate a B-only menu with school A'
+);
+select throws_ok(
+  $$update public.menus_schools
+       set school_id = '00000000-0000-4000-8000-000000000001'::uuid
+     where menu_id = '00000000-0000-4000-8000-000000000696'::uuid
+       and school_id = '00000000-0000-4000-8000-000000000002'::uuid$$,
+  '42501',
+  'admin A cannot move a B-only menu association to school A'
+);
+select is(
+  pg_temp.count_rows($query$
+    delete from public.menus_schools
+     where menu_id = '00000000-0000-4000-8000-000000000696'::uuid
+       and school_id = '00000000-0000-4000-8000-000000000002'::uuid
+     returning menu_id
+  $query$),
+  0::bigint,
+  'admin A cannot delete a B-only menu association'
+);
+
+set local role service_role;
+select throws_ok(
+  $$insert into public.menus_schools (menu_id, school_id)
+    values ('00000000-0000-4000-8000-000000000696'::uuid,
+            '00000000-0000-4000-8000-000000000001'::uuid)$$,
+  '23514',
+  'direct menu association rejects a cross-tenant school'
+);
+set local role authenticated;
+
 select set_config(
   'request.jwt.claims',
   json_build_object(
@@ -689,6 +742,23 @@ select throws_ok(
        'B device', 'device-b-test'$sql$)$$,
   '42501',
   'admin A cannot create a device in school B'
+);
+
+select set_config(
+  'request.jwt.claims',
+  json_build_object(
+    'sub', '00000000-0000-4000-8000-000000000112',
+    'role', 'authenticated'
+  )::text,
+  true
+);
+select is(
+  pg_temp.count_rows($query$
+    select 1 from public.schools
+     where id = '00000000-0000-4000-8000-000000000002'::uuid
+  $query$),
+  0::bigint,
+  'supervisor A cannot read school B'
 );
 
 select set_config(
