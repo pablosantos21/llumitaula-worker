@@ -896,14 +896,15 @@ using (public.current_user_active() and public.current_user_role() = 'admin' and
 ));
 
 -- Legacy entities without a direct tenant column derive it from their links.
-create policy menus_select_tenant on public.menus for select to authenticated using (exists (
+create policy menus_select_tenant on public.menus for select to authenticated using (public.current_user_active() and exists (
   select 1 from public.menus_schools ms where ms.menu_id = menus.id and ms.school_id = public.current_school_id()
 ) and public.current_user_role() in ('admin', 'supervisor', 'padre'));
 create policy menus_admin_insert on public.menus for insert to authenticated with check (public.current_user_role() = 'admin');
 create policy menus_admin_update on public.menus for update to authenticated using (public.current_user_role() = 'admin' and private.menu_is_tenant_private(menus.id, public.current_school_id())) with check (public.current_user_role() = 'admin' and private.menu_is_tenant_private(menus.id, public.current_school_id()));
 create policy menus_admin_delete on public.menus for delete to authenticated using (public.current_user_role() = 'admin' and private.menu_is_tenant_private(menus.id, public.current_school_id()));
 create policy menus_schools_select_tenant on public.menus_schools for select to authenticated using (
-  school_id = public.current_school_id()
+  public.current_user_active()
+  and school_id = public.current_school_id()
   and (public.current_user_role() in ('admin', 'supervisor') or exists (
     select 1 from public.children ch
     join public.classes cl on cl.id = ch.class_id

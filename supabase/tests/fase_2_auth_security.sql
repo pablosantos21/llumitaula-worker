@@ -626,25 +626,32 @@ values
 insert into public.menus_schools (menu_id, school_id)
 values ('00000000-0000-4000-8000-000000000696'::uuid,
         '00000000-0000-4000-8000-000000000002'::uuid);
-select is(
-  pg_temp.privileged_count_rows($query$
-    select count(*)
+do $$
+begin
+  if not exists (
+    select 1
       from public.menus m
-      left join public.menus_schools ms on ms.menu_id = m.id
-     where m.id in (
-       '00000000-0000-4000-8000-000000000696'::uuid,
-       '00000000-0000-4000-8000-000000000697'::uuid
-     )
-     group by m.id
-    having (m.id = '00000000-0000-4000-8000-000000000696'::uuid
-            and count(ms.school_id) = 1
-            and bool_and(ms.school_id = '00000000-0000-4000-8000-000000000002'::uuid))
-        or (m.id = '00000000-0000-4000-8000-000000000697'::uuid
-            and count(ms.school_id) = 0)
-  $query$),
-  2::bigint,
-  'menu cross-tenant mutation fixtures have exact associations'
-);
+      join public.menus_schools ms on ms.menu_id = m.id
+     where m.id = '00000000-0000-4000-8000-000000000696'::uuid
+       and ms.school_id = '00000000-0000-4000-8000-000000000002'::uuid
+  )
+  or not exists (
+    select 1 from public.menus
+     where id = '00000000-0000-4000-8000-000000000697'::uuid
+  )
+  or exists (
+    select 1 from public.menus_schools
+     where menu_id = '00000000-0000-4000-8000-000000000696'::uuid
+       and school_id <> '00000000-0000-4000-8000-000000000002'::uuid
+  )
+  or exists (
+    select 1 from public.menus_schools
+     where menu_id = '00000000-0000-4000-8000-000000000697'::uuid
+  ) then
+    raise exception 'menu cross-tenant mutation fixtures are not exact';
+  end if;
+end
+$$;
 
 set local role authenticated;
 select set_config(
@@ -734,6 +741,51 @@ select throws_ok(
   'direct menu association rejects a cross-tenant school'
 );
 set local role authenticated;
+
+set local role postgres;
+do $$
+begin
+  if not exists (
+    select 1 from public.users
+     where id = '00000000-0000-4000-8000-000000000101'::uuid
+       and active
+  )
+  or not exists (
+    select 1 from public.parents_children
+     where parent_id = '00000000-0000-4000-8000-000000000101'::uuid
+       and child_id = '00000000-0000-4000-8000-000000000201'::uuid
+  )
+  or not exists (
+    select 1 from public.menus_schools
+     where menu_id = '00000000-0000-4000-8000-000000000301'::uuid
+       and school_id = '00000000-0000-4000-8000-000000000001'::uuid
+  ) then
+    raise exception 'inactive parent menu fixtures are not exact';
+  end if;
+
+  update public.users
+     set active = false
+   where id = '00000000-0000-4000-8000-000000000101'::uuid;
+end
+$$;
+set local role authenticated;
+select set_config(
+  'request.jwt.claims',
+  json_build_object(
+    'sub', '00000000-0000-4000-8000-000000000101',
+    'role', 'authenticated'
+  )::text,
+  true
+);
+select is(
+  pg_temp.count_rows($query$
+    select 1 from public.menus_schools
+     where menu_id = '00000000-0000-4000-8000-000000000301'::uuid
+       and school_id = '00000000-0000-4000-8000-000000000001'::uuid
+  $query$),
+  0::bigint,
+  'inactive parent cannot read menu school associations'
+);
 
 select set_config(
   'request.jwt.claims',
