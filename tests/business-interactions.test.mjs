@@ -166,3 +166,40 @@ test("incident-capable users keep comments even when no flag is checked", async 
   );
   assert.match(app, /saveStatus\([\s\S]*?payload\.status/);
 });
+
+test("manager todo bien stays on the ordinary meal upsert path", async () => {
+  const [mealRecord, app] = await Promise.all([
+    source("src/lib/mealRecord.ts"),
+    source("src/components/BusinessApp.tsx"),
+  ]);
+
+  assert.match(
+    mealRecord,
+    /const hasIncident =\s+values\.noFirst \|\|\s+values\.noSecond \|\|\s+values\.noGarnish \|\|\s+values\.noDessert \|\|\s+values\.incidentComments\.trim\(\)\.length > 0/,
+  );
+  assert.match(
+    mealRecord,
+    /if \(!canManageIncidents \|\| !hasIncident\) return payload;/,
+  );
+  assert.match(
+    app,
+    /if \("incident" in payload && payload\.incident\) \{[\s\S]*?saveIncident\([\s\S]*?return;[\s\S]*?\}[\s\S]*?void saveStatus\(/,
+  );
+});
+
+test("manager incidence stays on the atomic RPC path", async () => {
+  const [mealRecord, app] = await Promise.all([
+    source("src/lib/mealRecord.ts"),
+    source("src/components/BusinessApp.tsx"),
+  ]);
+
+  assert.match(mealRecord, /incident: \{/);
+  assert.match(
+    app,
+    /saveIncident[\s\S]*?\.rpc\("record_meal_incident",[\s\S]*?p_child_id/,
+  );
+  assert.doesNotMatch(
+    app,
+    /saveIncident[\s\S]*?\.from\("meal_records"\)[\s\S]*?\.upsert\(/,
+  );
+});

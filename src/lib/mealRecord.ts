@@ -23,7 +23,14 @@ export function buildMealRecordPayload(
     notes: values.notes.trim() || null,
   };
 
-  if (!canManageIncidents) return payload;
+  const hasIncident =
+    values.noFirst ||
+    values.noSecond ||
+    values.noGarnish ||
+    values.noDessert ||
+    values.incidentComments.trim().length > 0;
+
+  if (!canManageIncidents || !hasIncident) return payload;
 
   return {
     ...payload,
