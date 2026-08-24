@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   access,
+  copyFile,
   mkdir,
   mkdtemp,
   readFile,
@@ -203,8 +204,13 @@ test("public build checker validates the complete PWA output contract", async ()
 
   assert.equal(
     packageJson.scripts["test:pwa"],
-    "npm run build && npm run test:public-data && node --test tests/pwa.test.mjs",
+    "npm run build && npm run test:public-data && npm run test:pwa:unit",
   );
+  assert.equal(
+    packageJson.scripts["test:pwa:unit"],
+    "node --test tests/pwa.test.mjs",
+  );
+  assert.match(packageJson.scripts["test:pwa:contract"], /test:pwa:unit/);
   assert.match(checker, /manifest\.webmanifest/);
   assert.match(checker, /display.*standalone/s);
   assert.match(checker, /index\.html/);
@@ -217,6 +223,94 @@ test("public build checker validates the complete PWA output contract", async ()
   assert.match(checker, /supabase/);
   assert.match(checker, /service_role/);
   assert.match(checker, /sensitiveMockValues/);
+});
+
+async function createPublicBuildCheckerFixture() {
+  const fixture = await mkdtemp(join("/tmp", "llumitaula-public-build-"));
+  await mkdir(join(fixture, "scripts"));
+  await mkdir(join(fixture, "src", "pages"), { recursive: true });
+  await mkdir(join(fixture, "dist", "icons"), { recursive: true });
+  await mkdir(join(fixture, "dist", "splash"), { recursive: true });
+  await copyFile(
+    new URL("scripts/check-public-build.mjs", root),
+    join(fixture, "scripts/check-public-build.mjs"),
+  );
+
+  await writeFile(
+    join(fixture, "dist", "manifest.webmanifest"),
+    JSON.stringify({ display: "standalone" }),
+  );
+  await writeFile(join(fixture, "dist", "index.html"), "<main>shell</main>");
+  await writeFile(join(fixture, "dist", "sw.js"), "self.addEventListener;");
+  for (const path of [
+    "icon-192.png",
+    "icon-192-maskable.png",
+    "icon-512.png",
+    "icon-512-maskable.png",
+    "apple-touch-icon.png",
+  ]) {
+    await writeFile(join(fixture, "dist", "icons", path), "png");
+  }
+  for (const path of ["ipad-portrait.png", "ipad-landscape.png"]) {
+    await writeFile(join(fixture, "dist", "splash", path), "png");
+  }
+  await writeFile(join(fixture, "src", "pages", "index.astro"), "");
+  await writeFile(join(fixture, "src", "pages", "search.astro"), "");
+
+  return fixture;
+}
+
+async function runPublicBuildChecker(fixture) {
+  return execFileAsync(process.execPath, ["scripts/check-public-build.mjs"], {
+    cwd: fixture,
+  });
+}
+
+test("public build checker rejects a missing required PWA resource in an isolated fixture", async () => {
+  const fixture = await createPublicBuildCheckerFixture();
+  try {
+    await rm(join(fixture, "dist", "icons", "icon-192.png"));
+    await assert.rejects(runPublicBuildChecker(fixture), (error) => {
+      assert.match(
+        error.stderr,
+        /Required PWA resource must be a file: dist\/icons\/icon-192\.png/,
+      );
+      return true;
+    });
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("public build checker rejects an invalid manifest in an isolated fixture", async () => {
+  const fixture = await createPublicBuildCheckerFixture();
+  try {
+    await writeFile(
+      join(fixture, "dist", "manifest.webmanifest"),
+      JSON.stringify({ display: "browser" }),
+    );
+    await assert.rejects(runPublicBuildChecker(fixture), /standalone/);
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("public build checker rejects a required resource directory in an isolated fixture", async () => {
+  const fixture = await createPublicBuildCheckerFixture();
+  try {
+    const icon = join(fixture, "dist", "icons", "icon-512.png");
+    await rm(icon);
+    await mkdir(icon);
+    await assert.rejects(runPublicBuildChecker(fixture), (error) => {
+      assert.match(
+        error.stderr,
+        /Required PWA resource must be a file: dist\/icons\/icon-512\.png/,
+      );
+      return true;
+    });
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
 });
 
 test("service worker template declares the shell cache and safe request boundaries", async () => {

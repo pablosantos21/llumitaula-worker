@@ -1,4 +1,4 @@
-import { access, readFile, readdir } from "node:fs/promises";
+import { readFile, readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { stdout } from "node:process";
 import { URL } from "node:url";
@@ -29,6 +29,21 @@ async function collectHtml(directory) {
   }
 }
 
+async function assertRequiredFile(path) {
+  const resource = `dist/${path}`;
+  let details;
+  try {
+    details = await stat(new URL(path, distDirectory));
+  } catch (error) {
+    throw new Error(`Required PWA resource must be a file: ${resource}`, {
+      cause: error,
+    });
+  }
+  if (!details.isFile()) {
+    throw new Error(`Required PWA resource must be a file: ${resource}`);
+  }
+}
+
 await collectHtml(distDirectory);
 
 const sensitiveMockValues = [
@@ -46,16 +61,24 @@ for (const html of publicHtml) {
   }
 }
 
-const manifest = JSON.parse(
-  await readFile(new URL("manifest.webmanifest", distDirectory), "utf8"),
-);
+await Promise.all(requiredPwaAssets.map(assertRequiredFile));
+
+let manifest;
+try {
+  manifest = JSON.parse(
+    await readFile(new URL("manifest.webmanifest", distDirectory), "utf8"),
+  );
+} catch (error) {
+  throw new Error(
+    "Generated manifest is not valid JSON: dist/manifest.webmanifest",
+    {
+      cause: error,
+    },
+  );
+}
 if (manifest.display !== "standalone") {
   throw new Error('Generated manifest must use display: "standalone"');
 }
-
-await Promise.all(
-  requiredPwaAssets.map((path) => access(new URL(path, distDirectory))),
-);
 
 const generatedServiceWorker = await readFile(
   new URL("sw.js", distDirectory),
