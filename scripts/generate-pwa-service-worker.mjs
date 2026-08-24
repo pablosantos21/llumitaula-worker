@@ -1,4 +1,4 @@
-import { access, readdir, readFile, writeFile } from "node:fs/promises";
+import { readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { extname, relative, resolve } from "node:path";
 import process from "node:process";
 import { fileURLToPath, URL } from "node:url";
@@ -36,8 +36,11 @@ async function filesIn(directory) {
   return files;
 }
 
+const indexPath = resolve(dist, "index.html");
 try {
-  await access(resolve(dist, "index.html"));
+  if (!(await stat(indexPath)).isFile()) {
+    throw new Error("not a regular file");
+  }
 } catch {
   throw new Error(
     `dist/index.html is required to generate ${resolve(dist, "sw.js")}`,

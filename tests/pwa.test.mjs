@@ -149,9 +149,18 @@ test("service worker template declares the shell cache and safe request boundari
   assert.match(template, /llumitaula-shell-v1/);
   assert.match(template, /addAll|cache\.put/);
   assert.match(template, /catch/);
+  assert.match(template, /self\.skipWaiting\(\)/);
   assert.match(template, /clients\.claim/);
+  assert.match(
+    template,
+    /key\.startsWith\(["']llumitaula-shell-["']\).*key\s*!==\s*CACHE_NAME/s,
+  );
   assert.match(template, /network-first|Network-first/i);
   assert.match(template, /index\.html/);
+  assert.match(
+    template,
+    /catch\(\(\)\s*=>\s*caches\.match\(["']\/index\.html["']\)/,
+  );
   assert.match(template, /request\.mode\s*===\s*["']navigate["']/);
   assert.match(template, /request\.method\s*!==\s*["']GET["']/);
   assert.match(template, /url\.origin\s*!==\s*self\.location\.origin/);
@@ -162,10 +171,20 @@ test("service worker generator recursively precaches supported dist files", asyn
   const fixture = await mkdtemp(join("/tmp", "llumitaula-pwa-"));
   try {
     await writeFile(join(fixture, "index.html"), "<main>shell</main>");
-    await writeFile(join(fixture, "nested.css"), "body {}");
-    await mkdir(join(fixture, "assets"), { recursive: true });
-    await writeFile(join(fixture, "assets", "app.js"), "console.log('ok');");
-    await writeFile(join(fixture, "assets", "ignored.txt"), "ignore");
+    await mkdir(join(fixture, "nested", "assets"), { recursive: true });
+    for (const path of [
+      "page.html",
+      "styles.css",
+      "app.js",
+      "icon.svg",
+      "image.png",
+      "favicon.ico",
+      "manifest.webmanifest",
+      "font.woff2",
+    ]) {
+      await writeFile(join(fixture, "nested", "assets", path), "asset");
+    }
+    await writeFile(join(fixture, "nested", "assets", "ignored.txt"), "ignore");
     await writeFile(join(fixture, "sw.js"), "old worker");
 
     await execFileAsync(
@@ -179,9 +198,20 @@ test("service worker generator recursively precaches supported dist files", asyn
 
     const generated = await readFile(join(fixture, "sw.js"), "utf8");
     assert.match(generated, /["']\/index\.html["']/);
-    assert.match(generated, /["']\/nested\.css["']/);
-    assert.match(generated, /["']\/assets\/app\.js["']/);
-    assert.doesNotMatch(generated, /ignored\.txt|__PRECACHE_URLS__/);
+    for (const path of [
+      "page.html",
+      "styles.css",
+      "app.js",
+      "icon.svg",
+      "image.png",
+      "favicon.ico",
+      "manifest.webmanifest",
+      "font.woff2",
+    ]) {
+      assert.match(generated, new RegExp(`\\"/nested/assets/${path}\\"`));
+    }
+    assert.doesNotMatch(generated, /ignored\.txt|\/sw\.js|__PRECACHE_URLS__/);
+    assert.doesNotMatch(generated, /PWA_DIST_DIR|dist[\\/]/);
   } finally {
     await rm(fixture, { recursive: true, force: true });
   }
@@ -190,6 +220,26 @@ test("service worker generator recursively precaches supported dist files", asyn
 test("service worker generator clearly rejects a dist without index.html", async () => {
   const fixture = await mkdtemp(join("/tmp", "llumitaula-pwa-"));
   try {
+    await assert.rejects(
+      execFileAsync(
+        process.execPath,
+        ["scripts/generate-pwa-service-worker.mjs"],
+        {
+          cwd: new URL("../", import.meta.url),
+          env: { ...process.env, PWA_DIST_DIR: fixture },
+        },
+      ),
+      /dist\/index\.html is required/i,
+    );
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("service worker generator rejects an index.html directory", async () => {
+  const fixture = await mkdtemp(join("/tmp", "llumitaula-pwa-"));
+  try {
+    await mkdir(join(fixture, "index.html"));
     await assert.rejects(
       execFileAsync(
         process.execPath,

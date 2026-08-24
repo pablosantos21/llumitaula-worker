@@ -12,6 +12,7 @@ self.addEventListener("install", (event) => {
       await Promise.all(
         PRECACHE_URLS.map((url) => cache.add(url).catch(() => undefined)),
       );
+      await self.skipWaiting();
     }),
   );
 });
@@ -23,7 +24,10 @@ self.addEventListener("activate", (event) => {
       .then((keys) =>
         Promise.all(
           keys
-            .filter((key) => key !== CACHE_NAME)
+            .filter(
+              (key) =>
+                key.startsWith("llumitaula-shell-") && key !== CACHE_NAME,
+            )
             .map((key) => caches.delete(key)),
         ),
       )
