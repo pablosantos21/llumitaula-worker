@@ -61,6 +61,7 @@ test("PWA artwork and asset generation contract is present", async () => {
   assert.match(icon, /viewBox="0 0 128 128"/);
   assert.match(icon, /fill="#047857"/);
   assert.match(icon, /fill="#fff"/i);
+  assert.doesNotMatch(icon, /\brx=/i);
   assert.match(portraitSplash, /viewBox="0 0 2048 2732"/);
   assert.match(landscapeSplash, /viewBox="0 0 2732 2048"/);
 });
