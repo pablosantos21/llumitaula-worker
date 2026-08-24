@@ -30,7 +30,7 @@ test("React business UI restores card, meal status, incident and toast component
   const paths = [
     "src/components/StudentCard.tsx",
     "src/components/MealStatusBadge.tsx",
-    "src/components/IncidentModal.tsx",
+    "src/components/MealRecordModal.tsx",
     "src/components/FeedbackToast.tsx",
   ];
   await Promise.all(paths.map((path) => access(new URL(path, root))));
@@ -47,7 +47,7 @@ test("React business UI restores card, meal status, incident and toast component
   assert.match(badge, /Bien/);
   assert.match(badge, /Incidencia/);
   assert.match(modal, /No ha comido primero/);
-  assert.match(modal, /Comentarios adicionales/);
+  assert.match(modal, /Comentarios de la incidencia/);
   assert.match(toast, /role="status"/);
   assert.match(app, /Incidencia registrada/);
   assert.match(app, /meal_records.*upsert|upsert.*meal_records/s);
@@ -66,7 +66,7 @@ test("worker meal types are tenant-scoped and incidents never use meal records",
     "supabase/migrations/20260824100000_scope_worker_meal_types.sql",
   );
   const app = await source("src/components/BusinessApp.tsx");
-  const modal = await source("src/components/IncidentModal.tsx");
+  const modal = await source("src/components/MealRecordModal.tsx");
 
   assert.match(migration, /meal_types_select_worker/);
   assert.match(migration, /current_user_role\(\) = 'worker'/);
@@ -86,9 +86,9 @@ test("worker meal types are tenant-scoped and incidents never use meal records",
   assert.match(app, /canManageIncidents=\{canManageIncidents\}/);
   assert.match(
     app,
-    /\{canManageIncidents && selectedChild && \(\s*<IncidentModal[\s\S]*?onSave=/,
+    /<MealRecordModal[\s\S]*?canManageIncidents=\{canManageIncidents\}[\s\S]*?onSave=/,
   );
-  assert.doesNotMatch(app, /\{selectedChild && \(\s*<IncidentModal/);
+  assert.doesNotMatch(app, /<IncidentModal/);
   assert.match(modal, /canManageIncidents &&/);
   assert.match(app, /recorded_by/);
   assert.match(app, /recorded_at/);
