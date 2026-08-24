@@ -53,6 +53,8 @@ test("React business UI restores card, meal status, incident and toast component
   assert.match(app, /meal_records.*upsert|upsert.*meal_records/s);
   assert.match(app, /recorded_by/);
   assert.match(app, /recorded_date/);
+  assert.match(app, /localDateString/);
+  assert.doesNotMatch(app, /new Date\(\)\.toISOString\(\)\.slice\(0, 10\)/);
   assert.match(
     app,
     /onConflict:\s*["']child_id,meal_type_id,recorded_date["']/,
@@ -82,6 +84,7 @@ test("worker meal types are tenant-scoped and incidents never use meal records",
   assert.match(app, /userRole === "admin"/);
   assert.match(app, /userRole === "supervisor"/);
   assert.match(app, /canManageIncidents=\{canManageIncidents\}/);
+  assert.match(app, /canManageIncidents && selectedChild/);
   assert.match(modal, /canManageIncidents &&/);
   assert.match(app, /recorded_by/);
   assert.match(app, /recorded_at/);
@@ -89,4 +92,15 @@ test("worker meal types are tenant-scoped and incidents never use meal records",
   assert.doesNotMatch(app, /\.in\(\s*"id"/);
   assert.match(app, /monitor_id/);
   assert.match(app, /No se puede registrar la incidencia/);
+});
+
+test("local meal timestamps use the browser date without a fixed UTC date", async () => {
+  const helper = await source("src/lib/local-date.ts");
+  const app = await source("src/components/BusinessApp.tsx");
+
+  assert.match(helper, /localDateString/);
+  assert.match(helper, /getFullYear\(\)/);
+  assert.match(helper, /padStart\(2, "0"\)/);
+  assert.match(app, /recorded_at:\s*`\$\{date\}T12:00:00\.000`/);
+  assert.doesNotMatch(app, /recorded_at:[\s\S]*toISOString/);
 });

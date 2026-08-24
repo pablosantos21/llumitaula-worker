@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { supabase } from "../lib/supabase/client";
+import { localDateString } from "../lib/local-date";
 import type { Database } from "../types/database";
 import FeedbackToast from "./FeedbackToast";
 import IncidentModal from "./IncidentModal";
@@ -58,7 +59,7 @@ export default function BusinessApp({ page }: { page: Page }) {
             .select(
               "id, child_id, meal_type_id, notes, recorded_date, recorded_at, recorded_by, status",
             )
-            .eq("recorded_date", new Date().toISOString().slice(0, 10)),
+            .eq("recorded_date", localDateString()),
           supabase
             .from("meal_types")
             .select("id, name, active, school_id, sort_order, created_at")
@@ -111,7 +112,7 @@ export default function BusinessApp({ page }: { page: Page }) {
       setToast({ message: "No se ha podido guardar el estado", type: "error" });
       return;
     }
-    const date = new Date().toISOString().slice(0, 10);
+    const date = localDateString();
     const result = await supabase
       .from("meal_records")
       .upsert(
@@ -122,7 +123,7 @@ export default function BusinessApp({ page }: { page: Page }) {
           recorded_by: session.user.id,
           status,
           notes,
-          recorded_at: `${date}T12:00:00.000Z`,
+          recorded_at: `${date}T12:00:00.000`,
         },
         { onConflict: "child_id,meal_type_id,recorded_date" },
       )
@@ -176,7 +177,7 @@ export default function BusinessApp({ page }: { page: Page }) {
         child_id: child.id,
         monitor_id: monitorId,
         description: details.comments || "Incidencia de comida",
-        date: new Date().toISOString().slice(0, 10),
+        date: localDateString(),
       })
       .select()
       .single();
@@ -271,7 +272,7 @@ export default function BusinessApp({ page }: { page: Page }) {
           No se han podido cargar los datos autorizados.
         </p>
       )}
-      {selectedChild && (
+      {canManageIncidents && selectedChild && (
         <IncidentModal
           studentName={`${selectedChild.first_name} ${selectedChild.last_name}`}
           mealTypes={mealTypes}

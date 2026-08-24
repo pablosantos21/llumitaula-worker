@@ -1,6 +1,6 @@
 begin;
 
-select plan(59);
+select plan(64);
 
 set local role postgres;
 
@@ -129,6 +129,21 @@ select ok(
        and indexname = 'meal_records_child_meal_date_idx'
   ),
   'meal_records has a daily lookup index'
+);
+select is(
+  (select count(*) from public.meal_records
+    where child_id = '00000000-0000-4000-8000-000000000201'::uuid
+      and meal_type_id = '00000000-0000-4000-8000-000000000611'::uuid),
+  2::bigint,
+  'seed contains daily and historical records for the same child and meal type'
+);
+select ok(
+  exists (
+    select 1 from pg_trigger
+     where tgrelid = 'public.meal_records'::regclass
+       and tgname = 'meal_records_date_boundaries'
+  ),
+  'meal_records has a date-boundary trigger'
 );
 
 select set_config('request.jwt.claims', '{}', true);
@@ -459,7 +474,7 @@ select throws_ok(
        '00000000-0000-4000-8000-000000000201'::uuid,
        '00000000-0000-4000-8000-000000000611'::uuid,
        '00000000-0000-4000-8000-000000000113'::uuid,
-       date '2026-09-01',
+       date '2026-08-20',
        'bien')$$,
   '23505',
   'a child and meal type cannot have two records on one date'
@@ -472,7 +487,7 @@ select lives_ok(
        '00000000-0000-4000-8000-000000000201'::uuid,
        '00000000-0000-4000-8000-000000000611'::uuid,
        '00000000-0000-4000-8000-000000000113'::uuid,
-       date '2026-09-02',
+       date '2026-08-21',
        'bien')$$,
   'a child and meal type may have records on different dates'
 );
@@ -504,6 +519,44 @@ select throws_ok(
        'bien')$$,
   '42501',
   'worker A cannot insert a future meal record'
+);
+set local role service_role;
+select throws_ok(
+  $$insert into public.meal_records
+      (id, child_id, meal_type_id, recorded_by, recorded_date, recorded_at, status)
+    values
+      ('00000000-0000-4000-8000-000000000616'::uuid,
+       '00000000-0000-4000-8000-000000000201'::uuid,
+       '00000000-0000-4000-8000-000000000611'::uuid,
+       '00000000-0000-4000-8000-000000000111'::uuid,
+       current_date,
+       (current_date - 1)::timestamp,
+       'bien')$$,
+  '23514',
+  'meal record timestamp date must match recorded date'
+);
+set local role authenticated;
+select set_config(
+  'request.jwt.claims',
+  json_build_object(
+    'sub', '00000000-0000-4000-8000-000000000111',
+    'role', 'authenticated'
+  )::text,
+  true
+);
+select throws_ok(
+  $$insert into public.meal_records
+      (id, child_id, meal_type_id, recorded_by, recorded_date, recorded_at, status)
+    values
+      ('00000000-0000-4000-8000-000000000617'::uuid,
+       '00000000-0000-4000-8000-000000000201'::uuid,
+       '00000000-0000-4000-8000-000000000611'::uuid,
+       '00000000-0000-4000-8000-000000000111'::uuid,
+       current_date + 1,
+       (current_date + 1)::timestamp,
+       'bien')$$,
+  '42501',
+  'worker A cannot insert a future recorded date'
 );
 select throws_ok(
   $$update public.meal_records
@@ -1067,12 +1120,26 @@ select ok(
   'admin can safely demote a supervisor to worker'
 );
 
-select ok(
-  pg_temp.change_role_and_verify(
-    '00000000-0000-4000-8000-000000000112'::uuid,
-    'supervisor'
-  ),
-  'admin can restore the supervisor role in the same transaction'
+select set_config(
+  'request.jwt.claims',
+  json_build_object(
+    'sub', '00000000-0000-4000-8000-000000000112',
+    'role', 'authenticated'
+  )::text,
+  true
+);
+select throws_ok(
+  $$update public.users
+       set role = 'supervisor'
+     where id = '00000000-0000-4000-8000-000000000112'::uuid$$,
+  '42501',
+  'a demoted worker cannot elevate themselves to supervisor'
+);
+select is(
+  (select role::text from public.users
+    where id = '00000000-0000-4000-8000-000000000112'::uuid),
+  'worker',
+  'supervisor demotion remains persisted after rejected self elevation'
 );
 
 select throws_ok(
