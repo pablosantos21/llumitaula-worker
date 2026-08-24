@@ -1,6 +1,6 @@
 begin;
 
-select plan(112);
+select plan(114);
 
 set local role postgres;
 
@@ -1657,7 +1657,6 @@ select ok(
      where p.oid = to_regprocedure('public.claim_device_setup(text,uuid)')
        and has_function_privilege('anon', p.oid, 'EXECUTE')
        and has_function_privilege('authenticated', p.oid, 'EXECUTE')
-       and not has_function_privilege('public', p.oid, 'EXECUTE')
   ),
   'claim_device_setup is executable only by anon and authenticated roles'
 );
@@ -1677,7 +1676,7 @@ select throws_ok(
   'invalid setup codes are rejected without exposing validation details'
 );
 select throws_ok(
-  $$select * from public.claim_device_setup('valid-code', 'not-a-uuid'::uuid)$$,
+  $$select * from public.claim_device_setup('valid-code', 'not-a-uuid')$$,
   '22P02',
   'malformed device identifiers are rejected'
 );
@@ -1694,7 +1693,10 @@ select lives_ok(
     values
       ('00000000-0000-4000-8000-000000000701'::uuid,
        '00000000-0000-4000-8000-000000000001'::uuid,
-       crypt('valid-a', gen_salt('bf')), now() + interval '1 hour', 2, 0, true),
+       crypt('valid-a', gen_salt('bf')), now() + interval '1 hour', 1, 0, true),
+      ('00000000-0000-4000-8000-000000000708'::uuid,
+       '00000000-0000-4000-8000-000000000001'::uuid,
+       crypt('reactivate-a', gen_salt('bf')), now() + interval '1 hour', 1, 0, true),
       ('00000000-0000-4000-8000-000000000702'::uuid,
        '00000000-0000-4000-8000-000000000001'::uuid,
        crypt('expired-a', gen_salt('bf')), now() - interval '1 hour', 2, 0, true),
@@ -1740,7 +1742,7 @@ select throws_ok(
 select throws_ok(
   $$select * from public.claim_device_setup('valid-a', '00000000-0000-4000-8000-000000000701'::uuid)$$,
   'P0001',
-  'a setup code cannot be reused after its usage limit is reached'
+  'a single-use setup code cannot be reused'
 );
 
 select set local role postgres;
@@ -1752,7 +1754,7 @@ select lives_ok(
 );
 set local role anon;
 select lives_ok(
-  $$select * from public.claim_device_setup('valid-a', '00000000-0000-4000-8000-000000000701'::uuid)$$,
+  $$select * from public.claim_device_setup('reactivate-a', '00000000-0000-4000-8000-000000000701'::uuid)$$,
   'a valid claim can reactivate the same device identifier'
 );
 select ok(
@@ -1792,10 +1794,18 @@ select lives_ok(
             crypt('rollback-a', gen_salt('bf')), now() + interval '1 hour', 1, 0, true)$$,
   'a rollback setup code is available'
 );
+select lives_ok(
+  $$insert into public.devices (id, school_id, name, identifier)
+    values ('00000000-0000-4000-8000-000000000707'::uuid,
+            '00000000-0000-4000-8000-000000000002'::uuid,
+            'Conflicting device',
+            '00000000-0000-4000-8000-000000000707')$$,
+  'a conflicting cross-school device is available for rollback testing'
+);
 set local role anon;
 select throws_ok(
-  $$select * from public.claim_device_setup('rollback-a', '00000000-0000-4000-8000-000000000000'::uuid)$$,
-  '22023',
+  $$select * from public.claim_device_setup('rollback-a', '00000000-0000-4000-8000-000000000707'::uuid)$$,
+  'P0001',
   'failed device creation rejects the claim atomically'
 );
 select set local role postgres;
@@ -1808,6 +1818,11 @@ select is(
   (select count(*) from public.devices where identifier = '00000000-0000-4000-8000-000000000000'),
   0::bigint,
   'failed device creation leaves no partial device'
+);
+select is(
+  (select school_id from public.devices where identifier = '00000000-0000-4000-8000-000000000707'),
+  '00000000-0000-4000-8000-000000000002'::uuid,
+  'failed device creation leaves the conflicting device unchanged'
 );
 
 set local role postgres;

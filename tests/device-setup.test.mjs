@@ -13,7 +13,7 @@ test("setup page is public and renders the temporary-code form", async () => {
   const page = await source("src/pages/setup.astro");
 
   assert.match(page, /MainLayout[\s\S]*requiresAuth=\{false\}/);
-  assert.match(page, /DeviceSetupForm[\s\S]*client:only="react"/);
+  assert.match(page, /DeviceSetupForm[\s\S]*client:load/);
   assert.match(page, /setup|configuraci[oó]n/i);
 });
 
