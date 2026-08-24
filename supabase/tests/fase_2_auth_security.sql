@@ -468,26 +468,28 @@ select set_config(
 );
 select throws_ok(
   $$insert into public.meal_records
-      (id, child_id, meal_type_id, recorded_by, recorded_date, status)
+      (id, child_id, meal_type_id, recorded_by, recorded_date, recorded_at, status)
     values
       ('00000000-0000-4000-8000-000000000614'::uuid,
        '00000000-0000-4000-8000-000000000201'::uuid,
        '00000000-0000-4000-8000-000000000611'::uuid,
        '00000000-0000-4000-8000-000000000113'::uuid,
        date '2026-08-20',
+       timestamp '2026-08-20 10:00:00+00',
        'bien')$$,
   '23505',
   'a child and meal type cannot have two records on one date'
 );
 select lives_ok(
   $$insert into public.meal_records
-      (id, child_id, meal_type_id, recorded_by, recorded_date, status)
+      (id, child_id, meal_type_id, recorded_by, recorded_date, recorded_at, status)
     values
       ('00000000-0000-4000-8000-000000000615'::uuid,
        '00000000-0000-4000-8000-000000000201'::uuid,
        '00000000-0000-4000-8000-000000000611'::uuid,
        '00000000-0000-4000-8000-000000000113'::uuid,
        date '2026-08-21',
+       timestamp '2026-08-21 10:00:00+00',
        'bien')$$,
   'a child and meal type may have records on different dates'
 );
@@ -530,10 +532,10 @@ select throws_ok(
        '00000000-0000-4000-8000-000000000611'::uuid,
        '00000000-0000-4000-8000-000000000111'::uuid,
        current_date,
-       (current_date - 1)::timestamp,
+       now() + interval '1 hour',
        'bien')$$,
   '23514',
-  'meal record timestamp date must match recorded date'
+  'meal record timestamp cannot be in the future'
 );
 set local role authenticated;
 select set_config(
@@ -553,7 +555,7 @@ select throws_ok(
        '00000000-0000-4000-8000-000000000611'::uuid,
        '00000000-0000-4000-8000-000000000111'::uuid,
        current_date + 1,
-       (current_date + 1)::timestamp,
+        now(),
        'bien')$$,
   '42501',
   'worker A cannot insert a future recorded date'
@@ -699,17 +701,29 @@ select set_config(
   )::text,
   true
 );
-select is(
-  pg_temp.count_rows($query$
-   with attempted as (
-     update public.meal_records
-        set notes = 'supervisor review'
-      where id = '00000000-0000-4000-8000-000000000622'::uuid
-      returning id
-   ) select count(*) from attempted
-  $query$),
-  1::bigint,
-  'supervisor A can update a meal record in school A'
+select lives_ok(
+  $$select pg_temp.execute_test($sql$do $body$
+  begin
+    update public.meal_records
+       set notes = 'supervisor review'
+     where id = '00000000-0000-4000-8000-000000000622'::uuid;
+    if not found then
+      raise exception 'supervisor update did not affect a school A record';
+    end if;
+
+    insert into public.meal_records
+      (id, child_id, meal_type_id, recorded_by, recorded_date, recorded_at, status)
+    values
+      ('00000000-0000-4000-8000-000000000618'::uuid,
+       '00000000-0000-4000-8000-000000000204'::uuid,
+       '00000000-0000-4000-8000-000000000611'::uuid,
+       '00000000-0000-4000-8000-000000000112'::uuid,
+       current_date - 1,
+       now(),
+       'bien');
+  end
+  $body$;$sql$)$$,
+  'supervisor A can insert and update meal records in school A'
 );
 
 select set_config(

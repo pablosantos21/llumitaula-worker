@@ -884,24 +884,24 @@ using (public.current_user_active() and exists (
      ) or meal_records.recorded_by = public.current_user_id())
 ));
 create policy meal_records_admin_supervisor_insert on public.meal_records for insert to authenticated
-with check (public.current_user_active() and public.current_user_role() = 'admin' and exists (
+with check (public.current_user_active() and public.current_user_role() in ('admin', 'supervisor') and exists (
   select 1 from public.children ch join public.classes cl on cl.id = ch.class_id join public.meal_types mt on mt.id = meal_records.meal_type_id
    where ch.id = meal_records.child_id and cl.school_id = public.current_school_id() and mt.school_id = cl.school_id
- ) and recorded_date <= current_date and recorded_at::date = recorded_date);
+  ) and recorded_date <= current_date and recorded_at <= now());
 create policy meal_records_worker_insert on public.meal_records for insert to authenticated
-with check (public.current_user_active() and public.current_user_role() = 'worker' and recorded_by = public.current_user_id() and recorded_date <= current_date and recorded_at <= now() and recorded_at::date = recorded_date and exists (
+with check (public.current_user_active() and public.current_user_role() = 'worker' and recorded_by = public.current_user_id() and recorded_date <= current_date and recorded_at <= now() and exists (
   select 1 from public.children ch join public.classes cl on cl.id = ch.class_id join public.worker_classrooms wc on wc.class_id = cl.id join public.meal_types mt on mt.id = meal_records.meal_type_id
    where ch.id = meal_records.child_id and wc.worker_id = public.current_user_id() and cl.school_id = public.current_school_id() and mt.school_id = cl.school_id
 ));
 create policy meal_records_admin_supervisor_update on public.meal_records for update to authenticated
 using (public.current_user_active() and public.current_user_role() in ('admin', 'supervisor') and exists (
   select 1 from public.children ch join public.classes cl on cl.id = ch.class_id where ch.id = meal_records.child_id and cl.school_id = public.current_school_id()
- ) and recorded_date <= current_date and recorded_at::date = recorded_date) with check (public.current_user_active() and public.current_user_role() in ('admin', 'supervisor') and recorded_date <= current_date and recorded_at::date = recorded_date and exists (
+  ) and recorded_date <= current_date and recorded_at <= now()) with check (public.current_user_active() and public.current_user_role() in ('admin', 'supervisor') and recorded_date <= current_date and recorded_at <= now() and exists (
   select 1 from public.children ch join public.classes cl on cl.id = ch.class_id join public.meal_types mt on mt.id = meal_records.meal_type_id where ch.id = meal_records.child_id and cl.school_id = public.current_school_id() and mt.school_id = cl.school_id
 ));
 create policy meal_records_worker_update on public.meal_records for update to authenticated
-using (public.current_user_active() and public.current_user_role() = 'worker' and recorded_by = public.current_user_id() and recorded_date <= current_date and recorded_at::date = recorded_date and recorded_at >= now() - interval '24 hours' and private.current_user_has_assigned_child(child_id))
-with check (public.current_user_active() and public.current_user_role() = 'worker' and recorded_by = public.current_user_id() and recorded_date <= current_date and recorded_at >= now() - interval '24 hours' and recorded_at <= now() and recorded_at::date = recorded_date and private.current_user_has_assigned_child(child_id));
+using (public.current_user_active() and public.current_user_role() = 'worker' and recorded_by = public.current_user_id() and recorded_date <= current_date and recorded_at >= now() - interval '24 hours' and private.current_user_has_assigned_child(child_id))
+with check (public.current_user_active() and public.current_user_role() = 'worker' and recorded_by = public.current_user_id() and recorded_date <= current_date and recorded_at >= now() - interval '24 hours' and recorded_at <= now() and private.current_user_has_assigned_child(child_id));
 create policy meal_records_admin_delete on public.meal_records for delete to authenticated
 using (public.current_user_active() and public.current_user_role() = 'admin' and exists (
   select 1 from public.children ch
@@ -1236,8 +1236,10 @@ begin
         using errcode = '23514';
     end if;
 
-    if new.recorded_at::date is distinct from new.recorded_date then
-      raise exception 'meal_records.recorded_at date must match recorded_date'
+    -- recorded_date is the local calendar day sent by the client. Do not
+    -- compare it with recorded_at::date, which uses the database timezone.
+    if new.recorded_at > now() then
+      raise exception 'meal_records.recorded_at cannot be in the future'
         using errcode = '23514';
     end if;
 
@@ -1293,8 +1295,10 @@ begin
       using errcode = '23514';
   end if;
 
-  if new.recorded_at::date is distinct from new.recorded_date then
-    raise exception 'meal_records.recorded_at date must match recorded_date'
+  -- recorded_date is the local calendar day sent by the client. Do not
+  -- compare it with recorded_at::date, which uses the database timezone.
+  if new.recorded_at > now() then
+    raise exception 'meal_records.recorded_at cannot be in the future'
       using errcode = '23514';
   end if;
 

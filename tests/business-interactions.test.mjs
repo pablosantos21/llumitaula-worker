@@ -84,7 +84,8 @@ test("worker meal types are tenant-scoped and incidents never use meal records",
   assert.match(app, /userRole === "admin"/);
   assert.match(app, /userRole === "supervisor"/);
   assert.match(app, /canManageIncidents=\{canManageIncidents\}/);
-  assert.match(app, /canManageIncidents && selectedChild/);
+  assert.match(app, /selectedChild &&/);
+  assert.doesNotMatch(app, /canManageIncidents && selectedChild/);
   assert.match(modal, /canManageIncidents &&/);
   assert.match(app, /recorded_by/);
   assert.match(app, /recorded_at/);

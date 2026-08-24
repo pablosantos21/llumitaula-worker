@@ -272,7 +272,7 @@ export default function BusinessApp({ page }: { page: Page }) {
           No se han podido cargar los datos autorizados.
         </p>
       )}
-      {canManageIncidents && selectedChild && (
+      {selectedChild && (
         <IncidentModal
           studentName={`${selectedChild.first_name} ${selectedChild.last_name}`}
           mealTypes={mealTypes}
