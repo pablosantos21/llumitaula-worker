@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 
+import MealRecordModal from "./MealRecordModal";
 import { supabase } from "../lib/supabase/client";
 import { localDateString } from "../lib/local-date";
 import type { Database } from "../types/database";
 import FeedbackToast from "./FeedbackToast";
-import IncidentModal from "./IncidentModal";
 import StudentCard from "./StudentCard";
 
 type Child = Database["public"]["Tables"]["children"]["Row"];
@@ -272,34 +272,34 @@ export default function BusinessApp({ page }: { page: Page }) {
           No se han podido cargar los datos autorizados.
         </p>
       )}
-      {canManageIncidents && selectedChild && (
-        <IncidentModal
-          studentName={`${selectedChild.first_name} ${selectedChild.last_name}`}
-          mealTypes={mealTypes}
-          canManageIncidents={canManageIncidents}
-          onClose={() => setSelectedChild(null)}
-          onSave={({
-            mealTypeId,
-            noFirst,
-            noSecond,
-            noGarnish,
-            noDessert,
-            comments,
-          }) => {
-            const incident = noFirst || noSecond || noGarnish || noDessert;
-            if (incident) {
-              void saveIncident(selectedChild, { comments });
-            } else {
-              void saveStatus(
-                selectedChild,
-                mealTypeId,
-                comments ? "regular" : "bien",
-                comments,
-              );
-            }
-          }}
-        />
-      )}
+      <MealRecordModal
+        key={selectedChild?.id ?? "closed"}
+        child={selectedChild}
+        mealTypes={mealTypes}
+        canManageIncidents={canManageIncidents}
+        onClose={() => setSelectedChild(null)}
+        onSave={(payload) => {
+          if (
+            "incident" in payload &&
+            payload.incident &&
+            (payload.incident.noFirst ||
+              payload.incident.noSecond ||
+              payload.incident.noGarnish ||
+              payload.incident.noDessert)
+          ) {
+            void saveIncident(selectedChild!, {
+              comments: payload.incident.comments ?? "",
+            });
+            return;
+          }
+          void saveStatus(
+            selectedChild!,
+            payload.mealTypeId,
+            payload.status,
+            payload.notes ?? "",
+          );
+        }}
+      />
       <FeedbackToast
         message={toast?.message ?? null}
         type={toast?.type ?? "success"}
