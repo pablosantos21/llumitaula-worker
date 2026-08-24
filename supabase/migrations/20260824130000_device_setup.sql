@@ -57,7 +57,7 @@ declare
   v_workers jsonb;
 begin
   if p_device_identifier is null then
-    raise exception 'Codigo no valido' using errcode = 'P0001';
+    return jsonb_build_object('ok', false, 'error', 'Codigo no valido');
   end if;
 
   -- Lock the per-device counter before validating the code so invalid codes
@@ -79,7 +79,7 @@ begin
      where device_identifier = p_device_identifier
     returning * into v_attempt;
   elsif v_attempt.attempt_count >= 5 then
-    raise exception 'Codigo no valido' using errcode = 'P0001';
+    return jsonb_build_object('ok', false, 'error', 'Codigo no valido');
   else
     update public.device_setup_attempts
        set attempt_count = attempt_count + 1, last_attempt_at = now()
@@ -99,51 +99,56 @@ begin
      or not v_setup_code.active
      or v_setup_code.expires_at <= now()
      or v_setup_code.uses >= v_setup_code.max_uses then
-    raise exception 'Codigo no valido' using errcode = 'P0001';
+    return jsonb_build_object('ok', false, 'error', 'Codigo no valido');
   end if;
 
-  update public.device_setup_codes
-     set uses = uses + 1, last_claimed_at = now()
-   where id = v_setup_code.id;
+  begin
+    update public.device_setup_codes
+       set uses = uses + 1, last_claimed_at = now()
+     where id = v_setup_code.id;
 
-  insert into public.devices (school_id, name, identifier, active, last_seen_at)
-  values (v_setup_code.school_id, 'Device ' || p_device_identifier::text,
-          p_device_identifier::text, true, now())
-  on conflict (identifier) do update
-    set school_id = excluded.school_id,
-        active = true,
-        last_seen_at = excluded.last_seen_at
-    where public.devices.school_id = excluded.school_id
-  returning id into v_device_id;
+    insert into public.devices (school_id, name, identifier, active, last_seen_at)
+    values (v_setup_code.school_id, 'Device ' || p_device_identifier::text,
+            p_device_identifier::text, true, now())
+    on conflict (identifier) do update
+      set school_id = excluded.school_id,
+          active = true,
+          last_seen_at = excluded.last_seen_at
+      where public.devices.school_id = excluded.school_id
+    returning id into v_device_id;
 
-  if not found then
-    raise exception 'Codigo no valido' using errcode = 'P0001';
-  end if;
+    if not found then
+      raise exception 'Codigo no valido' using errcode = 'P0001';
+    end if;
 
-  select name into v_school_name
-    from public.schools
-   where id = v_setup_code.school_id;
+    select name into v_school_name
+      from public.schools
+     where id = v_setup_code.school_id;
 
-  select coalesce(
-           jsonb_agg(
-             jsonb_build_object('id', u.id, 'full_name', u.full_name)
-             order by u.full_name, u.id
-           ),
-           '[]'::jsonb
-         )
-    into v_workers
-    from public.users u
-   where u.school_id = v_setup_code.school_id
-     and u.role::text = 'worker'
-     and u.active;
+    select coalesce(
+             jsonb_agg(
+               jsonb_build_object('id', u.id, 'full_name', u.full_name)
+               order by u.full_name, u.id
+             ),
+             '[]'::jsonb
+           )
+      into v_workers
+      from public.users u
+     where u.school_id = v_setup_code.school_id
+       and u.role::text = 'worker'
+       and u.active;
 
-  return jsonb_build_object(
-    'device_id', v_device_id,
-    'device_identifier', p_device_identifier,
-    'school_id', v_setup_code.school_id,
-    'school_name', v_school_name,
-    'workers', v_workers
-  );
+    return jsonb_build_object(
+      'ok', true,
+      'device_id', v_device_id,
+      'device_identifier', p_device_identifier,
+      'school_id', v_setup_code.school_id,
+      'school_name', v_school_name,
+      'workers', v_workers
+    );
+  exception when others then
+    return jsonb_build_object('ok', false, 'error', 'Codigo no valido');
+  end;
 end;
 $$;
 

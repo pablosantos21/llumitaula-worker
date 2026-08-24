@@ -1726,9 +1726,9 @@ select ok(
 );
 
 select set_config('request.jwt.claims', '{}', true);
-select throws_ok(
-  $$select * from public.claim_device_setup('invalid-code', '00000000-0000-4000-8000-000000000701'::uuid)$$,
-  'P0001',
+select is(
+  (select (public.claim_device_setup('invalid-code', '00000000-0000-4000-8000-000000000701'::uuid))->>'ok'),
+  'false',
   'invalid setup codes are rejected without exposing validation details'
 );
 -- The uuid signature rejects malformed text during argument casting, before
@@ -1739,34 +1739,34 @@ select throws_ok(
   'the uuid signature rejects malformed text before the function body'
 );
 
-select throws_ok(
-  $$select * from public.claim_device_setup('wrong-code', '00000000-0000-4000-8000-000000000710'::uuid)$$,
-  'P0001',
+select is(
+  (select (public.claim_device_setup('wrong-code', '00000000-0000-4000-8000-000000000710'::uuid))->>'ok'),
+  'false',
   'rate-limit attempt 1 is rejected generically'
 );
-select throws_ok(
-  $$select * from public.claim_device_setup('wrong-code', '00000000-0000-4000-8000-000000000710'::uuid)$$,
-  'P0001',
+select is(
+  (select (public.claim_device_setup('wrong-code', '00000000-0000-4000-8000-000000000710'::uuid))->>'ok'),
+  'false',
   'rate-limit attempt 2 is rejected generically'
 );
-select throws_ok(
-  $$select * from public.claim_device_setup('wrong-code', '00000000-0000-4000-8000-000000000710'::uuid)$$,
-  'P0001',
+select is(
+  (select (public.claim_device_setup('wrong-code', '00000000-0000-4000-8000-000000000710'::uuid))->>'ok'),
+  'false',
   'rate-limit attempt 3 is rejected generically'
 );
-select throws_ok(
-  $$select * from public.claim_device_setup('wrong-code', '00000000-0000-4000-8000-000000000710'::uuid)$$,
-  'P0001',
+select is(
+  (select (public.claim_device_setup('wrong-code', '00000000-0000-4000-8000-000000000710'::uuid))->>'ok'),
+  'false',
   'rate-limit attempt 4 is rejected generically'
 );
-select throws_ok(
-  $$select * from public.claim_device_setup('wrong-code', '00000000-0000-4000-8000-000000000710'::uuid)$$,
-  'P0001',
+select is(
+  (select (public.claim_device_setup('wrong-code', '00000000-0000-4000-8000-000000000710'::uuid))->>'ok'),
+  'false',
   'rate-limit attempt 5 is rejected generically'
 );
-select throws_ok(
-  $$select * from public.claim_device_setup('wrong-code', '00000000-0000-4000-8000-000000000710'::uuid)$$,
-  'P0001',
+select is(
+  (select (public.claim_device_setup('wrong-code', '00000000-0000-4000-8000-000000000710'::uuid))->>'ok'),
+  'false',
   'the sixth setup attempt is rejected by the rate limit'
 );
 set local role postgres;
@@ -1825,10 +1825,11 @@ select ok(
        from public.claim_device_setup(
            '123458', '00000000-0000-4000-8000-000000000709'::uuid
        ) response
-   )
-   select exists (
-     select 1 from claimed
-      where jsonb_path_exists(payload, '$.device_id')
+    )
+    select exists (
+      select 1 from claimed
+       where payload ->> 'ok' = 'true'
+         and jsonb_path_exists(payload, '$.device_id')
         and jsonb_path_exists(payload, '$.device_identifier')
         and jsonb_path_exists(payload, '$.school_id')
         and jsonb_path_exists(payload, '$.school_name')
@@ -1862,26 +1863,26 @@ select ok(
   'a valid claim creates a device in the code school and records last seen'
 );
 set local role anon;
-select throws_ok(
-  $$select * from public.claim_device_setup('123459', '00000000-0000-4000-8000-000000000702'::uuid)$$,
-  'P0001',
+select is(
+  (select (public.claim_device_setup('123459', '00000000-0000-4000-8000-000000000702'::uuid))->>'ok'),
+  'false',
   'expired setup codes are rejected'
 );
-select throws_ok(
-  $$select * from public.claim_device_setup('123460', '00000000-0000-4000-8000-000000000703'::uuid)$$,
-  'P0001',
+select is(
+  (select (public.claim_device_setup('123460', '00000000-0000-4000-8000-000000000703'::uuid))->>'ok'),
+  'false',
   'exhausted setup codes are rejected'
 );
-select throws_ok(
-  $$select * from public.claim_device_setup('123461', '00000000-0000-4000-8000-000000000704'::uuid)$$,
-  'P0001',
+select is(
+  (select (public.claim_device_setup('123461', '00000000-0000-4000-8000-000000000704'::uuid))->>'ok'),
+  'false',
   'inactive setup codes are rejected'
 );
 -- pgTAP runs in one session, so this sequential second claim is the valid
 -- equivalent here; true two-session concurrency requires an external runner.
-select throws_ok(
-  $$select * from public.claim_device_setup('123456', '00000000-0000-4000-8000-000000000701'::uuid)$$,
-  'P0001',
+select is(
+  (select (public.claim_device_setup('123456', '00000000-0000-4000-8000-000000000701'::uuid))->>'ok'),
+  'false',
   'a single-use setup code cannot be reused'
 );
 set local role postgres;
@@ -1954,9 +1955,9 @@ create trigger device_setup_rollback_fixture
 after insert on public.devices
 for each row execute function pg_temp.fail_device_setup_insert();
 set local role anon;
-select throws_ok(
-  $$select * from public.claim_device_setup('123463', '00000000-0000-4000-8000-000000000707'::uuid)$$,
-  'P0001',
+select is(
+  (select (public.claim_device_setup('123463', '00000000-0000-4000-8000-000000000707'::uuid))->>'ok'),
+  'false',
   'failed device creation rejects the claim atomically'
 );
 set local role postgres;
@@ -1969,6 +1970,11 @@ select is(
   (select count(*) from public.devices where identifier = '00000000-0000-4000-8000-000000000707'),
   0::bigint,
   'failed device creation leaves no partial device'
+);
+select is(
+  (select attempt_count from public.device_setup_attempts where device_identifier = '00000000-0000-4000-8000-000000000707'::uuid),
+  1,
+  'failed device creation preserves the rate-limit attempt'
 );
 drop trigger device_setup_rollback_fixture on public.devices;
 
