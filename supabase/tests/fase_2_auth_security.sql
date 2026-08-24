@@ -1795,7 +1795,7 @@ select lives_ok(
   $$insert into public.device_setup_codes
       (id, school_id, code_hash, expires_at, max_uses, uses, active)
     values
-      ('00000000-0000-4000-8000-000000000601'::uuid,
+      ('00000000-0000-4000-8000-000000000701'::uuid,
        '00000000-0000-4000-8000-000000000001'::uuid,
        '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92', timestamp '2099-01-01 00:00:00+00', 1, 0, true),
       ('00000000-0000-4000-8000-000000000708'::uuid,
@@ -1823,7 +1823,7 @@ select lives_ok(
 );
 set local role postgres;
 select is(
-  (select uses from public.device_setup_codes where id = '00000000-0000-4000-8000-000000000601'::uuid),
+  (select uses from public.device_setup_codes where id = '00000000-0000-4000-8000-000000000701'::uuid),
   1,
   'a successful claim consumes exactly one use'
 );
@@ -1896,7 +1896,7 @@ select is(
 );
 set local role postgres;
 select is(
-  (select uses from public.device_setup_codes where id = '00000000-0000-4000-8000-000000000601'::uuid),
+  (select uses from public.device_setup_codes where id = '00000000-0000-4000-8000-000000000701'::uuid),
   1,
   'a rejected second claim cannot increment a single-use code'
 );
