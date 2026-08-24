@@ -1,6 +1,6 @@
 begin;
 
-select plan(136);
+select plan(143);
 
 set local role postgres;
 
@@ -1977,6 +1977,56 @@ select is(
   'failed device creation preserves the rate-limit attempt'
 );
 drop trigger device_setup_rollback_fixture on public.devices;
+
+set local role postgres;
+select lives_ok(
+  $$insert into public.device_setup_codes
+      (id, school_id, code_hash, expires_at, max_uses, uses, active)
+    values ('00000000-0000-4000-8000-000000000706'::uuid,
+            '00000000-0000-4000-8000-000000000001'::uuid,
+            'cdb7a70dc7f62bece115efc18f8c40610411766512da21c18aa75eb24d6b7b49', timestamp '2099-01-01 00:00:00+00', 1, 0, true)$$,
+  'an update rollback setup code is available'
+);
+select lives_ok(
+  $$update public.devices
+       set active = false, last_seen_at = timestamp '2026-01-01 12:34:56+00'
+     where identifier = '00000000-0000-4000-8000-000000000701'$$,
+  'an existing device has a known state before update rollback'
+);
+create or replace function pg_temp.fail_device_setup_update()
+returns trigger
+language plpgsql
+as $$
+begin
+  raise exception 'device setup update rollback fixture failure';
+end;
+$$;
+create trigger device_setup_update_rollback_fixture
+after update on public.devices
+for each row execute function pg_temp.fail_device_setup_update();
+set local role anon;
+select is(
+  (select (public.claim_device_setup('123464', '00000000-0000-4000-8000-000000000701'::uuid))->>'ok'),
+  'false',
+  'failed device update returns a generic controlled error'
+);
+set local role postgres;
+select is(
+  (select uses from public.device_setup_codes where id = '00000000-0000-4000-8000-000000000706'::uuid),
+  0,
+  'failed device update rolls back code consumption'
+);
+select is(
+  (select active from public.devices where identifier = '00000000-0000-4000-8000-000000000701'),
+  false,
+  'failed device update preserves active state'
+);
+select is(
+  (select last_seen_at from public.devices where identifier = '00000000-0000-4000-8000-000000000701'),
+  timestamp '2026-01-01 12:34:56+00',
+  'failed device update preserves last_seen_at'
+);
+drop trigger device_setup_update_rollback_fixture on public.devices;
 
 set local role postgres;
 do $$
