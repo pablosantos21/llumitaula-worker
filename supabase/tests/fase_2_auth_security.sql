@@ -1,6 +1,6 @@
 begin;
 
-select plan(42);
+select plan(44);
 
 set local role postgres;
 
@@ -356,6 +356,35 @@ select lives_ok(
        '00000000-0000-4000-8000-000000000111'::uuid,
        'bien'$sql$)$$,
   'worker A can insert a meal record for an assigned child'
+);
+
+select set_config(
+  'request.jwt.claims',
+  json_build_object(
+    'sub', '00000000-0000-4000-8000-000000000111',
+    'role', 'authenticated'
+  )::text,
+  true
+);
+select throws_ok(
+  $$insert into public.meal_records
+      (id, child_id, meal_type_id, recorded_by, recorded_at, status)
+    values
+      ('00000000-0000-4000-8000-000000000613'::uuid,
+       '00000000-0000-4000-8000-000000000201'::uuid,
+       '00000000-0000-4000-8000-000000000611'::uuid,
+       '00000000-0000-4000-8000-000000000111'::uuid,
+       now() + interval '1 hour',
+       'bien')$$,
+  '42501',
+  'worker A cannot insert a future meal record'
+);
+select throws_ok(
+  $$update public.meal_records
+       set recorded_at = now() + interval '1 hour'
+     where id = '00000000-0000-4000-8000-000000000612'::uuid$$,
+  '42501',
+  'worker A cannot update a meal record to the future'
 );
 
 select set_config(

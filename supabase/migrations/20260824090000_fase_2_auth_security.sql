@@ -817,7 +817,7 @@ with check (public.current_user_active() and public.current_user_role() = 'admin
    where ch.id = meal_records.child_id and cl.school_id = public.current_school_id() and mt.school_id = cl.school_id
 ));
 create policy meal_records_worker_insert on public.meal_records for insert to authenticated
-with check (public.current_user_active() and public.current_user_role() = 'worker' and recorded_by = public.current_user_id() and exists (
+with check (public.current_user_active() and public.current_user_role() = 'worker' and recorded_by = public.current_user_id() and recorded_at <= now() and exists (
   select 1 from public.children ch join public.classes cl on cl.id = ch.class_id join public.worker_classrooms wc on wc.class_id = cl.id join public.meal_types mt on mt.id = meal_records.meal_type_id
    where ch.id = meal_records.child_id and wc.worker_id = public.current_user_id() and cl.school_id = public.current_school_id() and mt.school_id = cl.school_id
 ));
@@ -829,7 +829,7 @@ using (public.current_user_active() and public.current_user_role() in ('admin', 
 ));
 create policy meal_records_worker_update on public.meal_records for update to authenticated
 using (public.current_user_active() and public.current_user_role() = 'worker' and recorded_by = public.current_user_id() and recorded_at >= now() - interval '24 hours' and private.current_user_has_assigned_child(child_id))
-with check (public.current_user_active() and public.current_user_role() = 'worker' and recorded_by = public.current_user_id() and recorded_at >= now() - interval '24 hours' and private.current_user_has_assigned_child(child_id));
+with check (public.current_user_active() and public.current_user_role() = 'worker' and recorded_by = public.current_user_id() and recorded_at >= now() - interval '24 hours' and recorded_at <= now() and private.current_user_has_assigned_child(child_id));
 create policy meal_records_admin_delete on public.meal_records for delete to authenticated
 using (public.current_user_active() and public.current_user_role() = 'admin' and exists (
   select 1 from public.children ch
