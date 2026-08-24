@@ -1,6 +1,6 @@
 create table public.device_setup_codes (
   id uuid primary key default gen_random_uuid(),
-  school_id uuid not null references public.schools(id),
+  school_id uuid not null references public.schools(id) on delete cascade,
   code_hash text not null,
   expires_at timestamptz not null,
   max_uses integer not null default 1,
@@ -113,7 +113,12 @@ begin
     set school_id = excluded.school_id,
         active = true,
         last_seen_at = excluded.last_seen_at
+    where public.devices.school_id = excluded.school_id
   returning id into v_device_id;
+
+  if not found then
+    raise exception 'Codigo no valido' using errcode = 'P0001';
+  end if;
 
   select name into v_school_name
     from public.schools
