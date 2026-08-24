@@ -8,6 +8,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { execFile } from "node:child_process";
+import vm from "node:vm";
 import { promisify } from "node:util";
 import process from "node:process";
 import test from "node:test";
@@ -16,9 +17,62 @@ import { join } from "node:path";
 
 const root = new URL("../", import.meta.url);
 const execFileAsync = promisify(execFile);
+const Response = globalThis.Response;
 
 async function source(path) {
   return readFile(new URL(path, root), "utf8");
+}
+
+async function loadServiceWorker({ cache, fetch, open = async () => cache }) {
+  const listeners = new Map();
+  const warnings = [];
+  const self = {
+    location: { origin: "https://app.example" },
+    clients: { claim: async () => undefined },
+    skipWaiting: async () => undefined,
+    addEventListener(type, handler) {
+      listeners.set(type, handler);
+    },
+  };
+  const caches = {
+    open,
+    keys: async () => [],
+    delete: async () => true,
+  };
+  const context = {
+    caches,
+    console: { warn: (...args) => warnings.push(args) },
+    fetch,
+    Response: globalThis.Response,
+    self,
+    URL,
+  };
+  const template = await source("scripts/sw-template.js");
+
+  vm.runInNewContext(template.replace("__PRECACHE_URLS__", "[]"), context);
+  return { fetchHandler: listeners.get("fetch"), warnings };
+}
+
+function request(url, { mode = "cors", destination = "script" } = {}) {
+  return { url: `https://app.example${url}`, method: "GET", mode, destination };
+}
+
+async function dispatch(fetchHandler, requestValue) {
+  const waits = [];
+  const event = {
+    request: requestValue,
+    respondWith(value) {
+      event.response = Promise.resolve(value);
+    },
+    waitUntil(value) {
+      waits.push(Promise.resolve(value));
+    },
+  };
+
+  fetchHandler(event);
+  const response = await event.response;
+  await Promise.all(waits);
+  return response;
 }
 
 test("web manifest exposes the standalone app contract", async () => {
@@ -157,11 +211,8 @@ test("service worker template declares the shell cache and safe request boundari
   );
   assert.match(template, /network-first|Network-first/i);
   assert.match(template, /index\.html/);
-  assert.match(
-    template,
-    /caches\.open\(CACHE_NAME\)[\s\S]*cache\.match\(["']\/index\.html["']\)/,
-  );
-  assert.match(template, /caches\.open\(CACHE_NAME\).*cache\.match/s);
+  assert.match(template, /function readCache\([\s\S]*cache\.match\(request\)/);
+  assert.match(template, /function readCache[\s\S]*cache\.match\(request\)/);
   assert.doesNotMatch(template, /caches\.match\(/);
   assert.match(template, /url\.pathname\s*===\s*["']\/["']/);
   assert.match(template, /event\.waitUntil\(/);
@@ -171,6 +222,83 @@ test("service worker template declares the shell cache and safe request boundari
   assert.match(template, /request\.method\s*!==\s*["']GET["']/);
   assert.match(template, /url\.origin\s*!==\s*self\.location\.origin/);
   assert.doesNotMatch(template, /supabase|fetch\([^)]*https?:/i);
+});
+
+test("service worker serves assets from a named cache on misses and hits", async () => {
+  let fetches = 0;
+  const cachedResponse = new Response("cached");
+  const cache = {
+    async match() {
+      return fetches === 0 ? undefined : cachedResponse;
+    },
+    async put() {},
+  };
+  const { fetchHandler } = await loadServiceWorker({
+    cache,
+    fetch: async () => {
+      fetches += 1;
+      return new Response("network");
+    },
+  });
+
+  const miss = await dispatch(fetchHandler, request("/app.js"));
+  assert.equal(await miss.text(), "network");
+  const hit = await dispatch(fetchHandler, request("/app.js"));
+  assert.equal(await hit.text(), "cached");
+  assert.equal(fetches, 2);
+});
+
+test("service worker returns the named shell when navigation is offline", async () => {
+  const cache = {
+    async match(path) {
+      return path === "/index.html" ? new Response("shell") : undefined;
+    },
+    async put() {},
+  };
+  const { fetchHandler } = await loadServiceWorker({
+    cache,
+    fetch: async () => {
+      throw new Error("offline");
+    },
+  });
+
+  const response = await dispatch(
+    fetchHandler,
+    request("/login/", { mode: "navigate", destination: "document" }),
+  );
+  assert.equal(await response.text(), "shell");
+});
+
+test("service worker handles cache storage errors without rejecting a response", async () => {
+  const { fetchHandler, warnings } = await loadServiceWorker({
+    cache: {
+      async match() {
+        return undefined;
+      },
+      async put() {
+        throw new Error("quota exceeded");
+      },
+    },
+    fetch: async () => new Response("network"),
+  });
+
+  const response = await dispatch(fetchHandler, request("/app.js"));
+  assert.equal(await response.text(), "network");
+  assert.ok(warnings.length >= 1);
+});
+
+test("service worker falls back to network when opening the named cache fails", async () => {
+  const { fetchHandler, warnings } = await loadServiceWorker({
+    cache: undefined,
+    open: async () => {
+      throw new Error("storage unavailable");
+    },
+    fetch: async () => new Response("network"),
+  });
+
+  const response = await dispatch(fetchHandler, request("/app.js"));
+  assert.equal(await response.text(), "network");
+  assert.ok(warnings.length >= 1);
 });
 
 test("service worker generator recursively precaches supported dist files", async () => {

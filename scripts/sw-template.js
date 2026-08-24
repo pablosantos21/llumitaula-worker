@@ -6,6 +6,16 @@ const CACHE_NAME = "llumitaula-shell-v1";
 // Replaced with the build's root-relative asset list.
 const PRECACHE_URLS = __PRECACHE_URLS__;
 
+async function readCache(request) {
+  try {
+    const cache = await caches.open(CACHE_NAME);
+    return await cache.match(request);
+  } catch (error) {
+    console.warn("PWA runtime cache read failed", error);
+    return undefined;
+  }
+}
+
 function cacheResponse(request, response, event) {
   event.waitUntil(
     caches
@@ -63,7 +73,7 @@ self.addEventListener("fetch", (event) => {
           return response;
         })
         .catch(() =>
-          caches.open(CACHE_NAME).then((cache) => cache.match("/index.html")),
+          readCache("/index.html").then((cached) => cached || Response.error()),
         ),
     );
     return;
@@ -74,14 +84,18 @@ self.addEventListener("fetch", (event) => {
   }
 
   event.respondWith(
-    caches.open(CACHE_NAME).then((cache) => {
-      const cached = cache.match(request);
-      const network = fetch(request).then((response) => {
-        if (response.ok) {
-          cacheResponse(request, response.clone(), event);
-        }
-        return response;
-      });
+    readCache(request).then((cached) => {
+      const network = fetch(request)
+        .then((response) => {
+          if (response.ok) {
+            cacheResponse(request, response.clone(), event);
+          }
+          return response;
+        })
+        .catch((error) => {
+          console.warn("PWA asset network request failed", error);
+          return Response.error();
+        });
       return cached || network;
     }),
   );
