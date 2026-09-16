@@ -1,6 +1,6 @@
 begin;
 
-select plan(39);
+select plan(46);
 
 -- Deterministic fixtures used by the phase 2 seed.
 -- School A: ...0001 (Colegio Demo), School B: ...0002 (Colegio Arcoiris).
@@ -239,6 +239,65 @@ select is(
   (select (public.get_device_monitors('ghost-device'))->>'error'),
   'DEVICE_NOT_FOUND',
   'monitors are not served for an unclaimed device'
+);
+
+-- ── Identifier collision ──
+-- A bound identifier may not be stolen to bind a different device. Device
+-- ...607 holds the identifier "taken-ident"; device ...608 is unbound with
+-- code "ffffff". Claiming ...608 with "taken-ident" must be a clean rejection.
+set local role postgres;
+insert into public.devices (
+  id, school_id, name, identifier, config_code_hash,
+  config_code_expires_at, revoked, active, created_at
+) values
+  ('00000000-0000-4000-8000-000000000607'::uuid,
+   '00000000-0000-4000-8000-000000000001'::uuid,
+   'Pantalla ya vinculada', 'taken-ident', null,
+   null, false, true, now()),
+  ('00000000-0000-4000-8000-000000000608'::uuid,
+   '00000000-0000-4000-8000-000000000001'::uuid,
+   'Pantalla libre', null,
+   encode(digest('ffffff', 'sha256'), 'hex'),
+   now() + interval '1 year', false, true, now());
+set local role anon;
+select is(
+  (select (public.claim_device('ffffff', 'taken-ident'))->>'success'),
+  'false',
+  'claiming a code with an identifier bound to another device is rejected'
+);
+select is(
+  (select (public.claim_device('ffffff', 'taken-ident'))->>'error'),
+  'IDENTIFIER_IN_USE',
+  'an identifier collision returns IDENTIFIER_IN_USE'
+);
+select lives_ok(
+  $$select public.claim_device('ffffff', 'taken-ident')$$,
+  'an identifier collision does not raise'
+);
+set local role postgres;
+select is(
+  (select identifier from public.devices
+    where id = '00000000-0000-4000-8000-000000000607'::uuid),
+  'taken-ident',
+  'a rejected collision leaves the existing binding unchanged'
+);
+select is(
+  (select pg_temp.privileged_count_rows(
+     $$select count(*) from public.device_claims
+        where device_id = '00000000-0000-4000-8000-000000000608'::uuid$$)),
+  0::bigint,
+  'a rejected collision writes no audit row'
+);
+set local role anon;
+select is(
+  (select (public.claim_device('ffffff', 'fresh-ident'))->>'success'),
+  'true',
+  'the colliding code still claims with a free identifier'
+);
+select is(
+  (select (public.claim_device('ffffff', 'fresh-ident'))->>'success'),
+  'true',
+  're-claiming the same device with its own identifier still succeeds'
 );
 
 -- ── Rate limits ──
