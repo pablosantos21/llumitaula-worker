@@ -68,7 +68,7 @@ npx supabase db reset
 
 Abre `/setup` en la aplicacion para vincular el dispositivo. En el entorno local, despues de ejecutar `npx supabase db reset`, usa el codigo `123456`. Este codigo es solo para desarrollo local y no es una credencial valida para produccion.
 
-El formulario envia el codigo a la RPC `claim_device_setup` de Supabase. La validacion, caducidad, limite de usos y vinculacion con el colegio ocurren en Supabase; el navegador no consulta ni modifica directamente las tablas de codigos. En un entorno que no sea local debe usarse un codigo de configuracion emitido para ese entorno, nunca el codigo del seed local.
+El formulario envia el codigo a la RPC `claim_device` de Supabase y recupera el contexto operativo mediante `get_device_monitors`. La validacion, caducidad, limite de usos y vinculacion con el colegio ocurren en Supabase; el navegador no consulta ni modifica directamente las tablas de codigos. En un entorno que no sea local debe usarse un codigo de configuracion emitido para ese entorno, nunca el codigo del seed local.
 
 La RPC aplica una defensa global basica de 30 intentos por ventana de 15 minutos,
 ademas del limite de 5 intentos por identificador. Esto dificulta la rotacion de

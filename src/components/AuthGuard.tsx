@@ -25,7 +25,7 @@ export default function AuthGuard({ contentId }: Props) {
 
         document.getElementById(contentId)?.removeAttribute("hidden");
       } catch {
-        if (mounted) window.location.assign("/login");
+        if (mounted) window.location.assign("/workers");
       }
     };
 

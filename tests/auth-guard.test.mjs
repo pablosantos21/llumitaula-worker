@@ -23,5 +23,7 @@ test("AuthGuard checks the session before revealing protected content", async ()
 
   assert.match(guard, /supabase\.auth\.getSession\(\)/);
   assert.match(guard, /window\.location\.assign\(["']\/setup["']\)/);
+  assert.match(guard, /window\.location\.assign\(["']\/workers["']\)/);
+  assert.doesNotMatch(guard, /window\.location\.assign\(["']\/login["']\)/);
   assert.match(guard, /removeAttribute\(["']hidden["']\)/);
 });

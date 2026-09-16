@@ -11,24 +11,25 @@ flowchart TD
     route -->|"/setup"| setup["DeviceSetupForm"]
     route -->|"/workers o /app/workers"| workers["WorkersApp"]
     route -->|"/ o /search"| layout["MainLayout\ncontenido protegido oculto"]
-    route -->|"/login (fallback)"| login["Ruta referenciada por AuthGuard"]
 
     subgraph linking["1. Vinculación del dispositivo"]
-        setup --> linked{"¿Hay contexto y código\nen localStorage?"}
+        setup --> linked{"¿Hay contexto\nen localStorage?"}
         linked -->|Sí| workers
         linked -->|No| identifier["Obtener o generar\ndevice_identifier (UUID)"]
         identifier --> code["Usuario introduce código temporal"]
-        code --> claim["Supabase RPC\nclaim_device_setup"]
+        code --> claim["Supabase RPC\nclaim_device"]
         claim --> validate["Valida hash, caducidad, usos\ny límites de intentos\n(5 por dispositivo / 30 globales)"]
         validate -->|Inválido| setupError["Error genérico y reintento"]
-        validate -->|Válido| deviceLink["Crea o actualiza device\ny devuelve centro + monitores"]
+        validate -->|Válido| deviceLink["Crea o actualiza device"]
         setupError --> code
-        deviceLink --> persist["Guarda contexto público y código\nen localStorage"]
+        deviceLink --> context["RPC get_device_monitors\nrecupera centro y monitores"]
+        context --> confirm["Muestra Vinculado a Colegio X\ny espera Continuar"]
+        confirm --> persist["Guarda contexto público y el identificador\nen localStorage"]
         persist --> workers
     end
 
     subgraph monitorAuth["2. Selección y autenticación del monitor"]
-        workers --> localCheck{"¿Contexto y código\ndisponibles?"}
+        workers --> localCheck{"¿Hay contexto\nde dispositivo?"}
         localCheck -->|No| setup
         localCheck -->|Sí| refresh["RPC get_device_monitors\nactualiza last_seen_at"]
         refresh --> fresh{"¿Respuesta correcta?"}
@@ -47,7 +48,7 @@ flowchart TD
     layout --> guard["AuthGuard\nsupabase.auth.getSession()"]
     home --> layout
     guard -->|Sin sesión| setup
-    guard -->|Error al consultar sesión| login
+    guard -->|Error al consultar sesión| workers
     guard -->|Sesión válida| business["BusinessApp\nlibera el contenido"]
 
     subgraph dataLoad["3. Carga de datos autorizados"]

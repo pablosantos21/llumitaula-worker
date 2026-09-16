@@ -26,6 +26,10 @@ test("device setup form submits the code through the secure RPC", async () => {
     form,
     /\.rpc\(\s*["']claim_device["'][\s\S]*p_code:\s*code\.trim\(\)[\s\S]*p_device_identifier:\s*identifier/s,
   );
+  assert.match(
+    form,
+    /\.rpc\(\s*["']get_device_monitors["'][\s\S]*p_device_identifier:\s*identifier/s,
+  );
   assert.doesNotMatch(form, /school_id\s*:/);
 });
 
@@ -116,7 +120,7 @@ test("workers page shows the linked monitors and refreshes them on load", async 
   assert.doesNotMatch(workers, /BusinessApp|MOCK_STUDENTS|data-student/);
 });
 
-test("setup keeps retry available on generic RPC errors and redirects after success", async () => {
+test("setup keeps retry available and confirms the linked school before continuing", async () => {
   const form = await source("src/components/DeviceSetupForm.tsx");
 
   assert.match(form, /role=["']alert["']/);
@@ -124,10 +128,28 @@ test("setup keeps retry available on generic RPC errors and redirects after succ
     form,
     /No se ha podido configurar|int[eé]ntalo de nuevo|c[oó]digo no v[aá]lido/i,
   );
+  assert.match(form, /Vinculado a/);
+  assert.match(form, /context\.school_name/);
+  assert.match(form, /Continuar/);
   assert.match(form, /window\.location\.assign\(["']\/workers["']\)/);
+  assert.doesNotMatch(
+    form,
+    /saveDeviceContext\(context\);[\s\S]{0,120}window\.location\.assign\(["']\/workers["']\)/,
+  );
   assert.doesNotMatch(form, /console\.(?:error|log|warn)/);
   assert.doesNotMatch(form, /const\s*\{\s*error\s*\}\s*=/);
   assert.doesNotMatch(form, /error\.(?:message|details|hint)/);
+});
+
+test("setup never persists or reads the configuration code", async () => {
+  const [form, lib] = await Promise.all([
+    source("src/components/DeviceSetupForm.tsx"),
+    source("src/lib/deviceSetup.ts"),
+  ]);
+
+  assert.doesNotMatch(form, /saveSetupCode|getSetupCode|device_setup_code/i);
+  assert.doesNotMatch(lib, /saveSetupCode|getSetupCode|device_setup_code/i);
+  assert.doesNotMatch(lib, /localStorage\.(?:get|set)Item\([^\n]*code/i);
 });
 
 test("device setup files are part of the application surface", async () => {
