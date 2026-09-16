@@ -452,7 +452,7 @@ test("service worker returns the named shell when navigation is offline", async 
 
   const response = await dispatch(
     fetchHandler,
-    request("/login/", { mode: "navigate", destination: "document" }),
+    request("/setup/", { mode: "navigate", destination: "document" }),
   );
   assert.equal(await response.text(), "shell");
 });
@@ -461,7 +461,7 @@ test("service worker serves a cached navigation before falling back to the shell
   const cache = {
     async match(path) {
       const key = typeof path === "string" ? path : path.url;
-      if (key === "https://app.example/login/") return new Response("login");
+      if (key === "https://app.example/setup/") return new Response("setup");
       if (key === "/index.html") return new Response("shell");
       return undefined;
     },
@@ -476,16 +476,16 @@ test("service worker serves a cached navigation before falling back to the shell
 
   const response = await dispatch(
     fetchHandler,
-    request("/login/", { mode: "navigate", destination: "document" }),
+    request("/setup/", { mode: "navigate", destination: "document" }),
   );
-  assert.equal(await response.text(), "login");
+  assert.equal(await response.text(), "setup");
 });
 
 test("service worker resolves Astro static route variants offline", async () => {
   const cache = {
     async match(path) {
       const key = typeof path === "string" ? path : path.url;
-      if (key === "/login/index.html") return new Response("login route");
+      if (key === "/setup/index.html") return new Response("setup route");
       if (key === "/index.html") return new Response("root shell");
       return undefined;
     },
@@ -500,9 +500,9 @@ test("service worker resolves Astro static route variants offline", async () => 
 
   const response = await dispatch(
     fetchHandler,
-    request("/login/", { mode: "navigate", destination: "document" }),
+    request("/setup/", { mode: "navigate", destination: "document" }),
   );
-  assert.equal(await response.text(), "login route");
+  assert.equal(await response.text(), "setup route");
 });
 
 test("service worker completes install and activate lifecycle safely", async () => {

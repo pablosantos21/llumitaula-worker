@@ -19,7 +19,7 @@ export default function AuthGuard({ contentId }: Props) {
         if (!mounted) return;
 
         if (!session) {
-          window.location.assign("/login");
+          window.location.assign("/setup");
           return;
         }
 

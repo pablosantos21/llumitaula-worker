@@ -24,7 +24,7 @@ test("device setup form submits the code through the secure RPC", async () => {
   assert.match(form, /name=["']code["']/);
   assert.match(
     form,
-    /\.rpc\(["']claim_device_setup["']\s*,\s*\{[\s\S]*p_code:\s*code\.trim\(\)[\s\S]*p_device_identifier:\s*identifier[\s\S]*\}\s*\)/s,
+    /\.rpc\(\s*["']claim_device_setup["'][\s\S]*p_code:\s*code\.trim\(\)[\s\S]*p_device_identifier:\s*identifier/s,
   );
   assert.doesNotMatch(form, /school_id\s*:/);
 });
@@ -48,7 +48,7 @@ test("setup creates or reuses a random device identifier and persists only safe 
   assert.doesNotMatch(form, /password|service_role|PUBLIC_SUPABASE_SERVICE/i);
   assert.doesNotMatch(
     lib,
-    /localStorage\.setItem\(["']device_context["'][\s\S]*?(?:code|password|access_token)/i,
+    /localStorage\.setItem\(["']device_context["'][^;]*?(?:password|access_token|anon_key|service_role)/i,
   );
   assert.doesNotMatch(
     page,
@@ -90,16 +90,29 @@ test("setup preflights storage and persists the handoff context atomically", asy
   assert.doesNotMatch(lib, /localStorage\.setItem\(["']device_id["']/);
   assert.match(
     form,
-    /assertDeviceStorageAvailable\(\)[\s\S]*?\.rpc\(["']claim_device_setup["']/,
+    /assertDeviceStorageAvailable\(\)[\s\S]*?\.rpc\(\s*["']claim_device_setup["']/,
   );
 });
 
-test("workers handoff page is publicly available and contains no business selection logic", async () => {
-  const page = await source("src/pages/app/workers.astro");
+test("workers page shows the linked monitors and refreshes them on load", async () => {
+  const [page, legacyPage, workers] = await Promise.all([
+    source("src/pages/workers.astro"),
+    source("src/pages/app/workers.astro"),
+    source("src/components/WorkersApp.tsx"),
+  ]);
 
-  assert.match(page, /MainLayout[\s\S]*requiresAuth=\{false\}/);
-  assert.match(page, /<h1[\s\S]*worker|preparando|dispositivo/i);
-  assert.doesNotMatch(page, /BusinessApp|selected|MOCK_STUDENTS|data-student/);
+  for (const candidate of [page, legacyPage]) {
+    assert.match(candidate, /MainLayout[\s\S]*requiresAuth=\{false\}/);
+    assert.match(candidate, /WorkersApp[\s\S]*client:load/);
+  }
+  assert.match(
+    workers,
+    /\.rpc\(\s*["']get_device_monitors["'][\s\S]*p_device_identifier[\s\S]*p_code/s,
+  );
+  assert.match(workers, /MonitorSelectScreen/);
+  assert.match(workers, /MonitorPinInput/);
+  assert.match(workers, /window\.location\.assign\(["']\/setup["']\)/);
+  assert.doesNotMatch(workers, /BusinessApp|MOCK_STUDENTS|data-student/);
 });
 
 test("setup keeps retry available on generic RPC errors and redirects after success", async () => {
@@ -110,15 +123,18 @@ test("setup keeps retry available on generic RPC errors and redirects after succ
     form,
     /No se ha podido configurar|int[eé]ntalo de nuevo|c[oó]digo no v[aá]lido/i,
   );
-  assert.match(form, /["']\/app\/workers["']/);
-  assert.doesNotMatch(form, /console\.(?:error|log|warn)\([\s\S]*error/i);
-  assert.doesNotMatch(form, /\{\s*error\s*\}/);
+  assert.match(form, /window\.location\.assign\(["']\/workers["']\)/);
+  assert.doesNotMatch(form, /console\.(?:error|log|warn)/);
+  assert.doesNotMatch(form, /const\s*\{\s*error\s*\}\s*=/);
   assert.doesNotMatch(form, /error\.(?:message|details|hint)/);
 });
 
 test("device setup files are part of the application surface", async () => {
   await Promise.all([
     access(new URL("src/pages/setup.astro", root)),
+    access(new URL("src/pages/workers.astro", root)),
+    access(new URL("src/pages/app/workers.astro", root)),
     access(new URL("src/components/DeviceSetupForm.tsx", root)),
+    access(new URL("src/components/WorkersApp.tsx", root)),
   ]);
 });

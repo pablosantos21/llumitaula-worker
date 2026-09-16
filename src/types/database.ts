@@ -419,6 +419,7 @@ export type Database = {
           id: string;
           last_name: string;
           school_id: string;
+          user_id: string | null;
         };
         Insert: {
           code: number;
@@ -427,6 +428,7 @@ export type Database = {
           id?: string;
           last_name: string;
           school_id: string;
+          user_id?: string | null;
         };
         Update: {
           code?: number;
@@ -435,6 +437,7 @@ export type Database = {
           id?: string;
           last_name?: string;
           school_id?: string;
+          user_id?: string | null;
         };
         Relationships: [
           {
@@ -442,6 +445,13 @@ export type Database = {
             columns: ["school_id"];
             isOneToOne: false;
             referencedRelation: "schools";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "monitors_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "users";
             referencedColumns: ["id"];
           },
         ];
@@ -557,10 +567,6 @@ export type Database = {
         Args: Record<PropertyKey, never>;
         Returns: string;
       };
-      current_school_id: {
-        Args: Record<PropertyKey, never>;
-        Returns: string;
-      };
       current_user_role: {
         Args: Record<PropertyKey, never>;
         Returns: string;
@@ -570,7 +576,20 @@ export type Database = {
         Returns: boolean;
       };
       claim_device_setup: {
-        Args: { p_code: string; p_device_identifier: string };
+        Args: { p_device_identifier: string; p_code: string };
+        Returns: Json;
+      };
+      get_device_monitors: {
+        Args: { p_device_identifier: string; p_code?: string };
+        Returns: Json;
+      };
+      create_monitor: {
+        Args: {
+          p_first_name: string;
+          p_last_name: string;
+          p_code: number;
+          p_school_id: string;
+        };
         Returns: Json;
       };
       custom_access_token_hook: { Args: { event: Json }; Returns: Json };

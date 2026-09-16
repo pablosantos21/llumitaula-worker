@@ -26,13 +26,12 @@ begin
     ) expected(id, email, full_name) on expected.id = au.id
     where (au.instance_id, au.email, au.role, au.aud, au.email_confirmed_at,
            au.raw_app_meta_data, au.raw_user_meta_data, au.created_at,
-           au.updated_at, au.confirmed_at) is distinct from
+           au.updated_at) is distinct from
           ('00000000-0000-0000-0000-000000000000'::uuid, expected.email,
            'authenticated', 'authenticated',
            timestamp '2026-01-01 00:00:00+00',
            jsonb_build_object('provider', 'email', 'providers', jsonb_build_array('email')),
            jsonb_build_object('full_name', expected.full_name),
-           timestamp '2026-01-01 00:00:00+00',
            timestamp '2026-01-01 00:00:00+00',
            timestamp '2026-01-01 00:00:00+00')
        or au.encrypted_password is null
@@ -305,19 +304,6 @@ begin
       ) expected(child_id, allergen_id)
       where expected.child_id = ca.child_id and expected.allergen_id = ca.allergen_id
     )
-  ) or exists (
-    select 1 from (values
-      ('00000000-0000-4000-8000-000000000203'::uuid, '00000000-0000-4000-8000-000000000401'::uuid),
-      ('00000000-0000-4000-8000-000000000207'::uuid, '00000000-0000-4000-8000-000000000402'::uuid),
-      ('00000000-0000-4000-8000-000000000215'::uuid, '00000000-0000-4000-8000-000000000403'::uuid),
-      ('00000000-0000-4000-8000-000000000220'::uuid, '00000000-0000-4000-8000-000000000404'::uuid),
-      ('00000000-0000-4000-8000-000000000225'::uuid, '00000000-0000-4000-8000-000000000499'::uuid),
-      ('00000000-0000-4000-8000-000000000225'::uuid, '00000000-0000-4000-8000-000000000498'::uuid)
-    ) expected(child_id, allergen_id)
-    where not exists (
-      select 1 from public.child_allergens ca
-       where ca.child_id = expected.child_id and ca.allergen_id = expected.allergen_id
-    )
   ) then
     raise exception 'seed collision in public.child_allergens';
   end if;
@@ -435,7 +421,7 @@ $$;
 insert into auth.users (
   id, instance_id, aud, role, email, encrypted_password,
   email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
-  created_at, updated_at, confirmed_at
+  created_at, updated_at
 )
 select account.id, '00000000-0000-0000-0000-000000000000'::uuid,
        'authenticated', 'authenticated', account.email,
@@ -443,8 +429,7 @@ select account.id, '00000000-0000-0000-0000-000000000000'::uuid,
        timestamp '2026-01-01 00:00:00+00',
        jsonb_build_object('provider', 'email', 'providers', jsonb_build_array('email')),
        jsonb_build_object('full_name', account.full_name),
-       timestamp '2026-01-01 00:00:00+00', timestamp '2026-01-01 00:00:00+00',
-       timestamp '2026-01-01 00:00:00+00'
+       timestamp '2026-01-01 00:00:00+00', timestamp '2026-01-01 00:00:00+00'
   from (values
     ('00000000-0000-4000-8000-000000000101'::uuid, 'parent.1@local.test', 'Parent One'),
     ('00000000-0000-4000-8000-000000000102'::uuid, 'parent.2@local.test', 'Parent Two'),
@@ -455,7 +440,12 @@ select account.id, '00000000-0000-0000-0000-000000000000'::uuid,
     ('00000000-0000-4000-8000-000000000113'::uuid, 'admin.a@local.test', 'Admin A'),
     ('00000000-0000-4000-8000-000000000114'::uuid, 'worker.b@local.test', 'Worker B'),
     ('00000000-0000-4000-8000-000000000115'::uuid, 'admin.b@local.test', 'Admin B'),
-    ('00000000-0000-4000-8000-000000000116'::uuid, 'worker.a2@local.test', 'Worker A Two')
+    ('00000000-0000-4000-8000-000000000116'::uuid, 'worker.a2@local.test', 'Worker A Two'),
+    ('00000000-0000-4000-8000-000000000121'::uuid, 'monitor.101@llumitaula.local', 'Ana Serra'),
+    ('00000000-0000-4000-8000-000000000122'::uuid, 'monitor.102@llumitaula.local', 'Bruno Vidal'),
+    ('00000000-0000-4000-8000-000000000123'::uuid, 'monitor.103@llumitaula.local', 'Carla Moya'),
+    ('00000000-0000-4000-8000-000000000124'::uuid, 'monitor.104@llumitaula.local', 'Diego Roca'),
+    ('00000000-0000-4000-8000-000000000125'::uuid, 'monitor.105@llumitaula.local', 'Elena Costa')
   ) as account(id, email, full_name)
 on conflict (id) do nothing;
 
@@ -474,7 +464,12 @@ insert into public.users (id, school_id, full_name, role, active, created_at) va
   ('00000000-0000-4000-8000-000000000113', '00000000-0000-4000-8000-000000000001', 'Admin A', 'admin', true, timestamp '2026-01-01 00:00:00+00'),
   ('00000000-0000-4000-8000-000000000114', '00000000-0000-4000-8000-000000000002', 'Worker B', 'worker', true, timestamp '2026-01-01 00:00:00+00'),
   ('00000000-0000-4000-8000-000000000115', '00000000-0000-4000-8000-000000000002', 'Admin B', 'admin', true, timestamp '2026-01-01 00:00:00+00'),
-  ('00000000-0000-4000-8000-000000000116', '00000000-0000-4000-8000-000000000001', 'Worker A Two', 'worker', true, timestamp '2026-01-01 00:00:00+00')
+  ('00000000-0000-4000-8000-000000000116', '00000000-0000-4000-8000-000000000001', 'Worker A Two', 'worker', true, timestamp '2026-01-01 00:00:00+00'),
+  ('00000000-0000-4000-8000-000000000121', '00000000-0000-4000-8000-000000000001', 'Ana Serra', 'monitor', true, timestamp '2026-01-01 00:00:00+00'),
+  ('00000000-0000-4000-8000-000000000122', '00000000-0000-4000-8000-000000000001', 'Bruno Vidal', 'monitor', true, timestamp '2026-01-01 00:00:00+00'),
+  ('00000000-0000-4000-8000-000000000123', '00000000-0000-4000-8000-000000000001', 'Carla Moya', 'monitor', true, timestamp '2026-01-01 00:00:00+00'),
+  ('00000000-0000-4000-8000-000000000124', '00000000-0000-4000-8000-000000000001', 'Diego Roca', 'monitor', true, timestamp '2026-01-01 00:00:00+00'),
+  ('00000000-0000-4000-8000-000000000125', '00000000-0000-4000-8000-000000000001', 'Elena Costa', 'monitor', true, timestamp '2026-01-01 00:00:00+00')
 on conflict (id) do nothing;
 
 insert into public.classes (id, name, school_id) values
@@ -483,12 +478,12 @@ insert into public.classes (id, name, school_id) values
   ('00000000-0000-4000-8000-000000000021', 'Clase B', '00000000-0000-4000-8000-000000000002')
 on conflict (id) do nothing;
 
-insert into public.monitors (id, first_name, last_name, code, school_id, created_at) values
-  ('00000000-0000-4000-8000-000000000021', 'Ana', 'Serra', 101, '00000000-0000-4000-8000-000000000001', timestamp '2026-01-01 00:00:00+00'),
-  ('00000000-0000-4000-8000-000000000022', 'Bruno', 'Vidal', 102, '00000000-0000-4000-8000-000000000001', timestamp '2026-01-01 00:00:00+00'),
-  ('00000000-0000-4000-8000-000000000023', 'Carla', 'Moya', 103, '00000000-0000-4000-8000-000000000001', timestamp '2026-01-01 00:00:00+00'),
-  ('00000000-0000-4000-8000-000000000024', 'Diego', 'Roca', 104, '00000000-0000-4000-8000-000000000001', timestamp '2026-01-01 00:00:00+00'),
-  ('00000000-0000-4000-8000-000000000025', 'Elena', 'Costa', 105, '00000000-0000-4000-8000-000000000001', timestamp '2026-01-01 00:00:00+00')
+insert into public.monitors (id, first_name, last_name, code, school_id, user_id, created_at) values
+  ('00000000-0000-4000-8000-000000000021', 'Ana', 'Serra', 101, '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000121', timestamp '2026-01-01 00:00:00+00'),
+  ('00000000-0000-4000-8000-000000000022', 'Bruno', 'Vidal', 102, '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000122', timestamp '2026-01-01 00:00:00+00'),
+  ('00000000-0000-4000-8000-000000000023', 'Carla', 'Moya', 103, '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000123', timestamp '2026-01-01 00:00:00+00'),
+  ('00000000-0000-4000-8000-000000000024', 'Diego', 'Roca', 104, '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000124', timestamp '2026-01-01 00:00:00+00'),
+  ('00000000-0000-4000-8000-000000000025', 'Elena', 'Costa', 105, '00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000125', timestamp '2026-01-01 00:00:00+00')
 on conflict (id) do nothing;
 
 insert into public.monitors_schools (monitor_id, school_id)

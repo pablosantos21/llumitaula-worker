@@ -30,6 +30,7 @@ export default function BusinessApp({ page }: { page: Page }) {
   const [userRole, setUserRole] = useState<
     Database["public"]["Enums"]["user_role"] | null
   >(null);
+  const [monitorId, setMonitorId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [selectedChild, setSelectedChild] = useState<Child | null>(null);
   const [toast, setToast] = useState<{
@@ -102,6 +103,18 @@ export default function BusinessApp({ page }: { page: Page }) {
       setIncidents(incidentsResult.data ?? []);
       setMealTypes(mealTypesResult.data ?? []);
       setUserRole(userResult.data.role);
+
+      if (userResult.data.role === "monitor") {
+        const { data: monitorResult } = await supabase
+          .from("monitors")
+          .select("id")
+          .eq("user_id", session.user.id)
+          .single();
+        if (active && monitorResult) {
+          setMonitorId(monitorResult.id);
+        }
+      }
+
       setState("ready");
     }
 
@@ -129,6 +142,11 @@ export default function BusinessApp({ page }: { page: Page }) {
       setToast({ message: "No se ha podido guardar el estado", type: "error" });
       return;
     }
+
+    // recorded_by references public.users(id): always the authenticated
+    // user, for every role. The DB trigger and RLS enforce this.
+    const recordedBy = session.user.id;
+
     const date = localDateString();
     const result = await supabase
       .from("meal_records")
@@ -137,7 +155,7 @@ export default function BusinessApp({ page }: { page: Page }) {
           child_id: child.id,
           meal_type_id: mealTypeId,
           recorded_date: date,
-          recorded_by: session.user.id,
+          recorded_by: recordedBy,
           status,
           notes,
           recorded_at: new Date().toISOString(),
@@ -188,11 +206,7 @@ export default function BusinessApp({ page }: { page: Page }) {
       return;
     }
 
-    const monitorsResult = await supabase
-      .from("monitors")
-      .select("id")
-      .limit(1);
-    const monitorId = monitorsResult.data?.[0]?.id;
+    const activeMonitorId = monitorId;
     const date = localDateString();
     const cleanComments = details.comments
       .replace(/\p{Cc}/gu, " ")
@@ -205,7 +219,7 @@ export default function BusinessApp({ page }: { page: Page }) {
       `No ha comido postre: ${details.noDessert ? "sí" : "no"}`,
       `Comentarios: ${cleanComments || "sin comentarios"}`,
     ].join("; ");
-    if (monitorsResult.error || !monitorId) {
+    if (!activeMonitorId) {
       setToast({
         message: "No se han podido cargar los datos de la incidencia",
         type: "error",
@@ -217,7 +231,7 @@ export default function BusinessApp({ page }: { page: Page }) {
       p_child_id: child.id,
       p_description: description,
       p_meal_type_id: details.mealTypeId,
-      p_monitor_id: monitorId,
+      p_monitor_id: activeMonitorId,
       p_notes: details.notes,
       p_recorded_at: new Date().toISOString(),
       p_recorded_date: date,
@@ -270,9 +284,9 @@ export default function BusinessApp({ page }: { page: Page }) {
         </p>
         <a
           className="mt-4 inline-flex rounded-xl bg-emerald-600 px-5 py-3 font-medium text-white"
-          href="/login"
+          href="/setup"
         >
-          Ir al login
+          Configurar dispositivo
         </a>
       </section>
     );
@@ -296,12 +310,24 @@ export default function BusinessApp({ page }: { page: Page }) {
             Datos visibles según los permisos de tu cuenta
           </p>
         </div>
-        <a
-          className="rounded-full bg-slate-100 px-3 py-2 text-sm text-slate-600"
-          href={page === "search" ? "/" : "/search"}
-        >
-          {page === "search" ? "Volver" : "Buscar"}
-        </a>
+        <div className="flex items-center gap-2">
+          <a
+            className="rounded-full bg-slate-100 px-3 py-2 text-sm text-slate-600"
+            href={page === "search" ? "/" : "/search"}
+          >
+            {page === "search" ? "Volver" : "Buscar"}
+          </a>
+          <button
+            type="button"
+            onClick={async () => {
+              await supabase.auth.signOut();
+              window.location.assign("/setup");
+            }}
+            className="rounded-full bg-slate-100 px-3 py-2 text-sm text-slate-600 hover:bg-slate-200"
+          >
+            Salir
+          </button>
+        </div>
       </header>
       {page === "search" && (
         <div className="px-4 pt-4">
