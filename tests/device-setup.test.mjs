@@ -120,6 +120,16 @@ test("workers page shows the linked monitors and refreshes them on load", async 
   assert.doesNotMatch(workers, /BusinessApp|MOCK_STUDENTS|data-student/);
 });
 
+test("workers page explains when the linked device was decommissioned", async () => {
+  const workers = await source("src/components/WorkersApp.tsx");
+
+  assert.match(workers, /DEVICE_INACTIVE/);
+  assert.match(workers, /DEVICE_REVOKED/);
+  assert.match(workers, /dado de baja/i);
+  assert.match(workers, /Contacta con la administraci[oó]n/i);
+  assert.match(workers, /status === ["']decommissioned["']/);
+});
+
 test("setup keeps retry available and confirms the linked school before continuing", async () => {
   const form = await source("src/components/DeviceSetupForm.tsx");
 
