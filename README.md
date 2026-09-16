@@ -2,6 +2,10 @@
 
 Base web de Llumitaula con Astro, React, TypeScript estricto y Supabase.
 
+Consulta el [diagrama del flujo de la aplicación](docs/flujo-aplicacion.md)
+para ver la vinculación del dispositivo, la autenticación del monitor, la
+carga de datos, el registro de comidas y el comportamiento offline de la PWA.
+
 ## Requisitos
 
 - Node.js `>=22.12.0`

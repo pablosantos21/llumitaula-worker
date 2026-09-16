@@ -4,7 +4,6 @@ import {
   clearDeviceLink,
   getDeviceContext,
   getDeviceIdentifier,
-  getSetupCode,
   normalizeDeviceContext,
   saveDeviceContext,
   type LinkedDeviceContext,
@@ -18,13 +17,14 @@ type Status = "loading" | "ready" | "empty" | "error";
 
 async function requestFreshMonitors(): Promise<LinkedDeviceContext | null> {
   const cached = getDeviceContext();
-  const storedCode = getSetupCode();
-  if (!cached || !storedCode) {
+  if (!cached) {
+    throw new Error("not-linked");
+  }
+  if (!cached.device_identifier) {
     throw new Error("not-linked");
   }
   const { data, error: rpcError } = await supabase.rpc("get_device_monitors", {
     p_device_identifier: cached.device_identifier,
-    p_code: storedCode,
   });
   if (rpcError) return null;
   return normalizeDeviceContext(data);
@@ -54,8 +54,7 @@ export default function WorkersApp() {
     }
 
     const cached = getDeviceContext();
-    const storedCode = getSetupCode();
-    if (!cached || !storedCode) {
+    if (!cached) {
       window.location.assign("/setup");
       return () => {
         cancelled = true;
@@ -105,8 +104,7 @@ export default function WorkersApp() {
 
   async function handleRefresh() {
     const cached = getDeviceContext();
-    const storedCode = getSetupCode();
-    if (!cached || !storedCode) {
+    if (!cached) {
       window.location.assign("/setup");
       return;
     }

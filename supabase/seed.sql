@@ -327,11 +327,15 @@ begin
   if exists (
     select 1 from public.devices d
     join (values
-      ('00000000-0000-4000-8000-000000000601'::uuid, '00000000-0000-4000-8000-000000000001'::uuid, 'Device A', 'device-a', true),
-      ('00000000-0000-4000-8000-000000000602'::uuid, '00000000-0000-4000-8000-000000000002'::uuid, 'Device B', 'device-b', true)
-     ) expected(id, school_id, name, identifier, active) on expected.id = d.id
-     where (d.school_id, d.name, d.identifier, d.active, d.created_at, d.last_seen_at) is distinct from
+      ('00000000-0000-4000-8000-000000000601'::uuid, '00000000-0000-4000-8000-000000000001'::uuid, 'Device A', 'device-a', true, null, false, null::timestamptz),
+      ('00000000-0000-4000-8000-000000000602'::uuid, '00000000-0000-4000-8000-000000000002'::uuid, 'Device B', 'device-b', true, null, false, null::timestamptz),
+      ('00000000-0000-4000-8000-000000000603'::uuid, '00000000-0000-4000-8000-000000000001'::uuid, 'Device C', null, true,
+       encode(digest('abcdef', 'sha256'), 'hex'), false, timestamptz '2099-01-01 00:00:00+00')
+     ) expected(id, school_id, name, identifier, active, config_code_hash, revoked, config_code_expires_at) on expected.id = d.id
+     where (d.school_id, d.name, d.identifier, d.active, d.config_code_hash,
+            d.revoked, d.config_code_expires_at, d.created_at, d.last_seen_at) is distinct from
            (expected.school_id, expected.name, expected.identifier, expected.active,
+            expected.config_code_hash, expected.revoked, expected.config_code_expires_at,
             timestamp '2026-01-01 00:00:00+00', null::timestamptz)
   ) or exists (
     select 1 from public.devices d
@@ -340,23 +344,6 @@ begin
     where d.id is distinct from expected.id
   ) then
     raise exception 'seed collision in public.devices';
-  end if;
-
-  if exists (
-    select 1 from public.device_setup_codes c
-    where c.id = '00000000-0000-4000-8000-000000000701'::uuid
-      and (c.school_id, c.code_hash, c.expires_at, c.max_uses, c.uses,
-           c.active, c.created_at, c.last_claimed_at) is distinct from
-          ('00000000-0000-4000-8000-000000000001'::uuid,
-           encode(digest('123456', 'sha256'), 'hex'),
-           timestamptz '2099-01-01 00:00:00+00', 1, 0, true,
-           timestamp '2026-01-01 00:00:00+00', null::timestamptz)
-  ) or exists (
-    select 1 from public.device_setup_codes c
-    where c.code_hash = encode(digest('123456', 'sha256'), 'hex')
-      and c.id is distinct from '00000000-0000-4000-8000-000000000701'::uuid
-  ) then
-    raise exception 'seed collision in public.device_setup_codes';
   end if;
 
   if exists (
@@ -410,7 +397,7 @@ $$;
 do $$
 begin
   if exists (select 1 from public.incidents where id in ('00000000-0000-4000-8000-000000000501', '00000000-0000-4000-8000-000000000502') and created_at is distinct from timestamp '2026-01-01 00:00:00+00')
-     or exists (select 1 from public.devices where id in ('00000000-0000-4000-8000-000000000601', '00000000-0000-4000-8000-000000000602') and created_at is distinct from timestamp '2026-01-01 00:00:00+00')
+     or exists (select 1 from public.devices where id in ('00000000-0000-4000-8000-000000000601', '00000000-0000-4000-8000-000000000602', '00000000-0000-4000-8000-000000000603') and created_at is distinct from timestamp '2026-01-01 00:00:00+00')
      or exists (select 1 from public.meal_types where id in ('00000000-0000-4000-8000-000000000611', '00000000-0000-4000-8000-000000000612') and created_at is distinct from timestamp '2026-01-01 00:00:00+00')
      then
     raise exception 'seed timestamp collision in public fixtures';
@@ -524,7 +511,7 @@ end
 $$;
 
 insert into public.children (id, first_name, last_name, class_id, created_at)
-select child.id, child.first_name, child.last_name, child.class_id,
+select child.id::uuid, child.first_name, child.last_name, child.class_id::uuid,
        timestamp '2026-01-01 00:00:00+00'
 from (values
   ('00000000-0000-4000-8000-000000000201', 'Alba', 'Martin', '00000000-0000-4000-8000-000000000011'),
@@ -662,19 +649,11 @@ insert into public.incidents (id, child_id, description, monitor_id, date, revie
   ('00000000-0000-4000-8000-000000000502', '00000000-0000-4000-8000-000000000218', 'Necesita revisar la merienda', '00000000-0000-4000-8000-000000000024', '2026-09-01', true, true, timestamp '2026-01-01 00:00:00+00')
 on conflict (id) do nothing;
 
-insert into public.devices (id, school_id, name, identifier, created_at) values
-  ('00000000-0000-4000-8000-000000000601', '00000000-0000-4000-8000-000000000001', 'Device A', 'device-a', timestamp '2026-01-01 00:00:00+00'),
-  ('00000000-0000-4000-8000-000000000602', '00000000-0000-4000-8000-000000000002', 'Device B', 'device-b', timestamp '2026-01-01 00:00:00+00')
-on conflict (id) do nothing;
-
--- Local development code only; 123456 is not a production credential.
-insert into public.device_setup_codes
-  (id, school_id, code_hash, expires_at, max_uses, uses, active, created_at)
-values
-  ('00000000-0000-4000-8000-000000000701',
-   '00000000-0000-4000-8000-000000000001',
-   encode(digest('123456', 'sha256'), 'hex'),
-   timestamptz '2099-01-01 00:00:00+00', 1, 0, true,
+insert into public.devices (id, school_id, name, identifier, config_code_hash, config_code_expires_at, revoked, created_at) values
+  ('00000000-0000-4000-8000-000000000601', '00000000-0000-4000-8000-000000000001', 'Device A', 'device-a', null, null, false, timestamp '2026-01-01 00:00:00+00'),
+  ('00000000-0000-4000-8000-000000000602', '00000000-0000-4000-8000-000000000002', 'Device B', 'device-b', null, null, false, timestamp '2026-01-01 00:00:00+00'),
+  ('00000000-0000-4000-8000-000000000603', '00000000-0000-4000-8000-000000000001', 'Device C', null,
+   encode(digest('abcdef', 'sha256'), 'hex'), timestamptz '2099-01-01 00:00:00+00', false,
    timestamp '2026-01-01 00:00:00+00')
 on conflict (id) do nothing;
 

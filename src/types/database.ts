@@ -86,29 +86,38 @@ export type Database = {
       devices: {
         Row: {
           active: boolean;
+          config_code_expires_at: string | null;
+          config_code_hash: string | null;
           created_at: string;
           id: string;
-          identifier: string;
+          identifier: string | null;
           last_seen_at: string | null;
           name: string;
+          revoked: boolean;
           school_id: string;
         };
         Insert: {
           active?: boolean;
+          config_code_expires_at?: string | null;
+          config_code_hash?: string | null;
           created_at?: string;
           id?: string;
-          identifier: string;
+          identifier?: string | null;
           last_seen_at?: string | null;
           name: string;
+          revoked?: boolean;
           school_id: string;
         };
         Update: {
           active?: boolean;
+          config_code_expires_at?: string | null;
+          config_code_hash?: string | null;
           created_at?: string;
           id?: string;
-          identifier?: string;
+          identifier?: string | null;
           last_seen_at?: string | null;
           name?: string;
+          revoked?: boolean;
           school_id?: string;
         };
         Relationships: [
@@ -117,6 +126,35 @@ export type Database = {
             columns: ["school_id"];
             isOneToOne: false;
             referencedRelation: "schools";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      device_claims: {
+        Row: {
+          claimed_at: string;
+          device_id: string;
+          device_identifier: string;
+          id: string;
+        };
+        Insert: {
+          claimed_at?: string;
+          device_id: string;
+          device_identifier: string;
+          id?: string;
+        };
+        Update: {
+          claimed_at?: string;
+          device_id?: string;
+          device_identifier?: string;
+          id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "device_claims_device_id_fkey";
+            columns: ["device_id"];
+            isOneToOne: false;
+            referencedRelation: "devices";
             referencedColumns: ["id"];
           },
         ];
@@ -162,50 +200,6 @@ export type Database = {
           window_started_at?: string;
         };
         Relationships: [];
-      };
-      device_setup_codes: {
-        Row: {
-          active: boolean;
-          code_hash: string;
-          created_at: string;
-          expires_at: string;
-          id: string;
-          last_claimed_at: string | null;
-          max_uses: number;
-          school_id: string;
-          uses: number;
-        };
-        Insert: {
-          active?: boolean;
-          code_hash: string;
-          created_at?: string;
-          expires_at: string;
-          id?: string;
-          last_claimed_at?: string | null;
-          max_uses?: number;
-          school_id: string;
-          uses?: number;
-        };
-        Update: {
-          active?: boolean;
-          code_hash?: string;
-          created_at?: string;
-          expires_at?: string;
-          id?: string;
-          last_claimed_at?: string | null;
-          max_uses?: number;
-          school_id?: string;
-          uses?: number;
-        };
-        Relationships: [
-          {
-            foreignKeyName: "device_setup_codes_school_id_fkey";
-            columns: ["school_id"];
-            isOneToOne: false;
-            referencedRelation: "schools";
-            referencedColumns: ["id"];
-          },
-        ];
       };
       incidents: {
         Row: {
@@ -575,12 +569,12 @@ export type Database = {
         Args: Record<PropertyKey, never>;
         Returns: boolean;
       };
-      claim_device_setup: {
-        Args: { p_device_identifier: string; p_code: string };
+      claim_device: {
+        Args: { p_code: string; p_device_identifier: string };
         Returns: Json;
       };
       get_device_monitors: {
-        Args: { p_device_identifier: string; p_code?: string };
+        Args: { p_device_identifier: string };
         Returns: Json;
       };
       create_monitor: {

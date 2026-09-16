@@ -17,7 +17,6 @@ const deviceIdentifierKey = "device_identifier";
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const deviceContextKey = "device_context";
-const setupCodeKey = "device_setup_code";
 
 export function assertDeviceStorageAvailable(): void {
   try {
@@ -98,22 +97,6 @@ export function saveDeviceContext(context: DeviceContext): void {
   }
 }
 
-export function saveSetupCode(code: string): void {
-  try {
-    localStorage.setItem(setupCodeKey, code.trim());
-  } catch {
-    throw new Error("localStorage unavailable");
-  }
-}
-
-export function getSetupCode(): string | null {
-  try {
-    return localStorage.getItem(setupCodeKey);
-  } catch {
-    return null;
-  }
-}
-
 function fallbackLoginEmail(
   firstName: string,
   lastName: string,
@@ -157,7 +140,7 @@ export function normalizeDeviceContext(value: unknown): LinkedDeviceContext | nu
     return null;
   }
   const candidate = value as Record<string, unknown>;
-  if (candidate.ok !== true) return null;
+  if (candidate.success !== true) return null;
   if (
     typeof candidate.device_id !== "string" ||
     typeof candidate.device_identifier !== "string" ||
@@ -185,13 +168,12 @@ export function normalizeDeviceContext(value: unknown): LinkedDeviceContext | nu
 }
 
 export function hasLinkedDevice(): boolean {
-  return getDeviceContext() !== null && getSetupCode() !== null;
+  return getDeviceContext() !== null;
 }
 
 export function clearDeviceLink(): void {
   try {
     localStorage.removeItem(deviceContextKey);
-    localStorage.removeItem(setupCodeKey);
   } catch {
     throw new Error("localStorage unavailable");
   }

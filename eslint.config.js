@@ -10,6 +10,7 @@ export default [
       ".astro/**",
       "node_modules/**",
       ".worktrees/**",
+      ".agents/**",
       "supabase/.branches/**",
       "supabase/.temp/**",
     ],

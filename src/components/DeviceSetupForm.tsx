@@ -6,7 +6,6 @@ import {
   hasLinkedDevice,
   normalizeDeviceContext,
   saveDeviceContext,
-  saveSetupCode,
 } from "../lib/deviceSetup";
 import { supabase } from "../lib/supabase/client";
 
@@ -46,7 +45,7 @@ export default function DeviceSetupForm() {
     try {
       assertDeviceStorageAvailable();
       const { data, error: rpcError } = await supabase.rpc(
-        "claim_device_setup",
+        "claim_device",
         {
           p_code: code.trim(),
           p_device_identifier: identifier,
@@ -60,7 +59,6 @@ export default function DeviceSetupForm() {
       }
 
       saveDeviceContext(context);
-      saveSetupCode(code.trim());
       window.location.assign("/workers");
     } catch {
       setCode("");
@@ -83,11 +81,11 @@ export default function DeviceSetupForm() {
           id="setup-code"
           name="code"
           type="text"
-          inputMode="numeric"
+          inputMode="text"
           autoComplete="one-time-code"
-          maxLength={6}
+          maxLength={8}
           minLength={6}
-          pattern="[0-9A-Za-z]{6}"
+          pattern="[0-9A-Za-z]{6,8}"
           required
           value={code}
           onChange={(event) => {

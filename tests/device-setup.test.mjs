@@ -24,7 +24,7 @@ test("device setup form submits the code through the secure RPC", async () => {
   assert.match(form, /name=["']code["']/);
   assert.match(
     form,
-    /\.rpc\(\s*["']claim_device_setup["'][\s\S]*p_code:\s*code\.trim\(\)[\s\S]*p_device_identifier:\s*identifier/s,
+    /\.rpc\(\s*["']claim_device["'][\s\S]*p_code:\s*code\.trim\(\)[\s\S]*p_device_identifier:\s*identifier/s,
   );
   assert.doesNotMatch(form, /school_id\s*:/);
 });
@@ -90,7 +90,7 @@ test("setup preflights storage and persists the handoff context atomically", asy
   assert.doesNotMatch(lib, /localStorage\.setItem\(["']device_id["']/);
   assert.match(
     form,
-    /assertDeviceStorageAvailable\(\)[\s\S]*?\.rpc\(\s*["']claim_device_setup["']/,
+    /assertDeviceStorageAvailable\(\)[\s\S]*?\.rpc\(\s*["']claim_device["']/,
   );
 });
 
@@ -107,8 +107,9 @@ test("workers page shows the linked monitors and refreshes them on load", async 
   }
   assert.match(
     workers,
-    /\.rpc\(\s*["']get_device_monitors["'][\s\S]*p_device_identifier[\s\S]*p_code/s,
+    /\.rpc\(\s*["']get_device_monitors["'][\s\S]*p_device_identifier/s,
   );
+  assert.doesNotMatch(workers, /p_code/);
   assert.match(workers, /MonitorSelectScreen/);
   assert.match(workers, /MonitorPinInput/);
   assert.match(workers, /window\.location\.assign\(["']\/setup["']\)/);
