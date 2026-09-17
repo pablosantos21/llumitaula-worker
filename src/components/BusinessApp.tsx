@@ -313,7 +313,7 @@ export default function BusinessApp() {
   const visibleChildren = selectedClassId
     ? childrenInClass(children, selectedClassId)
     : [];
-  const canManageIncidents = userRole === "admin" || userRole === "supervisor";
+  const canManageIncidents = userRole === "admin" || userRole === "monitor";
 
   let content: ReactNode;
   if (selectedClass) {

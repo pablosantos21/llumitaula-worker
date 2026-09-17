@@ -17,12 +17,8 @@ begin
       ('00000000-0000-4000-8000-000000000102'::uuid, 'parent.2@local.test', 'Parent Two'),
       ('00000000-0000-4000-8000-000000000103'::uuid, 'parent.3@local.test', 'Parent Three'),
       ('00000000-0000-4000-8000-000000000104'::uuid, 'parent.4@local.test', 'Parent Four'),
-      ('00000000-0000-4000-8000-000000000111'::uuid, 'worker.a@local.test', 'Worker A'),
-      ('00000000-0000-4000-8000-000000000112'::uuid, 'supervisor.a@local.test', 'Supervisor A'),
       ('00000000-0000-4000-8000-000000000113'::uuid, 'admin.a@local.test', 'Admin A'),
-      ('00000000-0000-4000-8000-000000000114'::uuid, 'worker.b@local.test', 'Worker B'),
-      ('00000000-0000-4000-8000-000000000115'::uuid, 'admin.b@local.test', 'Admin B'),
-      ('00000000-0000-4000-8000-000000000116'::uuid, 'worker.a2@local.test', 'Worker A Two')
+      ('00000000-0000-4000-8000-000000000115'::uuid, 'admin.b@local.test', 'Admin B')
     ) expected(id, email, full_name) on expected.id = au.id
     where (au.instance_id, au.email, au.role, au.aud, au.email_confirmed_at,
            au.raw_app_meta_data, au.raw_user_meta_data, au.created_at,
@@ -47,12 +43,8 @@ begin
       ('parent.2@local.test', '00000000-0000-4000-8000-000000000102'::uuid),
       ('parent.3@local.test', '00000000-0000-4000-8000-000000000103'::uuid),
       ('parent.4@local.test', '00000000-0000-4000-8000-000000000104'::uuid),
-      ('worker.a@local.test', '00000000-0000-4000-8000-000000000111'::uuid),
-      ('supervisor.a@local.test', '00000000-0000-4000-8000-000000000112'::uuid),
       ('admin.a@local.test', '00000000-0000-4000-8000-000000000113'::uuid),
-      ('worker.b@local.test', '00000000-0000-4000-8000-000000000114'::uuid),
-      ('admin.b@local.test', '00000000-0000-4000-8000-000000000115'::uuid),
-      ('worker.a2@local.test', '00000000-0000-4000-8000-000000000116'::uuid)
+      ('admin.b@local.test', '00000000-0000-4000-8000-000000000115'::uuid)
     ) expected(email, id) on expected.email = au.email
     where au.id is distinct from expected.id
   ) then
@@ -84,12 +76,8 @@ begin
       ('00000000-0000-4000-8000-000000000102'::uuid, '00000000-0000-4000-8000-000000000001'::uuid, 'Parent Two', 'padre'::public.user_role, true, timestamp '2026-01-01 00:00:00+00'),
       ('00000000-0000-4000-8000-000000000103'::uuid, '00000000-0000-4000-8000-000000000001'::uuid, 'Parent Three', 'padre'::public.user_role, true, timestamp '2026-01-01 00:00:00+00'),
       ('00000000-0000-4000-8000-000000000104'::uuid, '00000000-0000-4000-8000-000000000001'::uuid, 'Parent Four', 'padre'::public.user_role, true, timestamp '2026-01-01 00:00:00+00'),
-      ('00000000-0000-4000-8000-000000000111'::uuid, '00000000-0000-4000-8000-000000000001'::uuid, 'Worker A', 'worker'::public.user_role, true, timestamp '2026-01-01 00:00:00+00'),
-      ('00000000-0000-4000-8000-000000000112'::uuid, '00000000-0000-4000-8000-000000000001'::uuid, 'Supervisor A', 'supervisor'::public.user_role, true, timestamp '2026-01-01 00:00:00+00'),
       ('00000000-0000-4000-8000-000000000113'::uuid, '00000000-0000-4000-8000-000000000001'::uuid, 'Admin A', 'admin'::public.user_role, true, timestamp '2026-01-01 00:00:00+00'),
-      ('00000000-0000-4000-8000-000000000114'::uuid, '00000000-0000-4000-8000-000000000002'::uuid, 'Worker B', 'worker'::public.user_role, true, timestamp '2026-01-01 00:00:00+00'),
-      ('00000000-0000-4000-8000-000000000115'::uuid, '00000000-0000-4000-8000-000000000002'::uuid, 'Admin B', 'admin'::public.user_role, true, timestamp '2026-01-01 00:00:00+00'),
-      ('00000000-0000-4000-8000-000000000116'::uuid, '00000000-0000-4000-8000-000000000001'::uuid, 'Worker A Two', 'worker'::public.user_role, true, timestamp '2026-01-01 00:00:00+00')
+      ('00000000-0000-4000-8000-000000000115'::uuid, '00000000-0000-4000-8000-000000000002'::uuid, 'Admin B', 'admin'::public.user_role, true, timestamp '2026-01-01 00:00:00+00')
     ) expected(id, school_id, full_name, role, active, created_at) on expected.id = u.id
     where (u.school_id, u.full_name, u.role, u.active, u.created_at) is distinct from
           (expected.school_id, expected.full_name, expected.role, expected.active, expected.created_at)
@@ -347,19 +335,6 @@ begin
   end if;
 
   if exists (
-    select 1 from public.worker_classrooms wc
-    join (values
-      ('00000000-0000-4000-8000-000000000111'::uuid, '00000000-0000-4000-8000-000000000011'::uuid, timestamp '2026-01-01 00:00:00+00'),
-      ('00000000-0000-4000-8000-000000000116'::uuid, '00000000-0000-4000-8000-000000000012'::uuid, timestamp '2026-01-01 00:00:00+00'),
-      ('00000000-0000-4000-8000-000000000114'::uuid, '00000000-0000-4000-8000-000000000021'::uuid, timestamp '2026-01-01 00:00:00+00')
-    ) expected(worker_id, class_id, created_at)
-      on expected.worker_id = wc.worker_id and expected.class_id = wc.class_id
-    where wc.created_at is distinct from expected.created_at
-  ) then
-    raise exception 'seed collision in public.worker_classrooms';
-  end if;
-
-  if exists (
     select 1 from public.meal_types mt
     join (values
       ('00000000-0000-4000-8000-000000000611'::uuid, '00000000-0000-4000-8000-000000000001'::uuid, 'Comida A', true, 1),
@@ -380,11 +355,11 @@ begin
   if exists (
     select 1 from public.meal_records mr
     join (values
-       ('00000000-0000-4000-8000-000000000621'::uuid, '00000000-0000-4000-8000-000000000225'::uuid, '00000000-0000-4000-8000-000000000612'::uuid, '00000000-0000-4000-8000-000000000114'::uuid, date '2026-08-20', timestamp '2026-08-20 10:00:00+00', 'bien'::public.meal_status, 'School B record'),
-        ('00000000-0000-4000-8000-000000000622'::uuid, '00000000-0000-4000-8000-000000000201'::uuid, '00000000-0000-4000-8000-000000000611'::uuid, '00000000-0000-4000-8000-000000000112'::uuid, date '2026-08-20', timestamp '2026-08-20 10:00:00+00', 'regular'::public.meal_status, 'Supervisor review'),
-        ('00000000-0000-4000-8000-000000000625'::uuid, '00000000-0000-4000-8000-000000000201'::uuid, '00000000-0000-4000-8000-000000000611'::uuid, '00000000-0000-4000-8000-000000000112'::uuid, date '2026-01-01', timestamp '2026-01-01 10:00:00+00', 'bien'::public.meal_status, 'Historical meal record'),
-       ('00000000-0000-4000-8000-000000000623'::uuid, '00000000-0000-4000-8000-000000000202'::uuid, '00000000-0000-4000-8000-000000000611'::uuid, '00000000-0000-4000-8000-000000000111'::uuid, date '2026-01-01', timestamp '2026-01-01 10:00:00+00', 'mal'::public.meal_status, 'Old worker record'),
-        ('00000000-0000-4000-8000-000000000624'::uuid, '00000000-0000-4000-8000-000000000203'::uuid, '00000000-0000-4000-8000-000000000611'::uuid, '00000000-0000-4000-8000-000000000116'::uuid, date '2026-08-20', timestamp '2026-08-20 10:00:00+00', 'bien'::public.meal_status, 'Other worker record')
+       ('00000000-0000-4000-8000-000000000621'::uuid, '00000000-0000-4000-8000-000000000225'::uuid, '00000000-0000-4000-8000-000000000612'::uuid, '00000000-0000-4000-8000-000000000115'::uuid, date '2026-08-20', timestamp '2026-08-20 10:00:00+00', 'bien'::public.meal_status, 'School B record'),
+        ('00000000-0000-4000-8000-000000000622'::uuid, '00000000-0000-4000-8000-000000000201'::uuid, '00000000-0000-4000-8000-000000000611'::uuid, '00000000-0000-4000-8000-000000000113'::uuid, date '2026-08-20', timestamp '2026-08-20 10:00:00+00', 'regular'::public.meal_status, 'Admin review'),
+        ('00000000-0000-4000-8000-000000000625'::uuid, '00000000-0000-4000-8000-000000000201'::uuid, '00000000-0000-4000-8000-000000000611'::uuid, '00000000-0000-4000-8000-000000000113'::uuid, date '2026-01-01', timestamp '2026-01-01 10:00:00+00', 'bien'::public.meal_status, 'Historical meal record'),
+       ('00000000-0000-4000-8000-000000000623'::uuid, '00000000-0000-4000-8000-000000000202'::uuid, '00000000-0000-4000-8000-000000000611'::uuid, '00000000-0000-4000-8000-000000000113'::uuid, date '2026-01-01', timestamp '2026-01-01 10:00:00+00', 'mal'::public.meal_status, 'Old meal record'),
+        ('00000000-0000-4000-8000-000000000624'::uuid, '00000000-0000-4000-8000-000000000203'::uuid, '00000000-0000-4000-8000-000000000611'::uuid, '00000000-0000-4000-8000-000000000113'::uuid, date '2026-08-20', timestamp '2026-08-20 10:00:00+00', 'bien'::public.meal_status, 'Other meal record')
      ) expected(id, child_id, meal_type_id, recorded_by, recorded_date, recorded_at, status, notes) on expected.id = mr.id
      where (mr.child_id, mr.meal_type_id, mr.recorded_by, mr.recorded_date, mr.recorded_at, mr.status, mr.notes) is distinct from
            (expected.child_id, expected.meal_type_id, expected.recorded_by, expected.recorded_date, expected.recorded_at, expected.status, expected.notes)
@@ -422,12 +397,8 @@ select account.id, '00000000-0000-0000-0000-000000000000'::uuid,
     ('00000000-0000-4000-8000-000000000102'::uuid, 'parent.2@local.test', 'Parent Two'),
     ('00000000-0000-4000-8000-000000000103'::uuid, 'parent.3@local.test', 'Parent Three'),
     ('00000000-0000-4000-8000-000000000104'::uuid, 'parent.4@local.test', 'Parent Four'),
-    ('00000000-0000-4000-8000-000000000111'::uuid, 'worker.a@local.test', 'Worker A'),
-    ('00000000-0000-4000-8000-000000000112'::uuid, 'supervisor.a@local.test', 'Supervisor A'),
     ('00000000-0000-4000-8000-000000000113'::uuid, 'admin.a@local.test', 'Admin A'),
-    ('00000000-0000-4000-8000-000000000114'::uuid, 'worker.b@local.test', 'Worker B'),
     ('00000000-0000-4000-8000-000000000115'::uuid, 'admin.b@local.test', 'Admin B'),
-    ('00000000-0000-4000-8000-000000000116'::uuid, 'worker.a2@local.test', 'Worker A Two'),
     ('00000000-0000-4000-8000-000000000121'::uuid, 'monitor.101@llumitaula.local', 'Ana Serra'),
     ('00000000-0000-4000-8000-000000000122'::uuid, 'monitor.102@llumitaula.local', 'Bruno Vidal'),
     ('00000000-0000-4000-8000-000000000123'::uuid, 'monitor.103@llumitaula.local', 'Carla Moya'),
@@ -446,12 +417,8 @@ insert into public.users (id, school_id, full_name, role, active, created_at) va
   ('00000000-0000-4000-8000-000000000102', '00000000-0000-4000-8000-000000000001', 'Parent Two', 'padre', true, timestamp '2026-01-01 00:00:00+00'),
   ('00000000-0000-4000-8000-000000000103', '00000000-0000-4000-8000-000000000001', 'Parent Three', 'padre', true, timestamp '2026-01-01 00:00:00+00'),
   ('00000000-0000-4000-8000-000000000104', '00000000-0000-4000-8000-000000000001', 'Parent Four', 'padre', true, timestamp '2026-01-01 00:00:00+00'),
-  ('00000000-0000-4000-8000-000000000111', '00000000-0000-4000-8000-000000000001', 'Worker A', 'worker', true, timestamp '2026-01-01 00:00:00+00'),
-  ('00000000-0000-4000-8000-000000000112', '00000000-0000-4000-8000-000000000001', 'Supervisor A', 'supervisor', true, timestamp '2026-01-01 00:00:00+00'),
   ('00000000-0000-4000-8000-000000000113', '00000000-0000-4000-8000-000000000001', 'Admin A', 'admin', true, timestamp '2026-01-01 00:00:00+00'),
-  ('00000000-0000-4000-8000-000000000114', '00000000-0000-4000-8000-000000000002', 'Worker B', 'worker', true, timestamp '2026-01-01 00:00:00+00'),
   ('00000000-0000-4000-8000-000000000115', '00000000-0000-4000-8000-000000000002', 'Admin B', 'admin', true, timestamp '2026-01-01 00:00:00+00'),
-  ('00000000-0000-4000-8000-000000000116', '00000000-0000-4000-8000-000000000001', 'Worker A Two', 'worker', true, timestamp '2026-01-01 00:00:00+00'),
   ('00000000-0000-4000-8000-000000000121', '00000000-0000-4000-8000-000000000001', 'Ana Serra', 'monitor', true, timestamp '2026-01-01 00:00:00+00'),
   ('00000000-0000-4000-8000-000000000122', '00000000-0000-4000-8000-000000000001', 'Bruno Vidal', 'monitor', true, timestamp '2026-01-01 00:00:00+00'),
   ('00000000-0000-4000-8000-000000000123', '00000000-0000-4000-8000-000000000001', 'Carla Moya', 'monitor', true, timestamp '2026-01-01 00:00:00+00'),
@@ -657,21 +624,15 @@ insert into public.devices (id, school_id, name, identifier, config_code_hash, c
    timestamp '2026-01-01 00:00:00+00')
 on conflict (id) do nothing;
 
-insert into public.worker_classrooms (worker_id, class_id, created_at) values
-  ('00000000-0000-4000-8000-000000000111', '00000000-0000-4000-8000-000000000011', timestamp '2026-01-01 00:00:00+00'),
-  ('00000000-0000-4000-8000-000000000116', '00000000-0000-4000-8000-000000000012', timestamp '2026-01-01 00:00:00+00'),
-  ('00000000-0000-4000-8000-000000000114', '00000000-0000-4000-8000-000000000021', timestamp '2026-01-01 00:00:00+00')
-on conflict (worker_id, class_id) do nothing;
-
 insert into public.meal_types (id, school_id, name, sort_order, created_at) values
   ('00000000-0000-4000-8000-000000000611', '00000000-0000-4000-8000-000000000001', 'Comida A', 1, timestamp '2026-01-01 00:00:00+00'),
   ('00000000-0000-4000-8000-000000000612', '00000000-0000-4000-8000-000000000002', 'Comida B', 1, timestamp '2026-01-01 00:00:00+00')
 on conflict (id) do nothing;
 
 insert into public.meal_records (id, child_id, meal_type_id, recorded_by, recorded_date, recorded_at, status, notes) values
-  ('00000000-0000-4000-8000-000000000621', '00000000-0000-4000-8000-000000000225', '00000000-0000-4000-8000-000000000612', '00000000-0000-4000-8000-000000000114', date '2026-08-20', timestamp '2026-08-20 10:00:00+00', 'bien', 'School B record'),
-  ('00000000-0000-4000-8000-000000000622', '00000000-0000-4000-8000-000000000201', '00000000-0000-4000-8000-000000000611', '00000000-0000-4000-8000-000000000112', date '2026-08-20', timestamp '2026-08-20 10:00:00+00', 'regular', 'Supervisor review'),
-  ('00000000-0000-4000-8000-000000000625', '00000000-0000-4000-8000-000000000201', '00000000-0000-4000-8000-000000000611', '00000000-0000-4000-8000-000000000112', date '2026-01-01', timestamp '2026-01-01 10:00:00+00', 'bien', 'Historical meal record'),
-  ('00000000-0000-4000-8000-000000000623', '00000000-0000-4000-8000-000000000202', '00000000-0000-4000-8000-000000000611', '00000000-0000-4000-8000-000000000111', date '2026-01-01', timestamp '2026-01-01 10:00:00+00', 'mal', 'Old worker record'),
-  ('00000000-0000-4000-8000-000000000624', '00000000-0000-4000-8000-000000000203', '00000000-0000-4000-8000-000000000611', '00000000-0000-4000-8000-000000000116', date '2026-08-20', timestamp '2026-08-20 10:00:00+00', 'bien', 'Other worker record')
+  ('00000000-0000-4000-8000-000000000621', '00000000-0000-4000-8000-000000000225', '00000000-0000-4000-8000-000000000612', '00000000-0000-4000-8000-000000000115', date '2026-08-20', timestamp '2026-08-20 10:00:00+00', 'bien', 'School B record'),
+  ('00000000-0000-4000-8000-000000000622', '00000000-0000-4000-8000-000000000201', '00000000-0000-4000-8000-000000000611', '00000000-0000-4000-8000-000000000113', date '2026-08-20', timestamp '2026-08-20 10:00:00+00', 'regular', 'Admin review'),
+  ('00000000-0000-4000-8000-000000000625', '00000000-0000-4000-8000-000000000201', '00000000-0000-4000-8000-000000000611', '00000000-0000-4000-8000-000000000113', date '2026-01-01', timestamp '2026-01-01 10:00:00+00', 'bien', 'Historical meal record'),
+  ('00000000-0000-4000-8000-000000000623', '00000000-0000-4000-8000-000000000202', '00000000-0000-4000-8000-000000000611', '00000000-0000-4000-8000-000000000113', date '2026-01-01', timestamp '2026-01-01 10:00:00+00', 'mal', 'Old meal record'),
+  ('00000000-0000-4000-8000-000000000624', '00000000-0000-4000-8000-000000000203', '00000000-0000-4000-8000-000000000611', '00000000-0000-4000-8000-000000000113', date '2026-08-20', timestamp '2026-08-20 10:00:00+00', 'bien', 'Other meal record')
 on conflict (id) do nothing;
