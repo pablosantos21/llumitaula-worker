@@ -97,10 +97,7 @@ export function saveDeviceContext(context: DeviceContext): void {
   }
 }
 
-function fallbackLoginEmail(
-  firstName: string,
-  lastName: string,
-): string {
+function fallbackLoginEmail(firstName: string, lastName: string): string {
   return `${firstName.trim().toLowerCase()}.${lastName.trim().toLowerCase()}@llumitaula.local`;
 }
 
@@ -120,7 +117,8 @@ export function normalizeMonitors(value: unknown): PublicMonitor[] | null {
       return null;
     }
     const loginEmail =
-      typeof candidate.login_email === "string" && candidate.login_email.length > 0
+      typeof candidate.login_email === "string" &&
+      candidate.login_email.length > 0
         ? candidate.login_email
         : fallbackLoginEmail(candidate.first_name, candidate.last_name);
     monitors.push({
@@ -135,7 +133,9 @@ export function normalizeMonitors(value: unknown): PublicMonitor[] | null {
 
 export type LinkedDeviceContext = DeviceContext & { ok: true };
 
-export function normalizeDeviceContext(value: unknown): LinkedDeviceContext | null {
+export function normalizeDeviceContext(
+  value: unknown,
+): LinkedDeviceContext | null {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return null;
   }
@@ -152,7 +152,11 @@ export function normalizeDeviceContext(value: unknown): LinkedDeviceContext | nu
     typeof candidate.school_name === "string" || candidate.school_name === null
       ? candidate.school_name
       : null;
-  if (candidate.school_name !== undefined && schoolName === null && candidate.school_name !== null) {
+  if (
+    candidate.school_name !== undefined &&
+    schoolName === null &&
+    candidate.school_name !== null
+  ) {
     return null;
   }
   const monitors = normalizeMonitors(candidate.monitors);
