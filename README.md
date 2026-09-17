@@ -75,7 +75,7 @@ ademas del limite de 5 intentos por identificador. Esto dificulta la rotacion de
 `device_identifier`, pero no constituye una proteccion perfecta contra abuso;
 los controles de red o una Edge Function quedan fuera de este flujo.
 
-Tras una vinculacion correcta, el navegador conserva en `localStorage` un contexto operativo no sensible: identificadores del dispositivo y del colegio, nombre del colegio y la lista publica de trabajadores. No guardes contrasenas, tokens, claves API, datos de menores ni otros secretos en ese contexto o en `localStorage`. El contexto no sustituye la validacion de Supabase ni las politicas RLS.
+Tras una vinculacion correcta, el navegador conserva en `localStorage` un contexto operativo no sensible: identificadores del dispositivo y del colegio, nombre del colegio y la lista publica de monitores. No guardes contrasenas, tokens, claves API, datos de menores ni otros secretos en ese contexto o en `localStorage`. El contexto no sustituye la validacion de Supabase ni las politicas RLS.
 
 La clave `service_role` esta terminantemente prohibida en el navegador, en el frontend y en variables `PUBLIC_*`. El cliente solo debe usar la URL de Supabase y la clave publishable/anon; `service_role` omite RLS y solo puede existir en un backend protegido.
 
@@ -86,18 +86,17 @@ contraseña `password` y estos emails:
 
 ```text
 parent.1@local.test, parent.2@local.test, parent.3@local.test, parent.4@local.test
-worker.a@local.test, worker.a2@local.test, supervisor.a@local.test, admin.a@local.test
-worker.b@local.test, admin.b@local.test
+admin.a@local.test, admin.b@local.test
+monitor.101@llumitaula.local, monitor.102@llumitaula.local, monitor.103@llumitaula.local,
+monitor.104@llumitaula.local, monitor.105@llumitaula.local
 ```
 
 Estas credenciales son exclusivamente locales y de desarrollo: no son
 contraseñas productivas y no deben reutilizarse fuera del entorno local.
 
-Los perfiles conservan los roles `admin`, `monitor` y `padre`, y añaden
-`worker` y `supervisor`. `admin` gestiona los datos de su colegio; `supervisor`
-consulta el colegio y modifica registros de comidas; `worker` accede a sus
-clases asignadas y puede crear registros de sus niños. Un `worker` solo puede
-modificar registros propios creados durante las últimas 24 horas.
+Los perfiles usan los roles `admin`, `monitor` y `padre`. `admin` gestiona los
+datos de su colegio; `monitor` registra comidas e incidencias de los alumnos de
+sus colegios; `padre` consulta la información de sus hijos.
 
 Comprueba las políticas RLS con la instancia local:
 

@@ -2,7 +2,8 @@
 
 Llumitaula es una PWA Astro que monta componentes React en el navegador. El
 dispositivo se vincula primero mediante un código temporal; después cada
-monitor inicia sesión con su PIN y accede a los datos autorizados de su centro.
+monitor inicia sesión con su PIN, elige su clase y accede a los datos
+autorizados de su centro.
 
 ```mermaid
 flowchart TD
@@ -12,7 +13,7 @@ flowchart TD
     route -->|"/workers o /app/workers"| workers["WorkersApp"]
     route -->|"/"| layout["MainLayout\ncontenido protegido oculto"]
 
-    subgraph linking["1. Vinculación del dispositivo"]
+    subgraph linking["0. Vinculación del dispositivo"]
         setup --> linked{"¿Hay contexto\nen localStorage?"}
         linked -->|Sí| workers
         linked -->|No| identifier["Obtener o generar\ndevice_identifier (UUID)"]
@@ -28,7 +29,7 @@ flowchart TD
         persist --> workers
     end
 
-    subgraph monitorAuth["2. Selección y autenticación del monitor"]
+    subgraph monitorAuth["1. Selección y autenticación del monitor"]
         workers --> localCheck{"¿Hay contexto\nde dispositivo?"}
         localCheck -->|No| setup
         localCheck -->|Sí| refresh["RPC get_device_monitors\nactualiza last_seen_at"]
@@ -51,7 +52,7 @@ flowchart TD
     guard -->|Error al consultar sesión| workers
     guard -->|Sesión válida| business["BusinessApp\nlibera el contenido"]
 
-    subgraph dataLoad["3. Carga de datos autorizados"]
+    subgraph classSelect["2. Selección de clase"]
         business --> session["Obtiene sesión y usuario"]
         session --> queries["Consultas paralelas a Supabase\nclasses · children · meal_records de hoy\nincidents de hoy · meal_types activos · users.role"]
         queries --> role{"¿Rol monitor?"}
@@ -61,10 +62,10 @@ flowchart TD
         classList --> classGrid["Seleccionar clase\nfiltra sus niños en memoria"]
     end
 
-    subgraph meals["4. Registro de comida"]
+    subgraph meals["3. Registro de comida"]
         classGrid --> card["Seleccionar alumno"]
         card --> modal["MealRecordModal\ntipo de comida, estado y notas"]
-        modal --> incidentDecision{"¿Hay incidencia y el rol\nes admin o supervisor?"}
+        modal --> incidentDecision{"¿Hay incidencia y el rol\nes admin o monitor?"}
         incidentDecision -->|No| upsert["upsert meal_records\nclave: alumno + comida + fecha local"]
         incidentDecision -->|Sí| incident["RPC record_meal_incident\noperación atómica"]
         upsert --> rls1["RLS + triggers\nvalidan usuario, centro y fecha"]
@@ -103,7 +104,7 @@ flowchart TD
     classDef backend fill:#fff7ed,stroke:#ea580c,color:#7c2d12;
     classDef decision fill:#fefce8,stroke:#ca8a04,color:#713f12;
     class setup,workers,setupError,workersError,pin,select public;
-    class layout,guard,business,ready,modal,upsert,incident,state protected;
+    class layout,guard,business,classGrid,modal,upsert,incident,state protected;
     class authdb,db,security backend;
     class route,linked,validate,fresh,localCheck,role,incidentDecision decision;
 ```
@@ -112,14 +113,15 @@ flowchart TD
 
 - `/setup`, `/workers` y `/app/workers` son accesibles sin sesión de Supabase.
 - `/` permanece oculta hasta que `AuthGuard` confirma una sesión. Tras el login,
-  `BusinessApp` muestra siempre la lista de clases del centro; no se guarda ni se
-  restaura una "última clase".
+  la selección de clase es el paso 2 del flujo del monitor: `BusinessApp`
+  muestra siempre la lista de clases del centro; no se guarda ni se restaura una
+  "última clase".
 - `localStorage` conserva el identificador del dispositivo, el código de
   configuración y el contexto público del centro; no sustituye a Supabase ni a
   sus políticas RLS. La clase seleccionada solo existe en estado interno de la
   pantalla y no se persiste.
 - Un registro normal usa `meal_records.upsert`. Una incidencia para `admin` o
-  `supervisor` usa `record_meal_incident`, que guarda comida e incidencia en una
+  `monitor` usa `record_meal_incident`, que guarda comida e incidencia en una
   sola operación.
 - El service worker solo cachea recursos de la interfaz. No intercepta
   peticiones a Supabase, por lo que las vistas protegidas y las escrituras

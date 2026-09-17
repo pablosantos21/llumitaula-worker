@@ -1,5 +1,6 @@
 dist
 .astro
 node_modules
+src/types/database.ts
 supabase/.branches
 supabase/.temp
