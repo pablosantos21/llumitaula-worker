@@ -123,6 +123,37 @@ test("worker meal types are tenant-scoped and incidents never use meal records",
   assert.match(app, /No se puede registrar la incidencia/);
 });
 
+test("monitor and admin both get the incident manager from the meal modal", async () => {
+  const app = await source("src/components/BusinessApp.tsx");
+  const modal = await source("src/components/MealRecordModal.tsx");
+
+  assert.match(
+    app,
+    /const canManageIncidents = userRole === "admin" \|\| userRole === "monitor";/,
+  );
+  assert.match(
+    app,
+    /<MealRecordModal[\s\S]*?canManageIncidents=\{canManageIncidents\}/,
+  );
+  assert.match(modal, /canManageIncidents &&[\s\S]*?Incidencias/);
+});
+
+test("monitor incidents reuse the authenticated monitor profile end to end", async () => {
+  const app = await source("src/components/BusinessApp.tsx");
+
+  assert.match(
+    app,
+    /if \(userResult\.data\.role === "monitor"\) \{\s*const \{ data: monitorResult \} = await supabase[\s\S]*?\.from\("monitors"\)[\s\S]*?\.select\("id"\)[\s\S]*?\.eq\("user_id", session\.user\.id\)/,
+  );
+  assert.match(app, /setMonitorId\(monitorResult\.id\)/);
+  assert.match(app, /const activeMonitorId = monitorId;/);
+  assert.match(app, /if \(!activeMonitorId\)/);
+  assert.match(
+    app,
+    /\.rpc\("record_meal_incident",[\s\S]*?p_monitor_id: activeMonitorId/,
+  );
+});
+
 test("local meal dates use the browser date and timestamps use ISO UTC", async () => {
   const helper = await source("src/lib/local-date.ts");
   const app = await source("src/components/BusinessApp.tsx");
