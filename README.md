@@ -167,9 +167,10 @@ El modo avión solo permite comprobar el app shell cacheado. Las vistas protegid
 ```text
 src/
 ├── pages/
+│   ├── app/workers.astro
 │   ├── index.astro
-│   ├── login.astro
-│   └── search.astro
+│   ├── setup.astro
+│   └── workers.astro
 ├── components/       Componentes Astro reutilizables
 ├── layouts/          Layout principal
 ├── lib/              Cliente Supabase, entorno y mocks

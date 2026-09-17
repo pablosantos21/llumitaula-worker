@@ -10,7 +10,7 @@ flowchart TD
 
     route -->|"/setup"| setup["DeviceSetupForm"]
     route -->|"/workers o /app/workers"| workers["WorkersApp"]
-    route -->|"/ o /search"| layout["MainLayout\ncontenido protegido oculto"]
+    route -->|"/"| layout["MainLayout\ncontenido protegido oculto"]
 
     subgraph linking["1. Vinculación del dispositivo"]
         setup --> linked{"¿Hay contexto\nen localStorage?"}
@@ -53,17 +53,16 @@ flowchart TD
 
     subgraph dataLoad["3. Carga de datos autorizados"]
         business --> session["Obtiene sesión y usuario"]
-        session --> queries["Consultas paralelas a Supabase\nchildren · meal_records de hoy\nincidents de hoy · meal_types activos · users.role"]
+        session --> queries["Consultas paralelas a Supabase\nclasses · children · meal_records de hoy\nincidents de hoy · meal_types activos · users.role"]
         queries --> role{"¿Rol monitor?"}
         role -->|Sí| monitorId["Consulta monitors.id\npara el usuario autenticado"]
-        role -->|No| ready["Renderiza tarjetas de alumnos"]
-        monitorId --> ready
-        ready --> search["/search filtra las tarjetas\npor nombre en el cliente"]
+        role -->|No| classList["Lista de clases del centro\nen orden alfabético"]
+        monitorId --> classList
+        classList --> classGrid["Seleccionar clase\nfiltra sus niños en memoria"]
     end
 
     subgraph meals["4. Registro de comida"]
-        ready --> card["Seleccionar alumno"]
-        search --> card
+        classGrid --> card["Seleccionar alumno"]
         card --> modal["MealRecordModal\ntipo de comida, estado y notas"]
         modal --> incidentDecision{"¿Hay incidencia y el rol\nes admin o supervisor?"}
         incidentDecision -->|No| upsert["upsert meal_records\nclave: alumno + comida + fecha local"]
@@ -112,10 +111,13 @@ flowchart TD
 ## Puntos clave
 
 - `/setup`, `/workers` y `/app/workers` son accesibles sin sesión de Supabase.
-- `/` y `/search` permanecen ocultas hasta que `AuthGuard` confirma una sesión.
+- `/` permanece oculta hasta que `AuthGuard` confirma una sesión. Tras el login,
+  `BusinessApp` muestra siempre la lista de clases del centro; no se guarda ni se
+  restaura una "última clase".
 - `localStorage` conserva el identificador del dispositivo, el código de
   configuración y el contexto público del centro; no sustituye a Supabase ni a
-  sus políticas RLS.
+  sus políticas RLS. La clase seleccionada solo existe en estado interno de la
+  pantalla y no se persiste.
 - Un registro normal usa `meal_records.upsert`. Una incidencia para `admin` o
   `supervisor` usa `record_meal_incident`, que guarda comida e incidencia en una
   sola operación.

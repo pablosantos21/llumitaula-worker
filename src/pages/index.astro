@@ -3,6 +3,6 @@ import BusinessApp from "../components/BusinessApp";
 import MainLayout from "../layouts/MainLayout.astro";
 ---
 
-<MainLayout title="Mi Clase" requiresAuth={true}>
-  <BusinessApp page="home" client:only="react" />
+<MainLayout title="Clases" requiresAuth={true}>
+  <BusinessApp client:only="react" />
 </MainLayout>

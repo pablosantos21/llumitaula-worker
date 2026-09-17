@@ -10,21 +10,44 @@ async function source(path) {
 }
 
 test("business pages keep protected React-only rendering", async () => {
-  const [home, search, app] = await Promise.all([
+  const [home, app] = await Promise.all([
     source("src/pages/index.astro"),
-    source("src/pages/search.astro"),
     source("src/components/BusinessApp.tsx"),
   ]);
 
   assert.match(home, /BusinessApp[\s\S]*client:only="react"/);
-  assert.match(search, /BusinessApp[\s\S]*client:only="react"/);
   assert.match(app, /supabase\.auth\.getSession\(\)/);
+  assert.match(app, /from\("classes"\)/);
   assert.match(app, /from\("children"\)/);
   assert.match(app, /from\("meal_records"\)/);
   assert.match(app, /from\("incidents"\)/);
   assert.match(app, /from\("meal_types"\)/);
   assert.doesNotMatch(home, /MOCK_STUDENTS|Ana Martínez|Biel Roca/);
-  assert.doesNotMatch(search, /MOCK_STUDENTS|Ana Martínez|Biel Roca/);
+  assert.doesNotMatch(app, /MOCK_STUDENTS|Ana Martínez|Biel Roca/);
+});
+
+test("monitor entry screen is the class list and never shows all children at once", async () => {
+  const app = await source("src/components/BusinessApp.tsx");
+
+  assert.match(app, /buildClassList/);
+  assert.match(app, /childrenInClass/);
+  assert.match(app, /"Clases"/);
+  assert.match(app, /selectedClassId[\s\S]*null/);
+  assert.match(app, /from\("classes"\)\.select\("id, name, school_id"\)/);
+  assert.doesNotMatch(app, /localStorage/);
+  assert.doesNotMatch(app, /Buscar Alumno|Buscar alumno/);
+  assert.doesNotMatch(app, /page === "search"|page !== "search"/);
+});
+
+test("gaps by class filter children in memory and render clear empty states", async () => {
+  const app = await source("src/components/BusinessApp.tsx");
+
+  assert.match(app, /childrenInClass\(children, selectedClassId\)/);
+  assert.match(app, /Esta clase todavía no tiene alumnos\./);
+  assert.match(app, /Este centro todavía no tiene clases\./);
+  assert.match(app, /← Volver/);
+  assert.match(app, /setSelectedClassId/);
+  assert.doesNotMatch(app, /type="search"/);
 });
 
 test("React business UI restores card, meal status, incident and toast components", async () => {

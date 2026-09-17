@@ -1,18 +1,19 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import MealRecordModal from "./MealRecordModal";
 import { supabase } from "../lib/supabase/client";
 import { localDateString } from "../lib/local-date";
+import { buildClassList, childrenInClass, classById } from "../lib/classes";
 import type { MealStatus } from "../lib/mealRecord";
 import type { Database } from "../types/database";
 import FeedbackToast from "./FeedbackToast";
 import StudentCard from "./StudentCard";
 
 type Child = Database["public"]["Tables"]["children"]["Row"];
+type SchoolClass = Database["public"]["Tables"]["classes"]["Row"];
 type MealRecord = Database["public"]["Tables"]["meal_records"]["Row"];
 type MealType = Database["public"]["Tables"]["meal_types"]["Row"];
 type Incident = Database["public"]["Tables"]["incidents"]["Row"];
-type Page = "home" | "search";
 type CardStatus = "all_good" | "incident";
 
 function statusFor(records: MealRecord[], incidents: Incident[]): CardStatus {
@@ -22,8 +23,18 @@ function statusFor(records: MealRecord[], incidents: Incident[]): CardStatus {
     : "all_good";
 }
 
-export default function BusinessApp({ page }: { page: Page }) {
+function EmptyState({ title, message }: { title: string; message: string }) {
+  return (
+    <div className="flex flex-1 flex-col items-center justify-center gap-2 px-4 pb-24 pt-10 text-center">
+      <h2 className="text-lg font-bold text-slate-900">{title}</h2>
+      <p className="text-sm text-slate-500">{message}</p>
+    </div>
+  );
+}
+
+export default function BusinessApp() {
   const [children, setChildren] = useState<Child[]>([]);
+  const [classes, setClasses] = useState<SchoolClass[]>([]);
   const [records, setRecords] = useState<MealRecord[]>([]);
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [mealTypes, setMealTypes] = useState<MealType[]>([]);
@@ -31,7 +42,7 @@ export default function BusinessApp({ page }: { page: Page }) {
     Database["public"]["Enums"]["user_role"] | null
   >(null);
   const [monitorId, setMonitorId] = useState<string | null>(null);
-  const [query, setQuery] = useState("");
+  const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
   const [selectedChild, setSelectedChild] = useState<Child | null>(null);
   const [toast, setToast] = useState<{
     message: string;
@@ -55,6 +66,7 @@ export default function BusinessApp({ page }: { page: Page }) {
 
       const [
         childrenResult,
+        classesResult,
         recordsResult,
         incidentsResult,
         mealTypesResult,
@@ -64,6 +76,7 @@ export default function BusinessApp({ page }: { page: Page }) {
           .from("children")
           .select("id, first_name, last_name, class_id, created_at")
           .order("last_name"),
+        supabase.from("classes").select("id, name, school_id"),
         supabase
           .from("meal_records")
           .select(
@@ -90,6 +103,7 @@ export default function BusinessApp({ page }: { page: Page }) {
       if (!active) return;
       if (
         childrenResult.error ||
+        classesResult.error ||
         recordsResult.error ||
         incidentsResult.error ||
         mealTypesResult.error ||
@@ -99,6 +113,7 @@ export default function BusinessApp({ page }: { page: Page }) {
         return;
       }
       setChildren(childrenResult.data ?? []);
+      setClasses(classesResult.data ?? []);
       setRecords(recordsResult.data ?? []);
       setIncidents(incidentsResult.data ?? []);
       setMealTypes(mealTypesResult.data ?? []);
@@ -291,72 +306,105 @@ export default function BusinessApp({ page }: { page: Page }) {
       </section>
     );
 
-  const visibleChildren = children.filter(
-    (child) =>
-      page !== "search" ||
-      `${child.first_name} ${child.last_name}`
-        .toLowerCase()
-        .includes(query.toLowerCase()),
-  );
+  const classList = buildClassList(classes, children);
+  const selectedClass = selectedClassId
+    ? classById(classes, selectedClassId)
+    : null;
+  const visibleChildren = selectedClassId
+    ? childrenInClass(children, selectedClassId)
+    : [];
   const canManageIncidents = userRole === "admin" || userRole === "supervisor";
+
+  let content: ReactNode;
+  if (selectedClass) {
+    content =
+      visibleChildren.length === 0 ? (
+        <EmptyState
+          title="Sin alumnos"
+          message="Esta clase todavía no tiene alumnos."
+        />
+      ) : (
+        <div className="grid grid-cols-1 gap-4 p-4 pb-24 md:grid-cols-2 lg:grid-cols-3">
+          {visibleChildren.map((child) => (
+            <StudentCard
+              key={child.id}
+              name={`${child.first_name} ${child.last_name}`}
+              status={statusFor(
+                records.filter((record) => record.child_id === child.id),
+                incidents.filter((incident) => incident.child_id === child.id),
+              )}
+              onClick={() => setSelectedChild(child)}
+            />
+          ))}
+        </div>
+      );
+  } else if (classList.length === 0) {
+    content = (
+      <EmptyState
+        title="Sin clases"
+        message="Este centro todavía no tiene clases."
+      />
+    );
+  } else {
+    content = (
+      <div className="flex flex-1 flex-col gap-3 p-4 pb-24">
+        {classList.map((classItem) => (
+          <button
+            key={classItem.id}
+            type="button"
+            onClick={() => setSelectedClassId(classItem.id)}
+            className="flex w-full items-center justify-between rounded-2xl border border-slate-100 bg-white p-4 text-left shadow-sm transition-transform active:scale-[0.98]"
+          >
+            <span className="font-bold leading-tight text-slate-900">
+              {classItem.name}
+            </span>
+            <span className="text-sm text-slate-500">
+              {classItem.childCount === 1
+                ? "1 alumno"
+                : `${classItem.childCount} alumnos`}
+            </span>
+          </button>
+        ))}
+      </div>
+    );
+  }
+
   return (
     <>
       <header className="sticky top-0 z-40 flex items-center justify-between border-b border-slate-200 bg-white/90 px-4 py-3 shadow-sm backdrop-blur-md">
-        <div>
-          <h1 className="text-lg font-bold leading-none text-slate-900">
-            {page === "search" ? "Buscar Alumno" : "Mi Clase"}
-          </h1>
-          <p className="mt-1 text-xs font-medium text-slate-500">
-            Datos visibles según los permisos de tu cuenta
-          </p>
+        <div className="flex items-center gap-3">
+          {selectedClass && (
+            <button
+              type="button"
+              onClick={() => setSelectedClassId(null)}
+              className="rounded-full bg-slate-100 px-3 py-2 text-sm text-slate-600 hover:bg-slate-200"
+            >
+              ← Volver
+            </button>
+          )}
+          <div>
+            <h1 className="text-lg font-bold leading-none text-slate-900">
+              {selectedClass ? selectedClass.name : "Clases"}
+            </h1>
+            <p className="mt-1 text-xs font-medium text-slate-500">
+              {selectedClass
+                ? "Datos visibles según los permisos de tu cuenta"
+                : "Selecciona una clase para ver sus alumnos"}
+            </p>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <a
-            className="rounded-full bg-slate-100 px-3 py-2 text-sm text-slate-600"
-            href={page === "search" ? "/" : "/search"}
-          >
-            {page === "search" ? "Volver" : "Buscar"}
-          </a>
-          <button
-            type="button"
-            onClick={async () => {
-              await supabase.auth.signOut();
-              window.location.assign("/setup");
-            }}
-            className="rounded-full bg-slate-100 px-3 py-2 text-sm text-slate-600 hover:bg-slate-200"
-          >
-            Salir
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={async () => {
+            await supabase.auth.signOut();
+            window.location.assign("/setup");
+          }}
+          className="rounded-full bg-slate-100 px-3 py-2 text-sm text-slate-600 hover:bg-slate-200"
+        >
+          Salir
+        </button>
       </header>
-      {page === "search" && (
-        <div className="px-4 pt-4">
-          <label className="sr-only" htmlFor="student-search">
-            Buscar alumno
-          </label>
-          <input
-            id="student-search"
-            type="search"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Buscar alumno..."
-            className="h-10 w-full rounded-xl border border-slate-200 bg-slate-100/50 px-4 text-sm outline-none focus:border-emerald-500 focus:bg-white"
-          />
-        </div>
-      )}
-      <div className="grid grid-cols-1 gap-4 p-4 pb-24 md:grid-cols-2 lg:grid-cols-3">
-        {visibleChildren.map((child) => (
-          <StudentCard
-            key={child.id}
-            name={`${child.first_name} ${child.last_name}`}
-            status={statusFor(
-              records.filter((record) => record.child_id === child.id),
-              incidents.filter((incident) => incident.child_id === child.id),
-            )}
-            onClick={() => setSelectedChild(child)}
-          />
-        ))}
-      </div>
+      {content}
       {state === "error" && (
         <p className="px-4 pb-6 text-sm text-slate-500">
           No se han podido cargar los datos autorizados.

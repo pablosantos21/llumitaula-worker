@@ -100,17 +100,12 @@ if (/supabase|service_role/i.test(generatedServiceWorker)) {
   throw new Error("Generated service worker must not contain Supabase secrets");
 }
 
-const source = await Promise.all(
-  ["src/pages/index.astro", "src/pages/search.astro"].map((path) =>
-    readFile(new URL(`../${path}`, import.meta.url), "utf8"),
-  ),
+const indexPage = await readFile(
+  new URL("../src/pages/index.astro", import.meta.url),
+  "utf8",
 );
 
-if (
-  source.some((page) =>
-    /MOCK_STUDENTS|CURRENT_MONITOR|data-student-name/.test(page),
-  )
-) {
+if (/MOCK_STUDENTS|CURRENT_MONITOR|data-student-name/.test(indexPage)) {
   throw new Error(
     "Business pages must not expose child mock data in Astro HTML",
   );

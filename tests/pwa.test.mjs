@@ -285,7 +285,6 @@ async function populateFixture(fixture) {
     await writeFile(join(fixture, "dist", "splash", path), "png");
   }
   await writeFile(join(fixture, "src", "pages", "index.astro"), "");
-  await writeFile(join(fixture, "src", "pages", "search.astro"), "");
 }
 
 async function runPublicBuildChecker(fixture) {
