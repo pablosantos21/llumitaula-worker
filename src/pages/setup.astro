@@ -1,0 +1,21 @@
+---
+import DeviceSetupForm from "../components/DeviceSetupForm";
+import MainLayout from "../layouts/MainLayout.astro";
+---
+
+<MainLayout title="Configurar dispositivo" requiresAuth={false}>
+  <div class="flex flex-1 flex-col justify-center bg-white px-6 py-12">
+    <div class="mx-auto w-full max-w-sm space-y-8">
+      <div class="space-y-2 text-center">
+        <h1 class="text-3xl font-bold tracking-tight text-emerald-900">
+          Configurar dispositivo
+        </h1>
+        <p class="text-slate-500">
+          Introduce el código temporal para vincular este dispositivo.
+        </p>
+      </div>
+
+      <DeviceSetupForm client:load />
+    </div>
+  </div>
+</MainLayout>
