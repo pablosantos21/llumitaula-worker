@@ -150,7 +150,7 @@ test("PWA artwork and asset generation contract is present", async () => {
     packageJson.scripts["generate:pwa-assets"],
     "node scripts/generate-pwa-assets.mjs",
   );
-  assert.equal(packageJson.scripts.prebuild, "npm run generate:pwa-assets");
+  assert.equal(packageJson.scripts.prebuild, "pnpm run generate:pwa-assets");
   assert.equal(
     packageJson.scripts.postbuild,
     "node scripts/generate-pwa-service-worker.mjs",
@@ -222,14 +222,14 @@ test("public build checker validates the complete PWA output contract", async ()
   const checker = await source("scripts/check-public-build.mjs");
   const packageJson = JSON.parse(await source("package.json"));
 
-  assert.equal(packageJson.scripts["test:pwa"], "npm run test:pwa:contract");
+  assert.equal(packageJson.scripts["test:pwa"], "pnpm run test:pwa:contract");
   assert.equal(
     packageJson.scripts["test:pwa:unit"],
     "node --test tests/pwa.test.mjs",
   );
   assert.equal(
     packageJson.scripts["test:pwa:contract"],
-    "npm run build && npm run test:public-data && npm run test:pwa:unit",
+    "pnpm run build && pnpm run test:public-data && pnpm run test:pwa:unit",
   );
   assert.match(checker, /manifest\.webmanifest/);
   assert.match(checker, /display.*standalone/s);
@@ -358,7 +358,7 @@ test("public build checker clearly reports a missing dist directory", async () =
     await rm(join(fixture, "dist"), { recursive: true });
     await assert.rejects(
       runPublicBuildChecker(fixture),
-      /dist directory is missing; run npm run build first/i,
+      /dist directory is missing; run pnpm run build first/i,
     );
   } finally {
     await rm(fixture, { recursive: true, force: true });

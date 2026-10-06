@@ -9,7 +9,7 @@ carga de datos, el registro de comidas y el comportamiento offline de la PWA.
 ## Requisitos
 
 - Node.js `>=22.12.0`
-- npm
+- pnpm `>=10`
 - Docker Desktop o un runtime compatible para ejecutar Supabase localmente
 - Supabase CLI
 
@@ -17,8 +17,8 @@ Comprueba las versiones antes de empezar:
 
 ```sh
 node --version
-npm --version
-npx supabase --version
+pnpm --version
+pnpm dlx supabase --version
 ```
 
 ## Instalacion
@@ -26,7 +26,7 @@ npx supabase --version
 Instala las dependencias exactamente desde el lockfile:
 
 ```sh
-npm ci
+pnpm install --frozen-lockfile
 ```
 
 Crea la configuracion local a partir del ejemplo:
@@ -51,7 +51,7 @@ Para desarrollo local, sustituye `PUBLIC_SUPABASE_URL` por `http://127.0.0.1:543
 El desarrollo normal usa la instancia local definida en `supabase/config.toml`, no el proyecto remoto. Con Docker en ejecucion, arranca los servicios desde la raiz del repositorio:
 
 ```sh
-npx supabase start
+pnpm dlx supabase start
 ```
 
 La API local queda disponible en `http://127.0.0.1:54321` y Studio en `http://127.0.0.1:54323`.
@@ -59,14 +59,14 @@ La API local queda disponible en `http://127.0.0.1:54321` y Studio en `http://12
 Aplica las migraciones y carga el seed determinista con un reset local:
 
 ```sh
-npx supabase db reset
+pnpm dlx supabase db reset
 ```
 
-`npx supabase db reset` es destructivo para la base local: recrea el esquema y vuelve a ejecutar `supabase/seed.sql`. No lo ejecutes contra una base de datos de produccion. El seed crea cuentas Auth de desarrollo, pero no contiene credenciales productivas ni secretos.
+`pnpm dlx supabase db reset` es destructivo para la base local: recrea el esquema y vuelve a ejecutar `supabase/seed.sql`. No lo ejecutes contra una base de datos de produccion. El seed crea cuentas Auth de desarrollo, pero no contiene credenciales productivas ni secretos.
 
 ### Configuracion del dispositivo
 
-Abre `/setup` en la aplicacion para vincular el dispositivo. En el entorno local, despues de ejecutar `npx supabase db reset`, usa el codigo `123456`. Este codigo es solo para desarrollo local y no es una credencial valida para produccion.
+Abre `/setup` en la aplicacion para vincular el dispositivo. En el entorno local, despues de ejecutar `pnpm dlx supabase db reset`, usa el codigo `123456`. Este codigo es solo para desarrollo local y no es una credencial valida para produccion.
 
 El formulario envia el codigo a la RPC `claim_device` de Supabase y recupera el contexto operativo mediante `get_device_monitors`. La validacion, caducidad, limite de usos y vinculacion con el colegio ocurren en Supabase; el navegador no consulta ni modifica directamente las tablas de codigos. En un entorno que no sea local debe usarse un codigo de configuracion emitido para ese entorno, nunca el codigo del seed local.
 
@@ -101,7 +101,7 @@ sus colegios; `padre` consulta la información de sus hijos.
 Comprueba las políticas RLS con la instancia local:
 
 ```sh
-npx supabase test db
+pnpm dlx supabase test db
 ```
 
 Este flujo usa únicamente Supabase local. No ejecuta migraciones ni cambios
@@ -110,7 +110,7 @@ contra el proyecto remoto; tampoco usa `service_role` en el navegador.
 Para detener los servicios locales:
 
 ```sh
-npx supabase stop
+pnpm dlx supabase stop
 ```
 
 El proyecto Supabase remoto de referencia es `hjrxyobgukrwrcaslhok`. Se conserva como fuente del esquema existente, pero no se usa para el desarrollo normal ni se debe ejecutar ninguna migracion remota como parte de este flujo.
@@ -120,34 +120,34 @@ El proyecto Supabase remoto de referencia es `hjrxyobgukrwrcaslhok`. Se conserva
 Con Supabase local iniciado y las migraciones aplicadas, regenera los tipos TypeScript:
 
 ```sh
-npx supabase gen types typescript --local > src/types/database.ts
+pnpm dlx supabase gen types typescript --local > src/types/database.ts
 ```
 
 Revisa el diff antes de confirmar cambios. El archivo generado representa las tablas, relaciones y enums del esquema local.
 
-## Scripts npm
+## Scripts
 
 ```sh
-npm run dev
-npm run build
-npm run test:pwa
-npm run test:public-data
-npm run check
-npm run lint
-npm run format:check
+pnpm run dev
+pnpm run build
+pnpm run test:pwa
+pnpm run test:public-data
+pnpm run check
+pnpm run lint
+pnpm run format:check
 ```
 
-- `npm run dev`: inicia el servidor de desarrollo Astro.
-- `npm run build`: crea la salida de produccion en `dist/`.
-- `npm run test:pwa`: ejecuta la verificacion automatizada completa mediante `test:pwa:contract`.
-- `npm run test:pwa:contract`: ejecuta build, datos publicos y tests PWA.
-- `npm run test:pwa:unit`: ejecuta solo los tests PWA sin reconstruir.
-- `npm run test:public-data`: comprueba que el build no expone datos sensibles y que sus recursos PWA requeridos son validos.
-- `npm run check`: comprueba Astro y TypeScript.
-- `npm run lint`: ejecuta ESLint.
-- `npm run format:check`: comprueba el formato con Prettier sin modificar archivos.
+- `pnpm run dev`: inicia el servidor de desarrollo Astro.
+- `pnpm run build`: crea la salida de produccion en `dist/`.
+- `pnpm run test:pwa`: ejecuta la verificacion automatizada completa mediante `test:pwa:contract`.
+- `pnpm run test:pwa:contract`: ejecuta build, datos publicos y tests PWA.
+- `pnpm run test:pwa:unit`: ejecuta solo los tests PWA sin reconstruir.
+- `pnpm run test:public-data`: comprueba que el build no expone datos sensibles y que sus recursos PWA requeridos son validos.
+- `pnpm run check`: comprueba Astro y TypeScript.
+- `pnpm run lint`: ejecuta ESLint.
+- `pnpm run format:check`: comprueba el formato con Prettier sin modificar archivos.
 
-Para formatear archivos localmente usa `npm run format`.
+Para formatear archivos localmente usa `pnpm run format`.
 
 ## Despliegue y verificacion PWA
 
