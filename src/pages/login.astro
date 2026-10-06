@@ -1,11 +1,11 @@
 ---
 import MainLayout from "../layouts/MainLayout.astro";
-import Input from "../components/Input.astro";
-import PrimaryButton from "../components/PrimaryButton.astro";
+import Input from "../components/Input";
+import PrimaryButton from "../components/PrimaryButton";
 
-// Handle form submission
+const redirect = Astro.url.searchParams.get("redirect") || "/classes";
+
 let error: string | null = null;
-let isLoading = false;
 
 if (Astro.request.method === "POST") {
     try {
@@ -17,8 +17,7 @@ if (Astro.request.method === "POST") {
         } else if (!/^\d+$/.test(code)) {
             error = "El código debe ser numérico";
         } else {
-            // Redirect to API endpoint to validate code
-            return Astro.redirect(`/api/login?code=${code}`);
+            return Astro.redirect(`/api/login?code=${code}&redirect=${encodeURIComponent(redirect)}`);
         }
     } catch (e) {
         error = "Error al procesar el formulario";

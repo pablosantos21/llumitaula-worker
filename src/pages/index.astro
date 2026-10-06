@@ -1,114 +1,119 @@
 ---
 import MainLayout from "../layouts/MainLayout.astro";
-import StudentCard from "../components/StudentCard.astro";
-import IncidentModal from "../components/IncidentModal.astro";
-import FeedbackToast from "../components/FeedbackToast.astro";
-import {
-	getMonitorById,
-	getChildrenGroupedByClass,
-	type Monitor,
-} from "../lib/supabase";
+import { MOCK_DAILY_SUMMARY } from "../lib/mocks";
 
-// Get monitor ID from cookie
-const monitorId = Astro.cookies.get("monitor_id")?.value;
-
-if (!monitorId) {
-	return Astro.redirect("/login");
-}
-
-// Fetch monitor and children data
-const monitor = await getMonitorById(monitorId);
-
-if (!monitor) {
-	return Astro.redirect("/login");
-}
-
-const childrenByClass = await getChildrenGroupedByClass(monitorId);
-
-// Get class names and children for display
-const classes = Object.values(childrenByClass);
-const monitorName = `${monitor.first_name} ${monitor.last_name}`;
+const today = new Date();
+const dateStr = today.toLocaleDateString("ca-ES", {
+  weekday: "long",
+  year: "numeric",
+  month: "long",
+  day: "numeric",
+});
+const summary = MOCK_DAILY_SUMMARY;
 ---
 
-<MainLayout title="Mi Clase">
-	<!-- Header -->
-	<header
-		class="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-slate-200 px-4 py-3 flex items-center justify-between shadow-sm"
-	>
-		<div>
-			<h1 class="text-lg font-bold text-slate-900 leading-none">
-				Clases de {monitorName}
-			</h1>
-			<p class="text-xs text-slate-500 font-medium mt-1">
-				{classes.length} clase{classes.length !== 1 ? "s" : ""}
-			</p>
-		</div>
-		<div class="flex items-center gap-2">
-			<a
-				href="/search"
-				class="p-2 text-slate-600 bg-slate-100 rounded-full hover:bg-slate-200 transition-colors"
-			>
-				<svg
-					xmlns="http://www.w3.org/2000/svg"
-					viewBox="0 0 20 20"
-					fill="currentColor"
-					class="w-5 h-5"
-				>
-					<path
-						fill-rule="evenodd"
-						d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z"
-						clip-rule="evenodd"></path>
-				</svg>
-			</a>
-			<a
-				href="/api/logout"
-				class="w-9 h-9 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 font-bold text-sm border-2 border-white shadow-sm hover:bg-emerald-200 transition-colors"
-				title="Cerrar sesión"
-			>
-				{monitorName.substring(0, 2).toUpperCase()}
-			</a>
-		</div>
-	</header>
+<MainLayout title="Inici">
+  <div class="flex-1 flex flex-col">
+    <header class="bg-emerald-600 px-5 pt-6 pb-10 text-white">
+      <p class="text-emerald-100 text-sm font-medium uppercase tracking-wider">
+        Resum del dia
+      </p>
+      <h1 class="text-2xl font-bold mt-1 capitalize">{dateStr}</h1>
+    </header>
 
-	<!-- Classes with Students -->
-	{
-		classes.length > 0 ? (
-			<div class="p-4 pb-24 space-y-8">
-				{classes.map((classGroup) => (
-					<div>
-						<div class="mb-4">
-							<h2 class="text-xl font-bold text-slate-900">
-								{classGroup.class.name}
-							</h2>
-							<p class="text-sm text-slate-500">
-								{classGroup.children.length} alumno
-								{classGroup.children.length !== 1 ? "s" : ""}
-							</p>
-						</div>
-						<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-							{classGroup.children.map((child) => (
-								<StudentCard
-									student={{
-										id: child.id,
-										name: `${child.first_name} ${child.last_name}`,
-										classGroup: classGroup.class.name,
-									}}
-								/>
-							))}
-						</div>
-					</div>
-				))}
-			</div>
-		) : (
-			<div class="p-4 pb-24 text-center">
-				<p class="text-slate-500">
-					No hay clases asignadas o no hay alumnos registrados.
-				</p>
-			</div>
-		)
-	}
+    <div class="px-4 -mt-6 space-y-3">
+      <div class="grid grid-cols-2 gap-3">
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
+          <p class="text-sm text-slate-500 font-medium">Total alumnes</p>
+          <p class="text-3xl font-bold text-slate-900 mt-1">
+            {summary.totalKids}
+          </p>
+        </div>
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
+          <p class="text-sm text-slate-500 font-medium">Han dinat</p>
+          <p class="text-3xl font-bold text-emerald-600 mt-1">
+            {summary.ateCount}
+          </p>
+        </div>
+      </div>
 
-	<!-- Shared Interactives -->
-	<IncidentModal />
-	<FeedbackToast />
+      <div class="grid grid-cols-2 gap-3">
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
+          <p class="text-sm text-slate-500 font-medium">Incidències</p>
+          <p class="text-3xl font-bold text-amber-600 mt-1">
+            {summary.incidentCount}
+          </p>
+        </div>
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
+          <p class="text-sm text-slate-500 font-medium">Pendents</p>
+          <p class="text-3xl font-bold text-slate-400 mt-1">
+            {summary.pendingCount}
+          </p>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
+        <div class="flex items-center gap-2">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 20 20"
+            fill="currentColor"
+            class="w-5 h-5 text-red-500 shrink-0"
+          >
+            <path
+              fill-rule="evenodd"
+              d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625l6.28-10.875zM10 8.25a.75.75 0 01.75.75v3.75a.75.75 0 01-1.5 0V9a.75.75 0 01.75-.75zm0 8.25a.75.75 0 100-1.5.75.75 0 000 1.5z"
+              clip-rule="evenodd"
+            />
+          </svg>
+          <p class="text-sm text-slate-500 font-medium">Al·lèrgies</p>
+        </div>
+        <p class="text-2xl font-bold text-slate-900 mt-1">
+          {summary.allergiesCount} alumnes
+        </p>
+        <p class="text-sm text-slate-500 mt-1">
+          {summary.allergiesList.join(", ")}
+        </p>
+      </div>
+    </div>
+
+    <div class="flex-1"></div>
+
+    <div class="px-4 pb-6 pt-4 space-y-3">
+      <a
+        href="/login?redirect=/classes"
+        class="block w-full h-14 bg-emerald-600 text-white rounded-2xl font-bold text-lg flex items-center justify-center gap-2 active:scale-[0.98] transition-transform shadow-md hover:bg-emerald-700"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 20 20"
+          fill="currentColor"
+          class="w-5 h-5"
+        >
+          <path
+            d="M10.362 1.093a.75.75 0 00-.724 0L2.523 5.018 10 9.143l7.477-4.125-7.115-3.925zM18 6.443l-7.25 4v8.25l6.862-3.786A.75.75 0 0018 14.25V6.443zm-8.75 12.25v-8.25l-7.25-4v7.807a.75.75 0 00.388.657l6.862 3.786z"
+          />
+        </svg>
+        Llista de classes
+      </a>
+      <a
+        href="/login?redirect=/incidencias"
+        class="block w-full h-14 bg-white text-slate-800 rounded-2xl font-bold text-lg flex items-center justify-center gap-2 active:scale-[0.98] transition-transform border-2 border-slate-200 shadow-sm hover:border-slate-300"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 20 20"
+          fill="currentColor"
+          class="w-5 h-5 text-amber-500"
+        >
+          <path
+            fill-rule="evenodd"
+            d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625l6.28-10.875zM10 8.25a.75.75 0 01.75.75v3.75a.75.75 0 01-1.5 0V9a.75.75 0 01.75-.75zm0 8.25a.75.75 0 100-1.5.75.75 0 000 1.5z"
+            clip-rule="evenodd"
+          />
+        </svg>
+        Incidències
+      </a>
+    </div>
+  </div>
 </MainLayout>

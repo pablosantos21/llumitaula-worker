@@ -9,9 +9,17 @@
     "astro": "astro"
   },
   "dependencies": {
+    "@astrojs/node": "^9.5.5",
+    "@astrojs/react": "^5.0.5",
     "@supabase/supabase-js": "^2.105.4",
     "@tailwindcss/vite": "^4.1.18",
     "astro": "^5.16.13",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
     "tailwindcss": "^4.1.18"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3"
   }
 }

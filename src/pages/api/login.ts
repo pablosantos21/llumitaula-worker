@@ -3,6 +3,7 @@ import { authenticateMonitor } from "../../lib/supabase";
 
 export const GET: APIRoute = async ({ url, cookies }) => {
   const code = url.searchParams.get("code");
+  const redirect = url.searchParams.get("redirect") || "/classes";
 
   if (!code) {
     return new Response(
@@ -37,11 +38,11 @@ export const GET: APIRoute = async ({ url, cookies }) => {
     sameSite: "lax",
   });
 
-  // Redirect to dashboard
+  // Redirect to the requested page (or /classes by default)
   return new Response(null, {
     status: 302,
     headers: {
-      Location: "/",
+      Location: redirect,
     },
   });
 };

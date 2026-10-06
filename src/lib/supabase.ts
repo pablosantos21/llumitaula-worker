@@ -37,10 +37,12 @@ export interface ClassData {
 /**
  * Authenticate a monitor using their code
  */
-export async function authenticateMonitor(code: number): Promise<Monitor | null> {
+export async function authenticateMonitor(
+  code: number,
+): Promise<Monitor | null> {
   if (!supabase) {
     console.error(
-      "Supabase not configured. Check PUBLIC_SUPABASE_URL and PUBLIC_SUPABASE_ANON_KEY environment variables."
+      "Supabase not configured. Check PUBLIC_SUPABASE_URL and PUBLIC_SUPABASE_ANON_KEY environment variables.",
     );
     return null;
   }
@@ -70,7 +72,7 @@ export async function authenticateMonitor(code: number): Promise<Monitor | null>
 export async function getChildrenByClass(classId: string): Promise<Child[]> {
   if (!supabase) {
     console.error(
-      "Supabase not configured. Check PUBLIC_SUPABASE_URL and PUBLIC_SUPABASE_ANON_KEY environment variables."
+      "Supabase not configured. Check PUBLIC_SUPABASE_URL and PUBLIC_SUPABASE_ANON_KEY environment variables.",
     );
     return [];
   }
@@ -85,7 +87,7 @@ export async function getChildrenByClass(classId: string): Promise<Child[]> {
       console.error("Error fetching children:", error);
       return [];
     }
-
+    console.log("kids", data);
     return (data as Child[]) || [];
   } catch (error) {
     console.error("Error in getChildrenByClass:", error);
@@ -97,17 +99,16 @@ export async function getChildrenByClass(classId: string): Promise<Child[]> {
  * Get all children grouped by their class
  */
 export async function getChildrenGroupedByClass(
-  monitorId: string
+  monitorId: string,
 ): Promise<Record<string, { class: ClassData; children: Child[] }>> {
   if (!supabase) {
     console.error(
-      "Supabase not configured. Check PUBLIC_SUPABASE_URL and PUBLIC_SUPABASE_ANON_KEY environment variables."
+      "Supabase not configured. Check PUBLIC_SUPABASE_URL and PUBLIC_SUPABASE_ANON_KEY environment variables.",
     );
     return {};
   }
 
   try {
-    // First get the monitor's school
     const { data: monitorSchoolData, error: monitorSchoolError } =
       await supabase
         .from("monitors_schools")
@@ -122,7 +123,6 @@ export async function getChildrenGroupedByClass(
 
     const schoolId = monitorSchoolData.school_id;
 
-    // Get all classes for this school
     const { data: classesData, error: classesError } = await supabase
       .from("classes")
       .select("*")
@@ -133,7 +133,6 @@ export async function getChildrenGroupedByClass(
       return {};
     }
 
-    // For each class, get the children
     const result: Record<string, { class: ClassData; children: Child[] }> = {};
 
     for (const classItem of classesData || []) {
@@ -154,10 +153,12 @@ export async function getChildrenGroupedByClass(
 /**
  * Get monitor info by ID
  */
-export async function getMonitorById(monitorId: string): Promise<Monitor | null> {
+export async function getMonitorById(
+  monitorId: string,
+): Promise<Monitor | null> {
   if (!supabase) {
     console.error(
-      "Supabase not configured. Check PUBLIC_SUPABASE_URL and PUBLIC_SUPABASE_ANON_KEY environment variables."
+      "Supabase not configured. Check PUBLIC_SUPABASE_URL and PUBLIC_SUPABASE_ANON_KEY environment variables.",
     );
     return null;
   }
