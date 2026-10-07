@@ -18,6 +18,7 @@
     "lint:fix": "eslint . --fix",
     "test:auth-guard": "node --test tests/auth-guard.test.mjs",
     "test:classes": "node --test tests/classes.test.mjs",
+    "test:daily-list": "node --test tests/daily-list.test.mjs",
     "test:pwa:unit": "node --test tests/pwa.test.mjs",
     "test:pwa:contract": "npm run build && npm run test:public-data && npm run test:pwa:unit",
     "test:pwa": "npm run test:pwa:contract",

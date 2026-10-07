@@ -1,9 +1,15 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import MealRecordModal from "./MealRecordModal";
 import { supabase } from "../lib/supabase/client";
 import { localDateString } from "../lib/local-date";
 import { buildClassList, childrenInClass, classById } from "../lib/classes";
+import {
+  buildInitialDailyList,
+  isWeekend,
+  toggleDailyPresence,
+  type DailyListItem,
+} from "../lib/daily-list";
 import type { MealStatus } from "../lib/mealRecord";
 import type { Database } from "../types/database";
 import FeedbackToast from "./FeedbackToast";
@@ -38,6 +44,15 @@ export default function BusinessApp() {
   const [records, setRecords] = useState<MealRecord[]>([]);
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [mealTypes, setMealTypes] = useState<MealType[]>([]);
+  const [lunchByChild, setLunchByChild] = useState<Record<string, number[]>>(
+    {},
+  );
+  const [presenceOverride, setPresenceOverride] = useState<
+    Record<string, boolean>
+  >({});
+  const [isOffline, setIsOffline] = useState(
+    typeof navigator !== "undefined" ? !navigator.onLine : false,
+  );
   const [userRole, setUserRole] = useState<
     Database["public"]["Enums"]["user_role"] | null
   >(null);
@@ -51,6 +66,21 @@ export default function BusinessApp() {
   const [state, setState] = useState<
     "loading" | "signed-out" | "ready" | "error"
   >("loading");
+
+  useEffect(() => {
+    function handleOnline() {
+      setIsOffline(false);
+    }
+    function handleOffline() {
+      setIsOffline(true);
+    }
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -70,6 +100,7 @@ export default function BusinessApp() {
         recordsResult,
         incidentsResult,
         mealTypesResult,
+        lunchDaysResult,
         userResult,
       ] = await Promise.all([
         supabase
@@ -94,6 +125,7 @@ export default function BusinessApp() {
           .select("id, name, active, school_id, sort_order, created_at")
           .eq("active", true)
           .order("sort_order"),
+        supabase.from("child_lunch_days").select("child_id, weekdays"),
         supabase
           .from("users")
           .select("role")
@@ -107,8 +139,12 @@ export default function BusinessApp() {
         recordsResult.error ||
         incidentsResult.error ||
         mealTypesResult.error ||
+        lunchDaysResult.error ||
         userResult.error
       ) {
+        if (typeof navigator !== "undefined" && !navigator.onLine) {
+          setIsOffline(true);
+        }
         setState("error");
         return;
       }
@@ -117,6 +153,11 @@ export default function BusinessApp() {
       setRecords(recordsResult.data ?? []);
       setIncidents(incidentsResult.data ?? []);
       setMealTypes(mealTypesResult.data ?? []);
+      const lunchMap: Record<string, number[]> = {};
+      for (const row of lunchDaysResult.data ?? []) {
+        lunchMap[row.child_id] = [...(row.weekdays ?? [])];
+      }
+      setLunchByChild(lunchMap);
       setUserRole(userResult.data.role);
 
       if (userResult.data.role === "monitor") {
@@ -144,6 +185,34 @@ export default function BusinessApp() {
     const timeout = window.setTimeout(() => setToast(null), 3000);
     return () => window.clearTimeout(timeout);
   }, [toast]);
+
+  const classList = buildClassList(classes, children);
+  const selectedClass = selectedClassId
+    ? classById(classes, selectedClassId)
+    : null;
+  const visibleChildren = useMemo(
+    () => (selectedClassId ? childrenInClass(children, selectedClassId) : []),
+    [children, selectedClassId],
+  );
+  const today = useMemo(() => new Date(), []);
+  const weekend = isWeekend(today);
+  const initialDailyList: DailyListItem[] = useMemo(
+    () => buildInitialDailyList(visibleChildren, lunchByChild, today),
+    [visibleChildren, lunchByChild, today],
+  );
+  const dailyList: DailyListItem[] = useMemo(
+    () =>
+      initialDailyList.map((item) => ({
+        ...item,
+        present: presenceOverride[item.childId] ?? item.present,
+      })),
+    [initialDailyList, presenceOverride],
+  );
+
+  function handleSelectClass(classId: string | null) {
+    setSelectedClassId(classId);
+    setPresenceOverride({});
+  }
 
   async function saveStatus(
     child: Child,
@@ -306,17 +375,38 @@ export default function BusinessApp() {
       </section>
     );
 
-  const classList = buildClassList(classes, children);
-  const selectedClass = selectedClassId
-    ? classById(classes, selectedClassId)
-    : null;
-  const visibleChildren = selectedClassId
-    ? childrenInClass(children, selectedClassId)
-    : [];
   const canManageIncidents = userRole === "admin" || userRole === "monitor";
+
+  function handleTogglePresence(childId: string) {
+    // Ajuste solo local: nunca escribe en la pauta habitual ni persiste.
+    const next = toggleDailyPresence(dailyList, childId);
+    const nextPresent = next.find((item) => item.childId === childId)?.present;
+    setPresenceOverride((current) => ({
+      ...current,
+      [childId]: nextPresent ?? !current[childId],
+    }));
+  }
+
+  function originLabel(origin: DailyListItem["origin"]): string {
+    if (origin === "pauta") return "Previsto hoy";
+    if (origin === "sin-dias") return "Sin días habituales";
+    if (origin === "fin-de-semana") return "Fin de semana";
+    return "Sin configurar";
+  }
 
   let content: ReactNode;
   if (selectedClass) {
+    const presentCount = dailyList.filter((item) => item.present).length;
+    const dailyRows = visibleChildren.map((child) => {
+      const item = dailyList.find(
+        (dailyItem) => dailyItem.childId === child.id,
+      );
+      return {
+        child,
+        present: item?.present ?? false,
+        origin: item?.origin ?? ("sin-configurar" as const),
+      };
+    });
     content =
       visibleChildren.length === 0 ? (
         <EmptyState
@@ -324,18 +414,90 @@ export default function BusinessApp() {
           message="Esta clase todavía no tiene alumnos."
         />
       ) : (
-        <div className="grid grid-cols-1 gap-4 p-4 pb-24 md:grid-cols-2 lg:grid-cols-3">
-          {visibleChildren.map((child) => (
-            <StudentCard
-              key={child.id}
-              name={`${child.first_name} ${child.last_name}`}
-              status={statusFor(
-                records.filter((record) => record.child_id === child.id),
-                incidents.filter((incident) => incident.child_id === child.id),
-              )}
-              onClick={() => setSelectedChild(child)}
-            />
-          ))}
+        <div className="flex flex-1 flex-col gap-4 p-4 pb-24">
+          <section
+            aria-label="Pasar lista"
+            className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+          >
+            <div className="flex items-baseline justify-between gap-3">
+              <h2 className="text-base font-bold text-slate-900">
+                Pasar lista
+              </h2>
+              <p className="text-sm text-slate-500">
+                {presentCount === 1
+                  ? "1 previsto"
+                  : `${presentCount} previstos`}
+              </p>
+            </div>
+            <p className="mt-1 text-xs text-slate-500">
+              Lista pre-marcada según la pauta semanal. El ajuste de hoy no
+              modifica la pauta habitual.
+            </p>
+            {weekend && (
+              <p
+                role="alert"
+                className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800"
+              >
+                Hoy no hay servicio de comedor. La lista aparece desmarcada.
+              </p>
+            )}
+            {isOffline && (
+              <p
+                role="alert"
+                className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800"
+              >
+                Sin conexión: pasar lista requiere conexión.
+              </p>
+            )}
+            <ul className="mt-3 flex flex-col gap-2">
+              {dailyRows.map(({ child, present, origin }) => (
+                <li
+                  key={child.id}
+                  className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 px-3 py-2"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-bold text-slate-900">
+                      {`${child.first_name} ${child.last_name}`}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      {originLabel(origin)}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={present}
+                    aria-label={`Asistencia de ${child.first_name} ${child.last_name}`}
+                    onClick={() => handleTogglePresence(child.id)}
+                    className={`relative h-7 w-12 shrink-0 rounded-full transition-colors ${
+                      present ? "bg-emerald-600" : "bg-slate-200"
+                    }`}
+                  >
+                    <span
+                      className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-all ${
+                        present ? "left-6" : "left-1"
+                      }`}
+                    />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {visibleChildren.map((child) => (
+              <StudentCard
+                key={child.id}
+                name={`${child.first_name} ${child.last_name}`}
+                status={statusFor(
+                  records.filter((record) => record.child_id === child.id),
+                  incidents.filter(
+                    (incident) => incident.child_id === child.id,
+                  ),
+                )}
+                onClick={() => setSelectedChild(child)}
+              />
+            ))}
+          </div>
         </div>
       );
   } else if (classList.length === 0) {
@@ -352,7 +514,7 @@ export default function BusinessApp() {
           <button
             key={classItem.id}
             type="button"
-            onClick={() => setSelectedClassId(classItem.id)}
+            onClick={() => handleSelectClass(classItem.id)}
             className="flex w-full items-center justify-between rounded-2xl border border-slate-100 bg-white p-4 text-left shadow-sm transition-transform active:scale-[0.98]"
           >
             <span className="font-bold leading-tight text-slate-900">
@@ -376,7 +538,7 @@ export default function BusinessApp() {
           {selectedClass && (
             <button
               type="button"
-              onClick={() => setSelectedClassId(null)}
+              onClick={() => handleSelectClass(null)}
               className="rounded-full bg-slate-100 px-3 py-2 text-sm text-slate-600 hover:bg-slate-200"
             >
               ← Volver
@@ -405,9 +567,19 @@ export default function BusinessApp() {
         </button>
       </header>
       {content}
+      {isOffline && !selectedClass && (
+        <p
+          role="alert"
+          className="mx-4 mb-6 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800"
+        >
+          Sin conexión: pasar lista requiere conexión.
+        </p>
+      )}
       {state === "error" && (
         <p className="px-4 pb-6 text-sm text-slate-500">
-          No se han podido cargar los datos autorizados.
+          {isOffline
+            ? "Sin conexión: pasar lista requiere conexión."
+            : "No se han podido cargar los datos autorizados."}
         </p>
       )}
       <MealRecordModal

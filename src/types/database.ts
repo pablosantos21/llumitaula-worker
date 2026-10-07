@@ -79,6 +79,39 @@ export type Database = {
           },
         ]
       }
+      child_lunch_days: {
+        Row: {
+          child_id: string
+          school_id: string
+          weekdays: number[]
+        }
+        Insert: {
+          child_id: string
+          school_id: string
+          weekdays: number[]
+        }
+        Update: {
+          child_id?: string
+          school_id?: string
+          weekdays?: number[]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "child_lunch_days_child_id_fkey"
+            columns: ["child_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "child_lunch_days_school_id_fkey"
+            columns: ["school_id"]
+            isOneToOne: false
+            referencedRelation: "schools"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       children: {
         Row: {
           class_id: string | null
