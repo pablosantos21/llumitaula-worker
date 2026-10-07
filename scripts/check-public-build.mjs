@@ -48,12 +48,12 @@ let distDetails;
 try {
   distDetails = await stat(distDirectory);
 } catch (error) {
-  throw new Error("dist directory is missing; run npm run build first", {
+  throw new Error("dist directory is missing; run pnpm run build first", {
     cause: error,
   });
 }
 if (!distDetails.isDirectory()) {
-  throw new Error("dist path is not a directory; run npm run build first");
+  throw new Error("dist path is not a directory; run pnpm run build first");
 }
 
 await collectHtml(distDirectory);

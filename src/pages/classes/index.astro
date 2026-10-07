@@ -1,0 +1,90 @@
+---
+import MainLayout from "../../layouts/MainLayout.astro";
+import {
+	getMonitorById,
+	getChildrenGroupedByClass,
+	type Monitor,
+} from "../../lib/supabase";
+
+const monitorId = Astro.cookies.get("monitor_id")?.value;
+
+if (!monitorId) {
+	return Astro.redirect("/login");
+}
+
+const monitor = await getMonitorById(monitorId);
+
+if (!monitor) {
+	return Astro.redirect("/login");
+}
+
+const childrenByClass = await getChildrenGroupedByClass(monitorId);
+
+const classes = Object.values(childrenByClass);
+const monitorName = `${monitor.first_name} ${monitor.last_name}`;
+---
+
+<MainLayout title="Mi Clase">
+	<!-- Header -->
+	<header
+		class="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-slate-200 px-4 py-3 flex items-center justify-between shadow-sm"
+	>
+		<div>
+			<h1 class="text-lg font-bold text-slate-900 leading-none">
+				Clases de {monitorName}
+			</h1>
+			<p class="text-xs text-slate-500 font-medium mt-1">
+				{classes.length} clase{classes.length !== 1 ? "s" : ""}
+			</p>
+		</div>
+		<div class="flex items-center gap-2">
+			<a
+				href="/search"
+				class="p-2 text-slate-600 bg-slate-100 rounded-full hover:bg-slate-200 transition-colors"
+			>
+				<svg
+					xmlns="http://www.w3.org/2000/svg"
+					viewBox="0 0 20 20"
+					fill="currentColor"
+					class="w-5 h-5"
+				>
+					<path
+						fill-rule="evenodd"
+						d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z"
+						clip-rule="evenodd"></path>
+				</svg>
+			</a>
+			<a
+				href="/api/logout"
+				class="w-9 h-9 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 font-bold text-sm border-2 border-white shadow-sm hover:bg-emerald-200 transition-colors"
+				title="Cerrar sesión"
+			>
+				{monitorName.substring(0, 2).toUpperCase()}
+			</a>
+		</div>
+	</header>
+
+	<!-- Classes with Students -->
+	{
+		classes.length > 0 ? (
+			<div class="p-4 pb-24 space-y-8">
+	{classes.map((classGroup) => (
+		<a href={`/class/${classGroup.class.id}`} class="block p-4 bg-white rounded-md shadow-md hover:shadow-lg transition">
+			<h2 class="text-lg font-semibold text-emerald-600">{classGroup.class.name}</h2>
+			<p class="text-sm text-slate-500">
+				{classGroup.children.length} alumno{classGroup.children.length !== 1 ? "s" : ""}
+			</p>
+		</a>
+	))}
+			</div>
+		) : (
+			<div class="p-4 pb-24 text-center">
+				<p class="text-slate-500">
+					No hay clases asignadas o no hay alumnos registrados.
+				</p>
+			</div>
+		)
+	}
+
+
+</MainLayout>

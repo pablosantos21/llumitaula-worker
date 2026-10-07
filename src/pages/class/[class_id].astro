@@ -1,0 +1,28 @@
+---
+import MainLayout from "../../layouts/MainLayout.astro";
+import StudentCard from "../../components/StudentCard";
+import { getChildrenByClass } from "../../lib/supabase";
+
+const classId = Astro.params.class_id;
+const children = await getChildrenByClass(classId);
+---
+
+<MainLayout title="Clase">
+	<header class="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-slate-200 px-4 py-3 flex items-center justify-between shadow-sm">
+		<a href="/classes" class="text-sm text-emerald-600">← Volver</a>
+	</header>
+
+	<div class="p-4 pb-24 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+		{children.length > 0 ? (
+			children.map((child) => (
+				<StudentCard student={{
+					id: child.id,
+					name: `${child.first_name} ${child.last_name}`,
+					classGroup: "",
+				}} />
+			))
+		) : (
+			<p class="text-center text-slate-500">No hay alumnos en esta clase.</p>
+		)}
+	</div>
+</MainLayout>
