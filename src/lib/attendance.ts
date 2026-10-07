@@ -83,6 +83,31 @@ export function canConfirmAttendance(
   return role === "monitor" || role === "admin";
 }
 
+/**
+ * La lista solo desbloquea el registro cuando hay filas confirmadas hoy.
+ * Sin filas es "aún no pasado" y el registro queda bloqueado.
+ */
+export function isAttendanceConfirmed(rows: readonly SavedMark[]): boolean {
+  return rows.length > 0;
+}
+
+/**
+ * Contrato para el registro posterior: solo los presentes de la lista
+ * confirmada admiten valoración. Nada se infiere de registros pasados.
+ */
+export function confirmedPresentChildIds(rows: readonly SavedMark[]): string[] {
+  if (rows.length === 0) return [];
+  return rows.filter((row) => row.present).map((row) => row.child_id);
+}
+
+export function canRecordMeal(
+  rows: readonly SavedMark[],
+  childId: string,
+): boolean {
+  if (rows.length === 0) return false;
+  return rows.some((row) => row.child_id === childId && row.present);
+}
+
 interface AttendanceRowsInput {
   dailyList: readonly DailyListItem[];
   classId: string;

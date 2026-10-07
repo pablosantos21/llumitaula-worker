@@ -14,7 +14,10 @@ import {
   applyConfirmedAttendance,
   buildAttendanceRows,
   canConfirmAttendance,
+  canRecordMeal,
+  confirmedPresentChildIds,
   getAttendanceConfirmationMeta,
+  isAttendanceConfirmed,
   summarizeAttendance,
   type AttendanceRow,
 } from "../lib/attendance";
@@ -233,6 +236,33 @@ export default function BusinessApp() {
     [attendanceRows],
   );
   const canConfirm = canConfirmAttendance(userRole);
+  const attendanceConfirmed = isAttendanceConfirmed(attendanceRows);
+  const presentChildIds = useMemo(
+    () => confirmedPresentChildIds(attendanceRows),
+    [attendanceRows],
+  );
+  const recordableChildren = useMemo(
+    () => visibleChildren.filter((child) => presentChildIds.includes(child.id)),
+    [visibleChildren, presentChildIds],
+  );
+  const absentChildren = useMemo(
+    () =>
+      visibleChildren.filter((child) => !presentChildIds.includes(child.id)),
+    [visibleChildren, presentChildIds],
+  );
+
+  function rejectUnrecordable(child: Child): boolean {
+    // El registro filtra a los presentes de la lista confirmada: sin
+    // confirmar, o con el alumno ausente, no se admite valoración.
+    if (canRecordMeal(attendanceRows, child.id)) return false;
+    setToast({
+      message: attendanceConfirmed
+        ? "Solo se puede registrar a alumnos presentes de la lista confirmada"
+        : "Confirma la lista antes de registrar cómo ha comido",
+      type: "error",
+    });
+    return true;
+  }
 
   useEffect(() => {
     if (!selectedClassId || state !== "ready") return;
@@ -338,6 +368,7 @@ export default function BusinessApp() {
     status: Database["public"]["Enums"]["meal_status"],
     notes: string,
   ) {
+    if (rejectUnrecordable(child)) return;
     const { data: sessionData } = await supabase.auth.getSession();
     const session = sessionData.session;
     if (!session || !mealTypeId) {
@@ -409,6 +440,8 @@ export default function BusinessApp() {
     }
 
     const activeMonitorId = monitorId;
+    // Igual que el registro ordinario: solo presentes confirmados.
+    if (rejectUnrecordable(child)) return;
     const date = localDateString();
     const cleanComments = details.comments
       .replace(/\p{Cc}/gu, " ")
@@ -564,7 +597,7 @@ export default function BusinessApp() {
                 role="alert"
                 className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800"
               >
-                Sin conexión: pasar lista requiere conexión.
+                Sin conexión: pasar lista y confirmar requieren conexión.
               </p>
             )}
             <ul className="mt-3 flex flex-col gap-2">
@@ -605,7 +638,7 @@ export default function BusinessApp() {
                 {attendanceSummary.status === "confirmed-empty"
                   ? "Lista confirmada vacía"
                   : "Lista confirmada"}
-                {` · ${attendanceSummary.presentCount} presentes · ${new Date(attendanceMeta.confirmedAt).toLocaleTimeString()}`}
+                {` · ${attendanceSummary.presentCount} presentes · confirmada por ${attendanceMeta.confirmedBy} · ${new Date(attendanceMeta.confirmedAt).toLocaleTimeString()}`}
               </p>
             )}
             {presentCount === 0 && (
@@ -644,21 +677,67 @@ export default function BusinessApp() {
                   : "Re-confirmar lista"}
             </button>
           </section>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {visibleChildren.map((child) => (
-              <StudentCard
-                key={child.id}
-                name={`${child.first_name} ${child.last_name}`}
-                status={statusFor(
-                  records.filter((record) => record.child_id === child.id),
-                  incidents.filter(
-                    (incident) => incident.child_id === child.id,
-                  ),
-                )}
-                onClick={() => setSelectedChild(child)}
-              />
-            ))}
-          </div>
+          <section
+            aria-label="Registro de comida"
+            className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+          >
+            <h2 className="text-base font-bold text-slate-900">
+              Registro de comida
+            </h2>
+            {!attendanceConfirmed ? (
+              <p
+                role="alert"
+                className="mt-2 rounded-xl bg-slate-100 px-3 py-2 text-sm text-slate-700"
+              >
+                Confirma la lista para habilitar el registro de comida. Sin
+                lista confirmada hoy, el registro está bloqueado.
+              </p>
+            ) : presentChildIds.length === 0 ? (
+              <p
+                role="status"
+                className="mt-2 rounded-xl bg-slate-100 px-3 py-2 text-sm text-slate-700"
+              >
+                Lista confirmada vacía: hoy no hay alumnos presentes para
+                registrar.
+              </p>
+            ) : (
+              <div className="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {recordableChildren.map((child) => (
+                  <StudentCard
+                    key={child.id}
+                    name={`${child.first_name} ${child.last_name}`}
+                    status={statusFor(
+                      records.filter((record) => record.child_id === child.id),
+                      incidents.filter(
+                        (incident) => incident.child_id === child.id,
+                      ),
+                    )}
+                    onClick={() => setSelectedChild(child)}
+                  />
+                ))}
+              </div>
+            )}
+            {attendanceConfirmed && absentChildren.length > 0 && (
+              <ul
+                aria-label="Alumnos ausentes hoy"
+                className="mt-3 flex flex-col gap-2"
+              >
+                {absentChildren.map((child) => (
+                  <li
+                    key={child.id}
+                    className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 opacity-70"
+                  >
+                    <p className="truncate text-sm font-medium text-slate-500">
+                      {`${child.first_name} ${child.last_name}`}
+                    </p>
+                    <p className="shrink-0 text-xs text-slate-500">
+                      Ausente hoy: no valorable
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
         </div>
       );
   } else if (classList.length === 0) {
@@ -733,13 +812,13 @@ export default function BusinessApp() {
           role="alert"
           className="mx-4 mb-6 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800"
         >
-          Sin conexión: pasar lista requiere conexión.
+          Sin conexión: pasar lista y confirmar requieren conexión.
         </p>
       )}
       {state === "error" && (
         <p className="px-4 pb-6 text-sm text-slate-500">
           {isOffline
-            ? "Sin conexión: pasar lista requiere conexión."
+            ? "Sin conexión: pasar lista y confirmar requieren conexión."
             : "No se han podido cargar los datos autorizados."}
         </p>
       )}
