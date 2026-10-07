@@ -29,16 +29,20 @@ export default function IncidentModal({
   const [noGarnish, setNoGarnish] = useState(false);
   const [noDessert, setNoDessert] = useState(false);
   const [comments, setComments] = useState("");
+  const [prevFormKey, setPrevFormKey] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (isOpen && student) {
-      setNoFirst(false);
-      setNoSecond(false);
-      setNoGarnish(false);
-      setNoDessert(false);
-      setComments("");
-    }
-  }, [isOpen, student]);
+  // Reset the form each time the modal opens or targets another student.
+  // Adjusting state during render is the documented React pattern for this
+  // and avoids the cascading render of resetting inside an effect.
+  const formKey = isOpen && student ? student.id : null;
+  if (formKey !== prevFormKey) {
+    setPrevFormKey(formKey);
+    setNoFirst(false);
+    setNoSecond(false);
+    setNoGarnish(false);
+    setNoDessert(false);
+    setComments("");
+  }
 
   useEffect(() => {
     if (isOpen) {
