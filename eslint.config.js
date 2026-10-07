@@ -7,6 +7,7 @@ export default [
   {
     ignores: [
       "dist/**",
+      "dist-vite/**",
       ".astro/**",
       "node_modules/**",
       ".worktrees/**",
