@@ -1,5 +1,6 @@
 ---
 import MainLayout from "../../layouts/MainLayout.astro";
+import TopNav from "../../components/TopNav.astro";
 import { getIncidentsByMonitor, updateIncident } from "../../lib/incidents";
 import { incidentCategoryLabel } from "../../lib/incidentCategories";
 import {
@@ -11,7 +12,7 @@ import {
 const monitorId = Astro.cookies.get("monitor_id")?.value;
 
 if (!monitorId) {
-  return Astro.redirect("/login?redirect=/incidencias");
+  return Astro.redirect("/setup");
 }
 
 // Handle validate action
@@ -53,15 +54,18 @@ function classGroup(i: typeof myIncidents[number]): string {
 <MainLayout title="Incidències">
   <div class="flex-1 flex flex-col min-h-0">
     <header
-      class="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-slate-200 px-4 py-3 flex items-center justify-between shadow-sm"
+      class="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-slate-200 px-4 py-3 flex flex-col gap-3 shadow-sm"
     >
-      <a href="/" class="p-2 -ml-2 text-slate-500 hover:text-slate-800 rounded-full hover:bg-slate-100">
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-6 h-6">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
-        </svg>
-      </a>
-      <h1 class="text-lg font-bold text-slate-900">Incidències</h1>
-      <div class="w-10"></div>
+      <div class="flex items-center justify-between">
+        <a href="/incidencias/notificar" class="p-2 -ml-2 text-slate-500 hover:text-slate-800 rounded-full hover:bg-slate-100">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-6 h-6">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
+          </svg>
+        </a>
+        <h1 class="text-lg font-bold text-slate-900">Incidències</h1>
+        <div class="w-10"></div>
+      </div>
+      <TopNav active="incidencias" />
     </header>
 
     <div class="flex-1 overflow-y-auto px-4 pt-4 pb-6 space-y-6">

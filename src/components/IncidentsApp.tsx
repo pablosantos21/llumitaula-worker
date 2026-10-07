@@ -28,6 +28,7 @@ import {
 } from "../lib/incidentReadStatus";
 import type { Database } from "../types/database";
 import FeedbackToast from "./FeedbackToast";
+import TopNav from "./TopNav";
 
 type Child = Database["public"]["Tables"]["children"]["Row"];
 type SchoolClass = Database["public"]["Tables"]["classes"]["Row"];
@@ -522,37 +523,40 @@ export default function IncidentsApp() {
 
   return (
     <>
-      <header className="sticky top-0 z-40 flex items-center justify-between border-b border-slate-200 bg-white/90 px-4 py-3 shadow-sm backdrop-blur-md">
-        <div className="flex items-center gap-3">
-          {selectedClass && (
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedClassId(null);
-                setNotifyChild(null);
-              }}
-              className="rounded-full bg-slate-100 px-3 py-2 text-sm text-slate-600 hover:bg-slate-200"
-            >
-              ← Volver
-            </button>
-          )}
-          <div>
-            <h1 className="text-lg font-bold leading-none text-slate-900">
-              {selectedClass ? selectedClass.name : "Incidencias"}
-            </h1>
-            <p className="mt-1 text-xs font-medium text-slate-500">
-              {selectedClass
-                ? "Notifica una incidencia por alumno"
-                : "Selecciona una clase para notificar"}
-            </p>
+      <header className="sticky top-0 z-40 flex flex-col gap-3 border-b border-slate-200 bg-white/90 px-4 py-3 shadow-sm backdrop-blur-md">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            {selectedClass && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedClassId(null);
+                  setNotifyChild(null);
+                }}
+                className="rounded-full bg-slate-100 px-3 py-2 text-sm text-slate-600 hover:bg-slate-200"
+              >
+                ← Volver
+              </button>
+            )}
+            <div>
+              <h1 className="text-lg font-bold leading-none text-slate-900">
+                {selectedClass ? selectedClass.name : "Incidencias"}
+              </h1>
+              <p className="mt-1 text-xs font-medium text-slate-500">
+                {selectedClass
+                  ? "Notifica una incidencia por alumno"
+                  : "Selecciona una clase para notificar"}
+              </p>
+            </div>
           </div>
+          <a
+            href="/incidencias"
+            className="rounded-full bg-slate-100 px-3 py-2 text-sm text-slate-600 hover:bg-slate-200"
+          >
+            Historial
+          </a>
         </div>
-        <a
-          href="/incidencias"
-          className="rounded-full bg-slate-100 px-3 py-2 text-sm text-slate-600 hover:bg-slate-200"
-        >
-          Historial
-        </a>
+        <TopNav active="incidencias" />
       </header>
 
       {!selectedClass ? (
