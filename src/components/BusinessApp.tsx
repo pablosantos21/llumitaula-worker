@@ -165,7 +165,7 @@ export default function BusinessApp() {
         supabase
           .from("incidents")
           .select(
-            "id, child_id, created_at, date, description, family_responded_at, family_response, family_seen, monitor_id, monitor_validated, requires_family_signature, reviewed, send_notification",
+            "id, child_id, category, created_at, date, description, family_responded_at, family_response, family_seen, monitor_id, monitor_validated, requires_family_signature, reviewed, send_notification",
           )
           .eq("date", localDateString()),
         supabase
