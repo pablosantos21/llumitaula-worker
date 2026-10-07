@@ -278,8 +278,10 @@ export default function WorkersApp() {
   if (selectedMonitor) {
     return (
       <MonitorPinInput
+        key={selectedMonitor.id}
         monitor={selectedMonitor}
         onBack={() => setSelectedMonitor(null)}
+        onSuccess={() => window.location.assign("/")}
       />
     );
   }
