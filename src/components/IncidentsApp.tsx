@@ -16,6 +16,16 @@ import {
   incidentCategoryLabel,
   isIncidentCategory,
 } from "../lib/incidentCategories";
+import {
+  buildMarkSeenUpdate,
+  groupIncidentsByChild,
+  incidentAudienceLabelFromIndicators,
+  incidentReadState,
+  incidentSeenHourLabel,
+  incidentTargetsFamily,
+  visibleIncidentsForRole,
+  type IncidentViewerRole,
+} from "../lib/incidentReadStatus";
 import type { Database } from "../types/database";
 import FeedbackToast from "./FeedbackToast";
 
@@ -37,6 +47,9 @@ export default function IncidentsApp() {
   const [classes, setClasses] = useState<SchoolClass[]>([]);
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [monitorId, setMonitorId] = useState<string | null>(null);
+  const [userRole, setUserRole] = useState<IncidentViewerRole | null>(null);
+  const [parentChildIds, setParentChildIds] = useState<string[]>([]);
+  const [markingSeen, setMarkingSeen] = useState<Record<string, boolean>>({});
   const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
   const [notifyChild, setNotifyChild] = useState<Child | null>(null);
   const [category, setCategory] = useState("");
@@ -68,17 +81,103 @@ export default function IncidentsApp() {
         return;
       }
 
-      const monitorResult = await supabase
-        .from("monitors")
-        .select("id")
-        .eq("user_id", session.user.id)
-        .maybeSingle();
+      const userResult = await supabase
+        .from("users")
+        .select("role")
+        .eq("id", session.user.id)
+        .single();
       if (!active) return;
-      if (monitorResult.error || !monitorResult.data) {
-        setState("error");
+
+      const role = (userResult.data?.role ?? null) as IncidentViewerRole | null;
+      if (userResult.error || !role) {
+        // Compatibilidad con sesión de monitor sin perfil en users:
+        // intenta resolver como monitor por monitors.user_id.
+        const monitorFallback = await supabase
+          .from("monitors")
+          .select("id")
+          .eq("user_id", session.user.id)
+          .maybeSingle();
+        if (!active) return;
+        if (monitorFallback.error || !monitorFallback.data) {
+          setState("error");
+          return;
+        }
+        setUserRole("monitor");
+        setMonitorId(monitorFallback.data.id);
+      } else {
+        setUserRole(role);
+        if (role === "monitor") {
+          const monitorResult = await supabase
+            .from("monitors")
+            .select("id")
+            .eq("user_id", session.user.id)
+            .maybeSingle();
+          if (!active) return;
+          if (monitorResult.error || !monitorResult.data) {
+            setState("error");
+            return;
+          }
+          setMonitorId(monitorResult.data.id);
+        }
+      }
+
+      const effectiveRole: IncidentViewerRole =
+        (userResult.data?.role as IncidentViewerRole | undefined) ?? "monitor";
+
+      if (effectiveRole === "padre") {
+        const linksResult = await supabase
+          .from("parents_children")
+          .select("child_id")
+          .eq("parent_id", session.user.id);
+        if (!active) return;
+        if (linksResult.error) {
+          setState("error");
+          return;
+        }
+        const ownedIds = (linksResult.data ?? []).map((row) => row.child_id);
+        setParentChildIds(ownedIds);
+        if (ownedIds.length === 0) {
+          setChildren([]);
+          setClasses([]);
+          setIncidents([]);
+          setState("ready");
+          return;
+        }
+        const [childrenResult, classesResult, incidentsResult] =
+          await Promise.all([
+            supabase
+              .from("children")
+              .select("id, first_name, last_name, class_id, created_at")
+              .in("id", ownedIds)
+              .order("last_name"),
+            supabase.from("classes").select("id, name, school_id"),
+            supabase
+              .from("incidents")
+              .select(INCIDENT_SELECT)
+              .eq("date", localDateString())
+              .in("child_id", ownedIds),
+          ]);
+        if (!active) return;
+        if (
+          childrenResult.error ||
+          classesResult.error ||
+          incidentsResult.error
+        ) {
+          setState("error");
+          return;
+        }
+        // Defensa en profundidad: RLS ya filtra a familia, aquí también.
+        const familyOnly = visibleIncidentsForRole(
+          (incidentsResult.data ?? []) as Incident[],
+          "padre",
+          ownedIds,
+        );
+        setChildren(childrenResult.data ?? []);
+        setClasses(classesResult.data ?? []);
+        setIncidents(familyOnly);
+        setState("ready");
         return;
       }
-      setMonitorId(monitorResult.data.id);
 
       const [childrenResult, classesResult, incidentsResult] =
         await Promise.all([
@@ -112,6 +211,53 @@ export default function IncidentsApp() {
       active = false;
     };
   }, []);
+
+  // El cambio a visto llega sin recargar: suscripción en vivo a incidencias.
+  // Informativo, sin bloqueo operativo: solo fusiona el estado entrante.
+  // La familia refiltra por hijos y audiencia para no colar avisos ajenos.
+  useEffect(() => {
+    if (state !== "ready") return;
+    const channel = supabase
+      .channel("incidents-day")
+      .on("postgres_changes", { event: "*", schema: "public", table: "incidents" }, (payload) => {
+        if (payload.eventType === "DELETE" && payload.old) {
+          const oldRow = payload.old as { id?: string };
+          if (!oldRow.id) return;
+          setIncidents((current) =>
+            current.filter((incident) => incident.id !== oldRow.id),
+          );
+          return;
+        }
+        const row = (payload.new ?? null) as Incident | null;
+        if (!row || !row.id) return;
+        if (row.date !== todayStr) return;
+        if (userRole === "padre") {
+          if (!parentChildIds.includes(row.child_id ?? "")) return;
+          if (!incidentTargetsFamily(row)) return;
+        }
+        setIncidents((current) => {
+          const exists = current.some((incident) => incident.id === row.id);
+          if (!exists) {
+            if (userRole === "padre") {
+              const merged = visibleIncidentsForRole(
+                [...current, row],
+                "padre",
+                parentChildIds,
+              );
+              return merged;
+            }
+            return [row, ...current];
+          }
+          return current.map((incident) =>
+            incident.id === row.id ? row : incident,
+          );
+        });
+      })
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [state, todayStr, userRole, parentChildIds]);
 
   useEffect(() => {
     if (!toast) return;
@@ -198,6 +344,89 @@ export default function IncidentsApp() {
     setToast({ message: "Incidència registrada", type: "success" });
   }
 
+  async function markSeen(incident: Incident) {
+    if (markingSeen[incident.id]) return;
+    // Solo la familia confirma cuando se le exige; gesto único sin respuesta.
+    if (!incidentTargetsFamily(incident)) return;
+    setMarkingSeen((current) => ({ ...current, [incident.id]: true }));
+    const nowIso = new Date().toISOString();
+    const update = buildMarkSeenUpdate(nowIso);
+    const result = await supabase
+      .from("incidents")
+      .update(update)
+      .eq("id", incident.id)
+      .select(INCIDENT_SELECT)
+      .single();
+    setMarkingSeen((current) => ({ ...current, [incident.id]: false }));
+    if (result.error || !result.data) {
+      setToast({
+        message: "No se ha podido marcar como visto",
+        type: "error",
+      });
+      return;
+    }
+    const updated = result.data as Incident;
+    setIncidents((current) =>
+      current.map((item) => (item.id === updated.id ? updated : item)),
+    );
+    setToast({ message: "Visto registrado", type: "success" });
+  }
+
+  function renderIncidentHistory(incident: Incident, showAck: boolean) {
+    const read = incidentReadState(incident);
+    const audienceLabel = incidentAudienceLabelFromIndicators(
+      incident.requires_family_signature,
+      incident.send_notification,
+    );
+    const hourLabel = incidentSeenHourLabel(read.seenAt);
+    const needsAck =
+      showAck &&
+      incident.requires_family_signature === true &&
+      incident.family_seen !== true;
+    return (
+      <li
+        key={incident.id}
+        className="rounded-xl border border-slate-100 bg-slate-50 p-3"
+      >
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs font-bold text-slate-800">
+            {incidentCategoryLabel(incident.category)}
+          </span>
+          <span className="text-xs text-slate-500">{audienceLabel}</span>
+        </div>
+        {incident.description ? (
+          <p className="mt-1 text-sm text-slate-700">{incident.description}</p>
+        ) : (
+          <p className="mt-1 text-sm text-slate-400">Sense descripció</p>
+        )}
+        <div className="mt-2 flex items-center justify-between gap-2">
+          {read.status === "visto" ? (
+            <span className="text-xs font-medium text-emerald-700">
+              visto{hourLabel ? ` ${hourLabel}` : ""}
+            </span>
+          ) : (
+            <span className="text-xs font-medium text-amber-700">
+              pendiente
+            </span>
+          )}
+          {needsAck && (
+            <button
+              type="button"
+              aria-label={`Marcar como visto la incidencia de ${incidentCategoryLabel(incident.category)}`}
+              onClick={() => void markSeen(incident)}
+              disabled={markingSeen[incident.id] === true}
+              className="shrink-0 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+            >
+              {markingSeen[incident.id] === true
+                ? "Guardando…"
+                : "Marcar como visto"}
+            </button>
+          )}
+        </div>
+      </li>
+    );
+  }
+
   if (state === "loading")
     return (
       <p className="p-6 text-sm text-slate-500">
@@ -225,6 +454,71 @@ export default function IncidentsApp() {
         No se han podido cargar los datos autorizados.
       </p>
     );
+
+  const isFamily = userRole === "padre";
+  const canNotify = userRole === "monitor" && monitorId != null;
+
+  if (isFamily) {
+    const ownedChildren = children.filter((child) =>
+      parentChildIds.includes(child.id),
+    );
+    const familyIncidents = visibleIncidentsForRole(
+      incidents,
+      "padre",
+      parentChildIds,
+    );
+    const familyByChild = groupIncidentsByChild(familyIncidents);
+    return (
+      <>
+        <header className="sticky top-0 z-40 flex items-center justify-between border-b border-slate-200 bg-white/90 px-4 py-3 shadow-sm backdrop-blur-md">
+          <div>
+            <h1 className="text-lg font-bold leading-none text-slate-900">
+              Incidencias
+            </h1>
+            <p className="mt-1 text-xs font-medium text-slate-500">
+              Avisos de hoy dirigidos a tu familia
+            </p>
+          </div>
+        </header>
+        {ownedChildren.length === 0 ? (
+          <p className="p-6 text-center text-sm text-slate-500">
+            Hoy no hay avisos para tus hijos.
+          </p>
+        ) : (
+          <ul className="flex flex-1 flex-col gap-3 p-4 pb-24">
+            {ownedChildren.map((child) => {
+              const todays = familyByChild.get(child.id) ?? [];
+              return (
+                <li
+                  key={child.id}
+                  className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm"
+                >
+                  <p className="truncate text-sm font-bold text-slate-900">
+                    {`${child.first_name} ${child.last_name}`}
+                  </p>
+                  {todays.length > 0 ? (
+                    <ul
+                      aria-label={`Historial de hoy de ${child.first_name} ${child.last_name}`}
+                      className="mt-3 flex flex-col gap-2"
+                    >
+                      {todays.map((incident) =>
+                        renderIncidentHistory(incident, true),
+                      )}
+                    </ul>
+                  ) : (
+                    <p className="mt-1 text-xs text-slate-500">
+                      Sense incidències avui
+                    </p>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        <FeedbackToast message={toast?.message ?? null} type={toast?.type} />
+      </>
+    );
+  }
 
   return (
     <>
@@ -298,33 +592,49 @@ export default function IncidentsApp() {
             return (
               <li
                 key={child.id}
-                className="flex items-center justify-between gap-3 rounded-2xl border border-slate-100 bg-white p-4 shadow-sm"
+                className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm"
               >
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-bold text-slate-900">
-                    {`${child.first_name} ${child.last_name}`}
-                  </p>
-                  {todays.length > 0 ? (
-                    <p className="mt-1 text-xs font-medium text-emerald-700">
-                      Incidència avui:{" "}
-                      {todays
-                        .map((incident) =>
-                          incidentCategoryLabel(incident.category),
-                        )
-                        .join(", ")}
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-bold text-slate-900">
+                      {`${child.first_name} ${child.last_name}`}
                     </p>
-                  ) : (
-                    <p className="mt-1 text-xs text-slate-500">Sense incidències avui</p>
+                    {todays.length > 0 ? (
+                      <p className="mt-1 text-xs font-medium text-emerald-700">
+                        Incidència avui:{" "}
+                        {todays
+                          .map((incident) =>
+                            incidentCategoryLabel(incident.category),
+                          )
+                          .join(", ")}
+                      </p>
+                    ) : (
+                      <p className="mt-1 text-xs text-slate-500">
+                        Sense incidències avui
+                      </p>
+                    )}
+                  </div>
+                  {canNotify && (
+                    <button
+                      type="button"
+                      aria-label={`Notificar a ${child.first_name} ${child.last_name}`}
+                      onClick={() => openNotify(child)}
+                      className="shrink-0 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700"
+                    >
+                      Notificar
+                    </button>
                   )}
                 </div>
-                <button
-                  type="button"
-                  aria-label={`Notificar a ${child.first_name} ${child.last_name}`}
-                  onClick={() => openNotify(child)}
-                  className="shrink-0 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700"
-                >
-                  Notificar
-                </button>
+                {todays.length > 0 && (
+                  <ul
+                    aria-label={`Historial de hoy de ${child.first_name} ${child.last_name}`}
+                    className="mt-3 flex flex-col gap-2"
+                  >
+                    {todays.map((incident) =>
+                      renderIncidentHistory(incident, false),
+                    )}
+                  </ul>
+                )}
               </li>
             );
           })}

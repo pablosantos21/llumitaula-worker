@@ -260,3 +260,197 @@ test("la vista Clases sigue sin botón de incidencia en la tarjeta", async () =>
   assert.doesNotMatch(businessApp, /Notificar/);
   assert.doesNotMatch(studentCard, /Notificar/);
 });
+
+// --- #40: historial del día con estado visto en página Incidencias ---
+
+test("la familia solo ve avisos dirigidos a familia (firma o sin envío a colegio)", async () => {
+  const {
+    incidentTargetsFamily,
+    filterIncidentsForFamily,
+  } = await import("../src/lib/incidentReadStatus.ts");
+
+  assert.equal(
+    incidentTargetsFamily({
+      requires_family_signature: false,
+      send_notification: true,
+    }),
+    false,
+  );
+  assert.equal(
+    incidentTargetsFamily({
+      requires_family_signature: false,
+      send_notification: false,
+    }),
+    true,
+  );
+  assert.equal(
+    incidentTargetsFamily({
+      requires_family_signature: true,
+      send_notification: false,
+    }),
+    true,
+  );
+  assert.equal(
+    incidentTargetsFamily({
+      requires_family_signature: true,
+      send_notification: true,
+    }),
+    true,
+  );
+
+  const rows = [
+    {
+      id: "a",
+      child_id: "n1",
+      requires_family_signature: false,
+      send_notification: true,
+    },
+    {
+      id: "b",
+      child_id: "n1",
+      requires_family_signature: true,
+      send_notification: true,
+    },
+    {
+      id: "c",
+      child_id: "n2",
+      requires_family_signature: false,
+      send_notification: false,
+    },
+  ];
+  assert.deepEqual(
+    filterIncidentsForFamily(rows).map((r) => r.id),
+    ["b", "c"],
+  );
+});
+
+test("el estado es pendiente sin visto y visto con hora cuando hay marca familiar", async () => {
+  const { incidentReadState } = await import(
+    "../src/lib/incidentReadStatus.ts"
+  );
+
+  assert.deepEqual(incidentReadState({ family_seen: false }), {
+    status: "pendiente",
+    seenAt: null,
+  });
+  assert.deepEqual(incidentReadState({ family_seen: null }), {
+    status: "pendiente",
+    seenAt: null,
+  });
+  assert.deepEqual(
+    incidentReadState({
+      family_seen: true,
+      family_responded_at: "2026-10-07T10:15:00.000Z",
+    }),
+    { status: "visto", seenAt: "2026-10-07T10:15:00.000Z" },
+  );
+});
+
+test("marcar como visto registra el momento sin respuesta obligatoria", async () => {
+  const { buildMarkSeenUpdate, applyMarkSeen } = await import(
+    "../src/lib/incidentReadStatus.ts"
+  );
+
+  const nowIso = "2026-10-07T10:20:00.000Z";
+  const update = buildMarkSeenUpdate(nowIso);
+  assert.equal(update.family_seen, true);
+  assert.equal(update.family_responded_at, nowIso);
+  assert.ok(!("family_response" in update));
+
+  const pending = {
+    id: "x",
+    family_seen: false,
+    family_responded_at: null,
+  };
+  const seen = applyMarkSeen(pending, nowIso);
+  assert.equal(seen.family_seen, true);
+  assert.equal(seen.family_responded_at, nowIso);
+});
+
+test("la visibilidad por rol filtra familia a sus hijos con audiencia familia", async () => {
+  const { visibleIncidentsForRole } = await import(
+    "../src/lib/incidentReadStatus.ts"
+  );
+
+  const rows = [
+    {
+      id: "a",
+      child_id: "n1",
+      requires_family_signature: false,
+      send_notification: true,
+    },
+    {
+      id: "b",
+      child_id: "n1",
+      requires_family_signature: true,
+      send_notification: true,
+    },
+    {
+      id: "c",
+      child_id: "n2",
+      requires_family_signature: true,
+      send_notification: true,
+    },
+  ];
+  assert.deepEqual(
+    visibleIncidentsForRole(rows, "padre", ["n1"]).map((r) => r.id),
+    ["b"],
+  );
+  assert.deepEqual(
+    visibleIncidentsForRole(rows, "monitor", []).map((r) => r.id),
+    ["a", "b", "c"],
+  );
+  assert.deepEqual(
+    visibleIncidentsForRole(rows, "admin", []).map((r) => r.id),
+    ["a", "b", "c"],
+  );
+});
+
+test("la familia lee solo avisos de sus hijos dirigidos a familia (RLS)", async () => {
+  const migrations = await migrationSources();
+  const combined = migrations.map((m) => m.sql).join("\n");
+  assert.match(combined, /incidents_select_parent/);
+  assert.match(combined, /current_user_can_access_child/);
+  assert.match(combined, /requires_family_signature/);
+  assert.match(combined, /send_notification/);
+});
+
+test("la familia marca visto sin respuesta obligatoria (RLS update propio)", async () => {
+  const migrations = await migrationSources();
+  const combined = migrations.map((m) => m.sql).join("\n");
+  assert.match(combined, /incidents_parent_update/);
+  assert.match(combined, /family_seen/);
+  assert.match(combined, /family_responded_at/);
+});
+
+test("la página nueva muestra por alumno historial del día con audiencia y estado", async () => {
+  const app = await source("src/components/IncidentsApp.tsx");
+
+  assert.match(app, /incidentCategoryLabel/);
+  assert.match(app, /description/);
+  assert.match(
+    app,
+    /incidentAudienceLabelFromIndicators|resolveIncidentAudienceFromIndicators|AUDIENCE_LABELS/,
+  );
+  assert.match(app, /pendiente/);
+  assert.match(app, /visto/);
+  assert.match(app, /family_responded_at/);
+});
+
+test("la familia tiene botón único Marcar como visto sin respuesta obligatoria", async () => {
+  const app = await source("src/components/IncidentsApp.tsx");
+
+  assert.match(app, /Marcar como visto/);
+  assert.match(app, /buildMarkSeenUpdate|family_seen/);
+  assert.match(app, /family_responded_at/);
+  assert.match(app, /incidentTargetsFamily|requires_family_signature/);
+  assert.doesNotMatch(app, /window\.location\.reload|location\.reload/);
+});
+
+test("el cambio a visto llega sin recargar ni bloqueo operativo", async () => {
+  const app = await source("src/components/IncidentsApp.tsx");
+
+  assert.match(app, /channel\(|postgres_changes|on\(\s*["']postgres_changes["']/);
+  assert.match(app, /incidentReadState|family_seen/);
+  assert.doesNotMatch(app, /window\.location\.reload|location\.reload/);
+});
