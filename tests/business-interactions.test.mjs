@@ -34,7 +34,10 @@ test("monitor entry screen is the class list and never shows all children at onc
   assert.match(app, /"Clases"/);
   assert.match(app, /selectedClassId[\s\S]*null/);
   assert.match(app, /from\("classes"\)\.select\("id, name, school_id"\)/);
-  assert.doesNotMatch(app, /localStorage/);
+  // #34: el borrador de comida vive en localStorage por
+  // escuela:clase:fecha:tipo; fuera de ese uso no se persiste nada.
+  assert.match(app, /buildMealDraftKey/);
+  assert.match(app, /loadMealDrafts|persistMealDrafts|clearMealDrafts/);
   assert.doesNotMatch(app, /Buscar Alumno|Buscar alumno/);
   assert.doesNotMatch(app, /page === "search"|page !== "search"/);
 });

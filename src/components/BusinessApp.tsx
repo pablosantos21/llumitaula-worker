@@ -27,6 +27,16 @@ import {
   buildVirtualMealList,
   pickDefaultMealTypeId,
 } from "../lib/mealList.ts";
+import {
+  buildMealDraftKey,
+  clearMealDrafts,
+  isMealRowModified,
+  loadMealDrafts,
+  persistMealDrafts,
+  reconcileMealDraftsOnReconfirm,
+  touchMealDraft,
+  type MealDraftMap,
+} from "../lib/mealDraft.ts";
 import { MEAL_STATUS_OPTIONS, type MealStatus } from "../lib/mealRecord";
 import type { Database } from "../types/database";
 import FeedbackToast from "./FeedbackToast";
@@ -74,9 +84,7 @@ export default function BusinessApp() {
   const [confirmingAttendance, setConfirmingAttendance] = useState(false);
   const [confirmEmptyChecked, setConfirmEmptyChecked] = useState(false);
   const [attendanceListOpen, setAttendanceListOpen] = useState(true);
-  const [mealDrafts, setMealDrafts] = useState<
-    Record<string, { status: MealStatus; notes: string }>
-  >({});
+  const [mealDrafts, setMealDrafts] = useState<MealDraftMap>({});
   const [savingMealList, setSavingMealList] = useState(false);
   const [confirmedByName, setConfirmedByName] = useState<string | null>(null);
   const [isOffline, setIsOffline] = useState(
@@ -268,6 +276,34 @@ export default function BusinessApp() {
     () => pickDefaultMealTypeId(mealTypes),
     [mealTypes],
   );
+  const mealDraftKey = useMemo(
+    () =>
+      selectedClass?.school_id && selectedClassId
+        ? buildMealDraftKey({
+            schoolId: selectedClass.school_id,
+            classId: selectedClassId,
+            date: attendanceDate,
+            mealTypeId: defaultMealTypeId,
+          })
+        : "",
+    [selectedClass, selectedClassId, attendanceDate, defaultMealTypeId],
+  );
+  // Precarga del borrador al entrar a la clase (misma escuela:clase:fecha:tipo
+  // conserva lo tocado aunque se salga y se vuelva a entrar). Cambiar de
+  // día/clase carga otra clave y deja la memoria limpia para ese contexto.
+  useEffect(() => {
+    let active = true;
+    async function preloadMealDrafts() {
+      if (!mealDraftKey || typeof localStorage === "undefined") return;
+      await Promise.resolve();
+      if (!active) return;
+      setMealDrafts(loadMealDrafts(localStorage, mealDraftKey));
+    }
+    void preloadMealDrafts();
+    return () => {
+      active = false;
+    };
+  }, [mealDraftKey]);
   const virtualMealList = useMemo(() => {
     const savedForDay = records
       .filter(
@@ -381,6 +417,39 @@ export default function BusinessApp() {
     setSelectedChild(null);
   }
 
+  // Purga en servidor solo de Todo puro sin notas para ausentes tras
+  // re-confirmar (#34). Un valor editado nunca se sobrescribe ni se borra:
+  // el predicado vive también en la query por si los datos en memoria
+  // estuvieran desfasados.
+  async function purgeAbsentPureTodoMeals(
+    childIds: readonly string[],
+    mealTypeId: string,
+    purgeDate: string,
+  ) {
+    if (childIds.length === 0 || !mealTypeId) return;
+    const purgeResult = await supabase
+      .from("meal_records")
+      .delete()
+      .in("child_id", [...childIds])
+      .eq("recorded_date", purgeDate)
+      .eq("meal_type_id", mealTypeId)
+      .eq("status", "todo")
+      .is("notes", null);
+    if (!purgeResult.error) {
+      const purged = new Set(childIds);
+      setRecords((current) =>
+        current.filter(
+          (record) =>
+            !(
+              purged.has(record.child_id) &&
+              record.recorded_date === purgeDate &&
+              record.meal_type_id === mealTypeId
+            ),
+        ),
+      );
+    }
+  }
+
   async function confirmAttendance() {
     if (!selectedClass || confirmingAttendance) return;
     if (!canConfirm) {
@@ -443,7 +512,42 @@ export default function BusinessApp() {
     setAttendanceListOpen(false);
     // Confirmar solo escribe daily_attendance: la lista de comida queda en
     // Todo virtual por cada presente, sin crear filas en meal_records.
-    setMealDrafts({});
+    // Re-confirmación: el nuevo presente consigue Todo virtual, el ausente
+    // sale del borrador y su fila de servidor solo se borra si era Todo puro
+    // sin notas; nunca se sobrescribe un valor editado y sin cambios no se
+    // toca nada.
+    const nextPresentIds = confirmedPresentChildIds(result.data ?? rows);
+    const prevPresentIds = confirmedPresentChildIds(attendanceRows);
+    const savedForReconfirm = records
+      .filter(
+        (record) =>
+          record.recorded_date === attendanceDate &&
+          (defaultMealTypeId
+            ? record.meal_type_id === defaultMealTypeId
+            : true),
+      )
+      .map((record) => ({
+        child_id: record.child_id,
+        status: record.status,
+        notes: record.notes,
+      }));
+    const reconciled = reconcileMealDraftsOnReconfirm({
+      prevPresentIds,
+      nextPresentIds,
+      drafts: mealDrafts,
+      savedRecords: savedForReconfirm,
+    });
+    setMealDrafts(reconciled.drafts);
+    if (mealDraftKey && typeof localStorage !== "undefined") {
+      persistMealDrafts(localStorage, mealDraftKey, reconciled.drafts);
+    }
+    if (reconciled.purgeChildIds.length > 0 && defaultMealTypeId) {
+      await purgeAbsentPureTodoMeals(
+        reconciled.purgeChildIds,
+        defaultMealTypeId,
+        attendanceDate,
+      );
+    }
     const confirmerName = await resolveConfirmedByName(session.user.id);
     setConfirmedByName(confirmerName);
     setToast({
@@ -607,13 +711,26 @@ export default function BusinessApp() {
     payload: { status: MealStatus; notes: string | null },
   ) {
     // Edición por modal por alumno (valor + notas): solo ajusta el borrador
-    // virtual de esa fila. Salir sin guardar no escribe en el servidor.
+    // virtual de esa fila. Guardar aunque deje Todo pero con notas cuenta
+    // como modificado; revertir a Todo sin notas limpia la marca.
+    // Salir sin guardar no escribe en el servidor.
     if (rejectUnrecordable(child)) return;
-    const next = {
-      status: payload.status,
-      notes: payload.notes ?? "",
-    };
-    setMealDrafts((current) => ({ ...current, [child.id]: next }));
+    const nextStatus = payload.status;
+    const nextNotes = payload.notes ?? "";
+    setMealDrafts((current) => {
+      const next = touchMealDraft(
+        current,
+        child.id,
+        { status: nextStatus, notes: nextNotes },
+        new Date().toISOString(),
+      );
+      // El borrador se conserva en el dispositivo; la subida solo ocurre con
+      // la pulsación explícita de Guardar lista de comida.
+      if (mealDraftKey && typeof localStorage !== "undefined") {
+        persistMealDrafts(localStorage, mealDraftKey, next);
+      }
+      return next;
+    });
     setSelectedChild(null);
   }
 
@@ -622,7 +739,17 @@ export default function BusinessApp() {
     // recorded_date = attendance_date y meal_type = primer meal_type activo
     // por sort_order. Sin ese tipo no hay escrituras ni relleno retroactivo.
     // La lista confirmada vacía no crea ningún meal_record.
+    // La subida solo ocurre con la pulsación explícita de este botón: sin
+    // conexión queda bloqueado con aviso y el borrador se conserva.
     if (savingMealList) return;
+    if (isOffline) {
+      setToast({
+        message:
+          "Sin conexión: el borrador se conserva en este dispositivo. Vuelve a pulsar Guardar lista de comida con conexión.",
+        type: "error",
+      });
+      return;
+    }
     if (!attendanceConfirmed || presentChildIds.length === 0) return;
     if (!defaultMealTypeId) {
       setToast({
@@ -685,6 +812,9 @@ export default function BusinessApp() {
     // Re-guardar el mismo día sobrescribe libremente: limpiamos el borrador
     // para que la lista muestre lo guardado.
     setMealDrafts({});
+    if (mealDraftKey && typeof localStorage !== "undefined") {
+      clearMealDrafts(localStorage, mealDraftKey);
+    }
     setToast({ message: "Lista de comida guardada", type: "success" });
   }
 
@@ -930,6 +1060,15 @@ export default function BusinessApp() {
                     Sin tipo de comida activo: no se puede guardar la lista.
                   </p>
                 )}
+                {isOffline && (
+                  <p
+                    role="alert"
+                    className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800"
+                  >
+                    Sin conexión: el borrador se conserva en este dispositivo.
+                    La subida es manual con Guardar lista de comida.
+                  </p>
+                )}
                 <ul
                   aria-label="Lista de comida"
                   className="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3"
@@ -940,6 +1079,23 @@ export default function BusinessApp() {
                     );
                     const label = mealStatusLabelByValue.get(
                       entry?.status ?? "todo",
+                    );
+                    const savedForChild = records.find(
+                      (record) =>
+                        record.child_id === child.id &&
+                        record.recorded_date === attendanceDate &&
+                        (defaultMealTypeId
+                          ? record.meal_type_id === defaultMealTypeId
+                          : true),
+                    );
+                    const modified = isMealRowModified(
+                      mealDrafts[child.id],
+                      savedForChild
+                        ? {
+                            status: savedForChild.status,
+                            notes: savedForChild.notes,
+                          }
+                        : undefined,
                     );
                     return (
                       <li
@@ -958,7 +1114,21 @@ export default function BusinessApp() {
                           )}
                           onClick={() => setSelectedChild(child)}
                         />
-                        <p className="px-1 text-sm text-slate-700">
+                        <p
+                          className={`flex items-center gap-2 px-1 text-sm ${modified ? "text-slate-700" : "text-slate-400 opacity-70"}`}
+                        >
+                          {modified && (
+                            <span
+                              aria-label="Modificado"
+                              className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-800"
+                            >
+                              <span
+                                aria-hidden="true"
+                                className="h-1.5 w-1.5 rounded-full bg-emerald-600"
+                              />
+                              Modificado
+                            </span>
+                          )}
                           Valor elegido:{" "}
                           <span className="font-bold text-slate-900">
                             {label}
