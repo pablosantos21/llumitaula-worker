@@ -28,18 +28,18 @@ test("after confirming, only present pupils admit valuation", async () => {
   assert.match(app, /Ausente hoy|ausente/i);
 });
 
-test("record and incident saves refuse unconfirmed or absent pupils", async () => {
+test("meal saves refuse unconfirmed or absent pupils", async () => {
   const app = await source("src/components/BusinessApp.tsx");
 
-  const saveStatus = app.match(/async function saveStatus\([\s\S]*?\n {2}\}/);
-  assert.ok(saveStatus, "expected a saveStatus function");
-  assert.match(saveStatus[0], /rejectUnrecordable/);
+  const modalSave = app.match(/function handleMealModalSave\([\s\S]*?\n {2}\}/);
+  assert.ok(modalSave, "expected a handleMealModalSave function");
+  assert.match(modalSave[0], /rejectUnrecordable/);
 
-  const saveIncident = app.match(
-    /async function saveIncident\([\s\S]*?\n {2}\}/,
+  const saveMealList = app.match(
+    /async function saveMealList\(\) \{[\s\S]*?\n {2}\}/,
   );
-  assert.ok(saveIncident, "expected a saveIncident function");
-  assert.match(saveIncident[0], /rejectUnrecordable/);
+  assert.ok(saveMealList, "expected a saveMealList function");
+  assert.match(saveMealList[0], /canRecordMeal/);
 
   const guard = app.match(/function rejectUnrecordable\([\s\S]*?\n {2}\}/);
   assert.ok(guard, "expected a rejectUnrecordable guard");

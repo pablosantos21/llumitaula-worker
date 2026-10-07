@@ -37,6 +37,9 @@ if (Astro.request.method === "POST") {
 }
 
 const todayStr = new Date().toISOString().split("T")[0];
+// Used in the markup `<script type="application/json">` below, which the Astro
+// ESLint processor doesn't track as a usage.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const studentsJson = JSON.stringify(
   classesWithChildren.flatMap((c) =>
     c.children.map((ch) => ({ id: ch.id, name: ch.name, classGroup: c.className })),

@@ -64,15 +64,10 @@ flowchart TD
 
     subgraph meals["3. Registro de comida"]
         classGrid --> card["Seleccionar alumno"]
-        card --> modal["MealRecordModal\ntipo de comida, estado y notas"]
-        modal --> incidentDecision{"¿Hay incidencia y el rol\nes admin o monitor?"}
-        incidentDecision -->|No| upsert["upsert meal_records\nclave: alumno + comida + fecha local"]
-        incidentDecision -->|Sí| incident["RPC record_meal_incident\noperación atómica"]
+        card --> modal["MealRecordModal\nprimero, segundo, postre y notas"]
+        modal --> upsert["upsert meal_records\nclave: alumno + tipo implícito + fecha local"]
         upsert --> rls1["RLS + triggers\nvalidan usuario, centro y fecha"]
-        incident --> rls2["RPC valida rol, centro, fechas\ny crea meal_records + incidents"]
         rls1 --> state["Actualiza estado local\ny muestra FeedbackToast"]
-        rls2 --> reload["Recarga incidents del día"]
-        reload --> state
     end
 
     signout["Salir"] --> logout["supabase.auth.signOut()"]
@@ -89,7 +84,6 @@ flowchart TD
     auth -.-> authdb
     queries -.-> db
     upsert -.-> db
-    incident -.-> db
     rls1 -.-> security
     rls2 -.-> security
 
@@ -104,9 +98,9 @@ flowchart TD
     classDef backend fill:#fff7ed,stroke:#ea580c,color:#7c2d12;
     classDef decision fill:#fefce8,stroke:#ca8a04,color:#713f12;
     class setup,workers,setupError,workersError,pin,select public;
-    class layout,guard,business,classGrid,modal,upsert,incident,state protected;
+    class layout,guard,business,classGrid,modal,upsert,state protected;
     class authdb,db,security backend;
-    class route,linked,validate,fresh,localCheck,role,incidentDecision decision;
+    class route,linked,validate,fresh,localCheck,role decision;
 ```
 
 ## Puntos clave
@@ -120,9 +114,12 @@ flowchart TD
   configuración y el contexto público del centro; no sustituye a Supabase ni a
   sus políticas RLS. La clase seleccionada solo existe en estado interno de la
   pantalla y no se persiste.
-- Un registro normal usa `meal_records.upsert`. Una incidencia para `admin` o
-  `monitor` usa `record_meal_incident`, que guarda comida e incidencia en una
-  sola operación.
+- Un registro usa `meal_records.upsert` con valoración por plato (primero,
+  segundo, postre) más notas. La columna legacy `status` guarda el peor plato
+  para compatibilidad con el historial.
+- El tipo de comida (`meal_types`) ya no se expone en la UI: hay una sola
+  comida al día y el tipo activo se usa solo como clave implícita del upsert.
+  El registro no crea incidencias.
 - El service worker solo cachea recursos de la interfaz. No intercepta
   peticiones a Supabase, por lo que las vistas protegidas y las escrituras
   requieren conexión.

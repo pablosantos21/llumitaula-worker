@@ -24,6 +24,8 @@
     "test:attendance-confirm": "node --test tests/attendance-confirm.test.mjs",
     "test:attendance-gating": "node --test tests/attendance-gating.test.mjs",
     "test:attendance-blocking": "node --test tests/attendance-blocking.test.mjs",
+    "test:meal-list": "node --test tests/meal-list.test.mjs",
+    "test:meal-draft": "node --test tests/meal-draft.test.mjs",
     "test:pwa:unit": "node --test tests/pwa.test.mjs",
     "test:pwa:contract": "pnpm run build && pnpm run test:public-data && pnpm run test:pwa:unit",
     "test:pwa": "pnpm run test:pwa:contract",

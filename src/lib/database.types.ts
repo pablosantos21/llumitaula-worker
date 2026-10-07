@@ -270,7 +270,7 @@ export type Database = {
       custom_access_token_hook: { Args: { event: Json }; Returns: Json }
     }
     Enums: {
-      meal_status: "bien" | "regular" | "mal"
+      meal_status: "todo" | "casi_todo" | "casi_nada" | "nada"
       user_role: "admin" | "monitor" | "padre"
     }
     CompositeTypes: {

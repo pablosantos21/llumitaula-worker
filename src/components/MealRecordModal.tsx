@@ -2,6 +2,10 @@ import { useEffect, useRef, useState } from "react";
 
 import {
   buildMealRecordPayload,
+  MEAL_COURSES,
+  MEAL_NOTES_MAX_LENGTH,
+  MEAL_STATUS_OPTIONS,
+  type MealCourses,
   type MealRecordFormValues,
   type MealStatus,
 } from "../lib/mealRecord";
@@ -14,31 +18,34 @@ interface Child {
 
 interface MealRecordModalProps {
   child: Child | null;
-  mealTypes: { id: string; name: string }[];
-  canManageIncidents: boolean;
+  initialCourses?: MealCourses;
+  initialNotes?: string;
   onClose: () => void;
   onSave: (payload: ReturnType<typeof buildMealRecordPayload>) => void;
 }
 
-const initialValues: Omit<MealRecordFormValues, "childId"> = {
-  mealTypeId: "",
-  status: "bien",
-  notes: "",
-  noFirst: false,
-  noSecond: false,
-  noGarnish: false,
-  noDessert: false,
-  incidentComments: "",
-};
+function baseInitialValues(
+  initialCourses?: MealCourses,
+  initialNotes?: string,
+): Omit<MealRecordFormValues, "childId"> {
+  return {
+    firstCourse: initialCourses?.firstCourse ?? "todo",
+    secondCourse: initialCourses?.secondCourse ?? "todo",
+    dessert: initialCourses?.dessert ?? "todo",
+    notes: initialNotes ?? "",
+  };
+}
 
 export default function MealRecordModal({
   child,
-  mealTypes,
-  canManageIncidents,
+  initialCourses,
+  initialNotes,
   onClose,
   onSave,
 }: MealRecordModalProps) {
-  const [values, setValues] = useState(initialValues);
+  const [values, setValues] = useState(() =>
+    baseInitialValues(initialCourses, initialNotes),
+  );
   const firstFieldRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -49,22 +56,19 @@ export default function MealRecordModal({
   if (!child) return null;
   const activeChild = child;
 
-  const update = <K extends keyof typeof values>(
-    key: K,
-    value: (typeof values)[K],
-  ) => setValues((current) => ({ ...current, [key]: value }));
+  const toggleCourse = (key: keyof MealCourses, value: MealStatus) =>
+    setValues((current) => ({
+      ...current,
+      [key]: current[key] === value ? "todo" : value,
+    }));
 
   function submit(event: { preventDefault: () => void }) {
     event.preventDefault();
     onSave(
-      buildMealRecordPayload(
-        {
-          childId: activeChild.id,
-          ...values,
-          mealTypeId: values.mealTypeId || mealTypes[0]?.id || "",
-        },
-        canManageIncidents,
-      ),
+      buildMealRecordPayload({
+        childId: activeChild.id,
+        ...values,
+      }),
     );
     onClose();
   }
@@ -104,44 +108,71 @@ export default function MealRecordModal({
         </div>
 
         <form className="space-y-6" onSubmit={submit}>
-          <label className="block text-sm font-semibold text-slate-700">
-            Tipo de comida
-            <select
-              value={values.mealTypeId || mealTypes[0]?.id || ""}
-              className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 outline-none focus:border-emerald-500"
-              required
-              disabled={mealTypes.length === 0}
-              onChange={(event) => update("mealTypeId", event.target.value)}
-            >
-              {mealTypes.map((mealType) => (
-                <option key={mealType.id} value={mealType.id}>
-                  {mealType.name}
-                </option>
-              ))}
-            </select>
-          </label>
           <fieldset>
             <legend className="mb-3 text-sm font-bold text-slate-700">
               ¿Cómo ha comido?
             </legend>
-            <div className="grid grid-cols-3 gap-2">
-              {(["bien", "regular", "mal"] as MealStatus[]).map((status) => (
-                <label
-                  key={status}
-                  className={`cursor-pointer rounded-xl border-2 p-3 text-center text-sm font-semibold capitalize transition-colors ${values.status === status ? "border-emerald-500 bg-emerald-50 text-emerald-700" : "border-slate-100 text-slate-500"}`}
-                >
-                  <input
-                    ref={status === "bien" ? firstFieldRef : undefined}
-                    className="sr-only"
-                    type="radio"
-                    name="status"
-                    value={status}
-                    checked={values.status === status}
-                    onChange={() => update("status", status)}
-                  />
-                  {status}
-                </label>
-              ))}
+            <div className="overflow-x-auto rounded-xl border border-slate-200">
+              <table className="w-full border-collapse text-center text-sm">
+                <thead>
+                  <tr className="bg-slate-50">
+                    <th
+                      scope="col"
+                      className="px-2 py-2 text-left font-bold text-slate-700"
+                    >
+                      Plato
+                    </th>
+                    {MEAL_STATUS_OPTIONS.map(
+                      ({ value, label: statusLabel }) => (
+                        <th
+                          key={value}
+                          scope="col"
+                          className="whitespace-nowrap px-2 py-2 font-semibold text-slate-500"
+                        >
+                          {statusLabel}
+                        </th>
+                      ),
+                    )}
+                  </tr>
+                </thead>
+                <tbody>
+                  {MEAL_COURSES.map(({ key, label }, courseIndex) => (
+                    <tr key={key} className="border-t border-slate-100">
+                      <th
+                        scope="row"
+                        className="px-2 py-2 text-left font-bold text-slate-700"
+                      >
+                        {label}
+                      </th>
+                      {MEAL_STATUS_OPTIONS.map(
+                        ({ value, label: statusLabel }) => {
+                          const selected = values[key] === value;
+                          return (
+                            <td
+                              key={value}
+                              className={`px-2 py-2 transition-colors ${selected ? "bg-emerald-50" : ""}`}
+                            >
+                              <input
+                                ref={
+                                  courseIndex === 0 && value === "todo"
+                                    ? firstFieldRef
+                                    : undefined
+                                }
+                                type="checkbox"
+                                value={value}
+                                checked={selected}
+                                onChange={() => toggleCourse(key, value)}
+                                aria-label={`${label}: ${statusLabel}`}
+                                className="h-5 w-5 cursor-pointer accent-emerald-600"
+                              />
+                            </td>
+                          );
+                        },
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </fieldset>
 
@@ -149,50 +180,18 @@ export default function MealRecordModal({
             Notas de la comida
             <textarea
               value={values.notes}
-              onChange={(event) => update("notes", event.target.value)}
+              onChange={(event) =>
+                setValues((current) => ({
+                  ...current,
+                  notes: event.target.value,
+                }))
+              }
               placeholder="Añade una nota si hace falta..."
               rows={2}
+              maxLength={MEAL_NOTES_MAX_LENGTH}
               className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 font-normal outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
             />
           </label>
-
-          {canManageIncidents && (
-            <fieldset className="space-y-2">
-              <legend className="mb-3 text-sm font-bold text-slate-700">
-                Incidencias
-              </legend>
-              {(
-                [
-                  ["noFirst", "No ha comido primero"],
-                  ["noSecond", "No ha comido segundo"],
-                  ["noGarnish", "No ha comido guarnición"],
-                  ["noDessert", "No ha comido postre"],
-                ] as const
-              ).map(([key, label]) => (
-                <label
-                  key={key}
-                  className="flex cursor-pointer items-center justify-between rounded-xl border border-slate-100 p-3 text-sm text-slate-700 has-[:checked]:border-red-200 has-[:checked]:bg-red-50"
-                >
-                  {label}
-                  <input
-                    type="checkbox"
-                    checked={values[key]}
-                    onChange={(event) => update(key, event.target.checked)}
-                    className="h-5 w-5 rounded border-slate-300 text-red-600 focus:ring-red-500"
-                  />
-                </label>
-              ))}
-              <textarea
-                value={values.incidentComments}
-                onChange={(event) =>
-                  update("incidentComments", event.target.value)
-                }
-                placeholder="Comentarios de la incidencia..."
-                rows={2}
-                className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-red-400 focus:ring-2 focus:ring-red-400/20"
-              />
-            </fieldset>
-          )}
 
           <button
             type="submit"
