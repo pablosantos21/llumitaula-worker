@@ -57,18 +57,19 @@ test("mismo día monitor y admin editan; días pasados solo admin", () => {
   assert.equal(canEditMealForDate(null, today, today), false);
 });
 
-// --- contrato de datos: policy SELECT para padre ---
+// --- contrato de datos: policy SELECT para familia (rol remoto 'parent') ---
 
-test("existe policy SELECT para padre sobre meal_records vía parents_children", async () => {
+test("existe policy SELECT para familia sobre meal_records con gate de capability", async () => {
   const migrations = await migrationSources();
   const match = migrations.find(({ sql }) =>
-    /meal_records_select_parent/i.test(sql),
+    /CREATE POLICY meal_records_select_parent/i.test(sql),
   );
-  assert.ok(match, "expected a migration covering padre meal_records access");
+  assert.ok(match, "expected a migration covering parent meal_records access");
   assert.match(match.sql, /CREATE POLICY meal_records_select_parent/);
   assert.match(match.sql, /FOR SELECT/);
-  assert.match(match.sql, /'padre'/);
-  assert.match(match.sql, /parents_children|current_user_can_access_child/);
+  assert.match(match.sql, /'parent'/);
+  assert.match(match.sql, /current_user_can_access_child/);
+  assert.match(match.sql, /family_meal_records_enabled_for_child/);
 });
 
 // --- contrato de datos: ventana en RLS para monitor ---
