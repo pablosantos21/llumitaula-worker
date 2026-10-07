@@ -89,6 +89,8 @@ test("crear exige elegir una de las 6 categorías, sin texto libre solo", async 
   assert.match(nova, /required/);
   assert.match(nova, /INCIDENT_CATEGORIES/);
   assert.match(nova, /isIncidentCategory/);
+  assert.match(nova, /formError|role="alert"/);
+  assert.match(nova, /categoria/i);
 });
 
 test("la página Incidencias muestra la categoría del día por alumno", async () => {
