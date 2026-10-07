@@ -37,7 +37,7 @@ const ATTENDANCE_SELECT =
   "child_id, class_id, school_id, attendance_date, present, confirmed_by, confirmed_at";
 
 function statusFor(records: MealRecord[], incidents: Incident[]): CardStatus {
-  return records.some((record) => record.status !== "bien") ||
+  return records.some((record) => record.status !== "todo") ||
     incidents.length > 0
     ? "incident"
     : "all_good";
@@ -453,10 +453,10 @@ export default function BusinessApp() {
     setSelectedChild(null);
     setToast({
       message:
-        status === "bien"
-          ? 'Marcado como "Ha comido bien"'
+        status === "todo"
+          ? 'Marcado como "Todo"'
           : "Estado de comida guardado",
-      type: status === "bien" ? "success" : "warning",
+      type: status === "todo" ? "success" : "warning",
     });
   }
 

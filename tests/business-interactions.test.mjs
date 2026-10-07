@@ -193,7 +193,7 @@ test("incidents override a good meal in the visual card status", async () => {
     app,
     /function statusFor\(records: MealRecord\[], incidents: Incident\[\]\)/,
   );
-  assert.match(app, /record\.status !== "bien"[\s\S]*incidents\.length > 0/);
+  assert.match(app, /record\.status !== "todo"[\s\S]*incidents\.length > 0/);
   assert.match(
     app,
     /statusFor\([\s\S]*?records\.filter\([\s\S]*?incidents\.filter\(/,

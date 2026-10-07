@@ -1,4 +1,16 @@
-export type MealStatus = "bien" | "regular" | "mal";
+export type MealStatus = "todo" | "casi_todo" | "casi_nada" | "nada";
+
+export const MEAL_NOTES_MAX_LENGTH = 280;
+
+export const MEAL_STATUS_OPTIONS: readonly {
+  value: MealStatus;
+  label: string;
+}[] = [
+  { value: "todo", label: "Todo" },
+  { value: "casi_todo", label: "Casi todo" },
+  { value: "casi_nada", label: "Casi nada" },
+  { value: "nada", label: "Nada" },
+];
 
 export interface MealRecordFormValues {
   childId: string;

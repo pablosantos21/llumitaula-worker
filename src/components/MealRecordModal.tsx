@@ -2,8 +2,9 @@ import { useEffect, useRef, useState } from "react";
 
 import {
   buildMealRecordPayload,
+  MEAL_NOTES_MAX_LENGTH,
+  MEAL_STATUS_OPTIONS,
   type MealRecordFormValues,
-  type MealStatus,
 } from "../lib/mealRecord";
 
 interface Child {
@@ -22,7 +23,7 @@ interface MealRecordModalProps {
 
 const initialValues: Omit<MealRecordFormValues, "childId"> = {
   mealTypeId: "",
-  status: "bien",
+  status: "todo",
   notes: "",
   noFirst: false,
   noSecond: false,
@@ -124,22 +125,22 @@ export default function MealRecordModal({
             <legend className="mb-3 text-sm font-bold text-slate-700">
               ¿Cómo ha comido?
             </legend>
-            <div className="grid grid-cols-3 gap-2">
-              {(["bien", "regular", "mal"] as MealStatus[]).map((status) => (
+            <div className="grid grid-cols-2 gap-2">
+              {MEAL_STATUS_OPTIONS.map(({ value, label }) => (
                 <label
-                  key={status}
-                  className={`cursor-pointer rounded-xl border-2 p-3 text-center text-sm font-semibold capitalize transition-colors ${values.status === status ? "border-emerald-500 bg-emerald-50 text-emerald-700" : "border-slate-100 text-slate-500"}`}
+                  key={value}
+                  className={`cursor-pointer rounded-xl border-2 p-3 text-center text-sm font-semibold transition-colors ${values.status === value ? "border-emerald-500 bg-emerald-50 text-emerald-700" : "border-slate-100 text-slate-500"}`}
                 >
                   <input
-                    ref={status === "bien" ? firstFieldRef : undefined}
+                    ref={value === "todo" ? firstFieldRef : undefined}
                     className="sr-only"
                     type="radio"
                     name="status"
-                    value={status}
-                    checked={values.status === status}
-                    onChange={() => update("status", status)}
+                    value={value}
+                    checked={values.status === value}
+                    onChange={() => update("status", value)}
                   />
-                  {status}
+                  {label}
                 </label>
               ))}
             </div>
@@ -152,6 +153,7 @@ export default function MealRecordModal({
               onChange={(event) => update("notes", event.target.value)}
               placeholder="Añade una nota si hace falta..."
               rows={2}
+              maxLength={MEAL_NOTES_MAX_LENGTH}
               className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 font-normal outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
             />
           </label>

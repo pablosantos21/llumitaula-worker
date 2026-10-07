@@ -775,7 +775,7 @@ export type Database = {
       }
     }
     Enums: {
-      meal_status: "bien" | "regular" | "mal"
+      meal_status: "todo" | "casi_todo" | "casi_nada" | "nada"
       user_role: "admin" | "monitor" | "padre"
     }
     CompositeTypes: {
@@ -907,7 +907,7 @@ export const Constants = {
   },
   public: {
     Enums: {
-      meal_status: ["bien", "regular", "mal"],
+      meal_status: ["todo", "casi_todo", "casi_nada", "nada"],
       user_role: ["admin", "monitor", "padre"],
     },
   },

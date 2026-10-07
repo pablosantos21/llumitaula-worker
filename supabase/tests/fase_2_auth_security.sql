@@ -170,7 +170,7 @@ select throws_ok(
        '00000000-0000-4000-8000-000000000204'::uuid,
        '00000000-0000-4000-8000-000000000611'::uuid,
        '00000000-0000-4000-8000-000000000113'::uuid,
-       current_date - 1, now(), 'bien')$$,
+       current_date - 1, now(), 'todo')$$,
   '42501',
   null,
   'service_role cannot write meal records through the API'
@@ -269,7 +269,7 @@ select lives_ok(
        '00000000-0000-4000-8000-000000000204'::uuid,
        '00000000-0000-4000-8000-000000000611'::uuid,
        '00000000-0000-4000-8000-000000000113'::uuid,
-       current_date - 1, now(), 'bien')$$,
+       current_date - 1, now(), 'todo')$$,
   'postgres seed context may insert without auth.uid'
 );
 
@@ -338,7 +338,7 @@ select lives_ok(
   $$select * from public.record_meal_incident(
     '00000000-0000-4000-8000-000000000201'::uuid,
     '00000000-0000-4000-8000-000000000611'::uuid,
-    'bien'::public.meal_status,
+    'todo'::public.meal_status,
     'RPC meal note', current_date, now(),
     '00000000-0000-4000-8000-000000000021'::uuid,
     'RPC combined incident'
@@ -364,7 +364,7 @@ select lives_ok(
   $$select * from public.record_meal_incident(
     '00000000-0000-4000-8000-000000000202'::uuid,
     '00000000-0000-4000-8000-000000000611'::uuid,
-    'bien'::public.meal_status,
+    'todo'::public.meal_status,
     'local browser date', current_date + 1, now(),
     '00000000-0000-4000-8000-000000000021'::uuid,
     'Local date incident'
@@ -375,7 +375,7 @@ select throws_ok(
   $$select * from public.record_meal_incident(
     '00000000-0000-4000-8000-000000000203'::uuid,
     '00000000-0000-4000-8000-000000000611'::uuid,
-    'mal'::public.meal_status,
+    'nada'::public.meal_status,
     'future date must fail', current_date + 2, now(),
     '00000000-0000-4000-8000-000000000021'::uuid,
     'Invalid future incident'
@@ -398,7 +398,7 @@ select throws_ok(
   $$select * from public.record_meal_incident(
     '00000000-0000-4000-8000-000000000201'::uuid,
     '00000000-0000-4000-8000-000000000611'::uuid,
-    'mal'::public.meal_status,
+    'nada'::public.meal_status,
     'padre must fail', current_date, now(),
     '00000000-0000-4000-8000-000000000021'::uuid,
     'Padre RPC incident'
@@ -413,7 +413,7 @@ select throws_ok(
   $$select * from public.record_meal_incident(
     '00000000-0000-4000-8000-000000000201'::uuid,
     '00000000-0000-4000-8000-000000000611'::uuid,
-    'mal'::public.meal_status,
+    'nada'::public.meal_status,
     'anon must fail', current_date, now(),
     '00000000-0000-4000-8000-000000000021'::uuid,
     'Anon RPC incident'
@@ -436,7 +436,7 @@ select throws_ok(
   $$select * from public.record_meal_incident(
     '00000000-0000-4000-8000-000000000225'::uuid,
     '00000000-0000-4000-8000-000000000612'::uuid,
-    'mal'::public.meal_status,
+    'nada'::public.meal_status,
     'cross tenant must fail', current_date, now(),
     '00000000-0000-4000-8000-000000000021'::uuid,
     'Cross tenant incident'
@@ -472,7 +472,7 @@ select throws_ok(
        '00000000-0000-4000-8000-000000000225'::uuid,
        '00000000-0000-4000-8000-000000000612'::uuid,
        '00000000-0000-4000-8000-000000000121'::uuid,
-       'bien')$sql$)$$,
+       'todo')$sql$)$$,
   '23514',
   null,
   'monitor A cannot insert a meal record for school B'
@@ -485,7 +485,7 @@ select lives_ok(
        '00000000-0000-4000-8000-000000000204'::uuid,
        '00000000-0000-4000-8000-000000000611'::uuid,
        '00000000-0000-4000-8000-000000000121'::uuid,
-       'bien')$sql$)$$,
+       'todo')$sql$)$$,
   'monitor A can insert a meal record for a child in their school'
 );
 
@@ -507,7 +507,7 @@ select throws_ok(
        '00000000-0000-4000-8000-000000000113'::uuid,
        date '2026-08-20',
        timestamp '2026-08-20 10:00:00+00',
-       'bien')$$,
+       'todo')$$,
   '23505',
   null,
   'a child and meal type cannot have two records on one date'
@@ -522,7 +522,7 @@ select lives_ok(
        '00000000-0000-4000-8000-000000000113'::uuid,
        date '2026-08-21',
        timestamp '2026-08-21 10:00:00+00',
-       'bien')$$,
+       'todo')$$,
   'a child and meal type may have records on different dates'
 );
 select throws_ok(
@@ -552,7 +552,7 @@ select throws_ok(
        '00000000-0000-4000-8000-000000000611'::uuid,
        '00000000-0000-4000-8000-000000000121'::uuid,
        now() + interval '1 hour',
-       'bien')$$,
+       'todo')$$,
   '23514',
   null,
   'monitor A cannot insert a future meal record'
@@ -568,7 +568,7 @@ select throws_ok(
        '00000000-0000-4000-8000-000000000121'::uuid,
        current_date,
        now() + interval '1 hour',
-       'bien')$$,
+       'todo')$$,
   '23514',
   null,
   'meal record timestamp cannot be in the future'
@@ -592,7 +592,7 @@ select lives_ok(
        '00000000-0000-4000-8000-000000000121'::uuid,
        (now() at time zone 'UTC')::date + 1,
        now(),
-       'bien')$$,
+       'todo')$$,
   'monitor A can insert a valid browser-local date ahead of UTC date'
 );
 select throws_ok(
@@ -605,7 +605,7 @@ select throws_ok(
        '00000000-0000-4000-8000-000000000121'::uuid,
        (now() at time zone 'UTC')::date + 2,
        now(),
-       'bien')$$,
+       'todo')$$,
   '23514',
   null,
   'monitor A cannot insert a date outside the local date envelope'
@@ -699,7 +699,7 @@ select throws_ok(
        '00000000-0000-4000-8000-000000000204'::uuid,
        '00000000-0000-4000-8000-000000000611'::uuid,
        '00000000-0000-4000-8000-000000000121'::uuid,
-       current_date - 1, now(), 'bien')$$,
+       current_date - 1, now(), 'todo')$$,
   '42501',
   null,
   'admin cannot insert a meal record for another author'
@@ -722,7 +722,7 @@ select throws_ok(
        '00000000-0000-4000-8000-000000000205'::uuid,
        '00000000-0000-4000-8000-000000000611'::uuid,
        '00000000-0000-4000-8000-000000000113'::uuid,
-       current_date - 1, now(), 'bien')$$,
+       current_date - 1, now(), 'todo')$$,
   '42501',
   null,
   'monitor cannot insert a meal record for another author'
@@ -765,7 +765,7 @@ select throws_ok(
 );
 select lives_ok(
   $$update public.meal_records
-       set status = 'mal', notes = 'monitor may edit content'
+       set status = 'nada', notes = 'monitor may edit content'
      where id = '00000000-0000-4000-8000-000000000611'::uuid$$,
   'monitor can edit status and notes of their own record'
 );
@@ -793,7 +793,7 @@ select throws_ok(
        '00000000-0000-4000-8000-000000000204'::uuid,
        '00000000-0000-4000-8000-000000000611'::uuid,
        '00000000-0000-4000-8000-000000000113'::uuid,
-       current_date - 1, now(), 'bien')$$,
+       current_date - 1, now(), 'todo')$$,
   '42501',
   null,
   'service_role cannot spoof the insert author'
@@ -806,7 +806,7 @@ select throws_ok(
        '00000000-0000-4000-8000-000000000204'::uuid,
        '00000000-0000-4000-8000-000000000611'::uuid,
        '00000000-0000-4000-8000-000000000121'::uuid,
-       current_date - 1, now(), 'bien')$$,
+       current_date - 1, now(), 'todo')$$,
   '42501',
   null,
   'service_role cannot insert a meal record for another author'
