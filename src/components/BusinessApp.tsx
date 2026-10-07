@@ -10,6 +10,14 @@ import {
   toggleDailyPresence,
   type DailyListItem,
 } from "../lib/daily-list";
+import {
+  applyConfirmedAttendance,
+  buildAttendanceRows,
+  canConfirmAttendance,
+  getAttendanceConfirmationMeta,
+  summarizeAttendance,
+  type AttendanceRow,
+} from "../lib/attendance";
 import type { MealStatus } from "../lib/mealRecord";
 import type { Database } from "../types/database";
 import FeedbackToast from "./FeedbackToast";
@@ -21,6 +29,9 @@ type MealRecord = Database["public"]["Tables"]["meal_records"]["Row"];
 type MealType = Database["public"]["Tables"]["meal_types"]["Row"];
 type Incident = Database["public"]["Tables"]["incidents"]["Row"];
 type CardStatus = "all_good" | "incident";
+
+const ATTENDANCE_SELECT =
+  "child_id, class_id, school_id, attendance_date, present, confirmed_by, confirmed_at";
 
 function statusFor(records: MealRecord[], incidents: Incident[]): CardStatus {
   return records.some((record) => record.status !== "bien") ||
@@ -50,6 +61,9 @@ export default function BusinessApp() {
   const [presenceOverride, setPresenceOverride] = useState<
     Record<string, boolean>
   >({});
+  const [attendanceRows, setAttendanceRows] = useState<AttendanceRow[]>([]);
+  const [confirmingAttendance, setConfirmingAttendance] = useState(false);
+  const [confirmEmptyChecked, setConfirmEmptyChecked] = useState(false);
   const [isOffline, setIsOffline] = useState(
     typeof navigator !== "undefined" ? !navigator.onLine : false,
   );
@@ -200,18 +214,122 @@ export default function BusinessApp() {
     () => buildInitialDailyList(visibleChildren, lunchByChild, today),
     [visibleChildren, lunchByChild, today],
   );
-  const dailyList: DailyListItem[] = useMemo(
-    () =>
-      initialDailyList.map((item) => ({
-        ...item,
-        present: presenceOverride[item.childId] ?? item.present,
-      })),
-    [initialDailyList, presenceOverride],
+  const dailyList: DailyListItem[] = useMemo(() => {
+    const savedApplied =
+      attendanceRows.length > 0
+        ? applyConfirmedAttendance(initialDailyList, attendanceRows)
+        : initialDailyList;
+    return savedApplied.map((item) => ({
+      ...item,
+      present: presenceOverride[item.childId] ?? item.present,
+    }));
+  }, [initialDailyList, presenceOverride, attendanceRows]);
+  const attendanceSummary = useMemo(
+    () => summarizeAttendance(attendanceRows),
+    [attendanceRows],
   );
+  const attendanceMeta = useMemo(
+    () => getAttendanceConfirmationMeta(attendanceRows),
+    [attendanceRows],
+  );
+  const canConfirm = canConfirmAttendance(userRole);
+
+  useEffect(() => {
+    if (!selectedClassId || state !== "ready") return;
+    const classId = selectedClassId;
+    let active = true;
+
+    async function loadAttendance() {
+      const result = await supabase
+        .from("daily_attendance")
+        .select(ATTENDANCE_SELECT)
+        .eq("class_id", classId)
+        .eq("attendance_date", localDateString());
+      if (!active) return;
+      if (!result.error) {
+        setAttendanceRows(result.data ?? []);
+      }
+    }
+
+    void loadAttendance();
+    return () => {
+      active = false;
+    };
+  }, [selectedClassId, state]);
 
   function handleSelectClass(classId: string | null) {
     setSelectedClassId(classId);
     setPresenceOverride({});
+    setAttendanceRows([]);
+    setConfirmEmptyChecked(false);
+  }
+
+  async function confirmAttendance() {
+    if (!selectedClass || confirmingAttendance) return;
+    if (!canConfirm) {
+      setToast({
+        message: "Solo el monitor o la administración puede confirmar la lista",
+        type: "error",
+      });
+      return;
+    }
+    const schoolId = selectedClass.school_id;
+    if (!schoolId) {
+      setToast({
+        message: "No se ha podido confirmar la lista",
+        type: "error",
+      });
+      return;
+    }
+    if (dailyList.length === 0) return;
+    const presentCount = dailyList.filter((item) => item.present).length;
+    if (presentCount === 0 && !confirmEmptyChecked) {
+      setToast({
+        message: "Marca la casilla para confirmar la lista vacía",
+        type: "error",
+      });
+      return;
+    }
+    const { data: sessionData } = await supabase.auth.getSession();
+    const session = sessionData.session;
+    if (!session) {
+      setToast({
+        message: "No se ha podido confirmar la lista",
+        type: "error",
+      });
+      return;
+    }
+    setConfirmingAttendance(true);
+    const rows = buildAttendanceRows({
+      dailyList,
+      classId: selectedClass.id,
+      schoolId,
+      attendanceDate: localDateString(),
+      confirmedBy: session.user.id,
+      confirmedAt: new Date().toISOString(),
+    });
+    const result = await supabase
+      .from("daily_attendance")
+      .upsert(rows, { onConflict: "child_id,attendance_date" })
+      .select(ATTENDANCE_SELECT);
+    setConfirmingAttendance(false);
+    if (result.error) {
+      setToast({
+        message: "No se ha podido confirmar la lista",
+        type: "error",
+      });
+      return;
+    }
+    setAttendanceRows(result.data ?? rows);
+    setPresenceOverride({});
+    setConfirmEmptyChecked(false);
+    setToast({
+      message:
+        presentCount === 0
+          ? "Lista confirmada sin presentes"
+          : "Lista confirmada",
+      type: "success",
+    });
   }
 
   async function saveStatus(
@@ -482,6 +600,49 @@ export default function BusinessApp() {
                 </li>
               ))}
             </ul>
+            {attendanceSummary.status !== "never-passed" && attendanceMeta && (
+              <p className="mt-3 rounded-xl bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+                {attendanceSummary.status === "confirmed-empty"
+                  ? "Lista confirmada vacía"
+                  : "Lista confirmada"}
+                {` · ${attendanceSummary.presentCount} presentes · ${new Date(attendanceMeta.confirmedAt).toLocaleTimeString()}`}
+              </p>
+            )}
+            {presentCount === 0 && (
+              <label className="mt-3 flex items-start gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={confirmEmptyChecked}
+                  onChange={(event) =>
+                    setConfirmEmptyChecked(event.target.checked)
+                  }
+                  aria-label="Confirmo que hoy no viene nadie: lista vacía"
+                />
+                <span>Confirmo que hoy no viene nadie (lista vacía)</span>
+              </label>
+            )}
+            {!canConfirm && (
+              <p className="mt-3 text-sm text-slate-500">
+                Solo el monitor o la administración puede confirmar la lista.
+              </p>
+            )}
+            <button
+              type="button"
+              onClick={() => void confirmAttendance()}
+              disabled={
+                !canConfirm ||
+                confirmingAttendance ||
+                isOffline ||
+                (presentCount === 0 && !confirmEmptyChecked)
+              }
+              className="mt-3 w-full rounded-xl bg-emerald-600 px-5 py-3 font-medium text-white disabled:opacity-50"
+            >
+              {confirmingAttendance
+                ? "Confirmando…"
+                : attendanceSummary.status === "never-passed"
+                  ? "Confirmar lista"
+                  : "Re-confirmar lista"}
+            </button>
           </section>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
             {visibleChildren.map((child) => (
