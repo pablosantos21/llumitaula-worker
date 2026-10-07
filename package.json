@@ -36,6 +36,7 @@
     "test:pwa": "pnpm run test:pwa:contract",
     "test:device-setup": "node --test tests/device-setup.test.mjs",
     "test:workers-pin": "node --test tests/workers-pin.test.mjs",
+    "test:classes-route": "node --test tests/classes-route.test.mjs",
     "test:public-data": "node scripts/check-public-build.mjs",
     "format": "prettier . --write",
     "format:check": "prettier . --check"
