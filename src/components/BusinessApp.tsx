@@ -34,13 +34,15 @@ import {
   loadMealDrafts,
   persistMealDrafts,
   reconcileMealDraftsOnReconfirm,
+  savedCourses,
   touchMealDraft,
   type MealDraftMap,
 } from "../lib/mealDraft.ts";
 import {
   canEditMealForDate,
   mealStatusVisual,
-  type MealStatus,
+  overallMealStatus,
+  type MealCourses,
 } from "../lib/mealRecord";
 import type { Database } from "../types/database";
 import FeedbackToast from "./FeedbackToast";
@@ -57,10 +59,16 @@ const ATTENDANCE_SELECT =
   "child_id, class_id, school_id, attendance_date, present, confirmed_by, confirmed_at";
 
 function statusFor(records: MealRecord[], incidents: Incident[]): CardStatus {
-  return records.some((record) => record.status !== "todo") ||
-    incidents.length > 0
-    ? "incident"
-    : "all_good";
+  const badMeal = records.some((record) => {
+    const courses = savedCourses({
+      status: record.status,
+      first_course: record.first_course,
+      second_course: record.second_course,
+      dessert: record.dessert,
+    });
+    return overallMealStatus(courses) !== "todo";
+  });
+  return badMeal || incidents.length > 0 ? "incident" : "all_good";
 }
 
 function EmptyState({ title, message }: { title: string; message: string }) {
@@ -97,7 +105,6 @@ export default function BusinessApp() {
   const [userRole, setUserRole] = useState<
     Database["public"]["Enums"]["user_role"] | null
   >(null);
-  const [monitorId, setMonitorId] = useState<string | null>(null);
   const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
   const [selectedChild, setSelectedChild] = useState<Child | null>(null);
   const [toast, setToast] = useState<{
@@ -152,7 +159,7 @@ export default function BusinessApp() {
         supabase
           .from("meal_records")
           .select(
-            "id, child_id, meal_type_id, notes, recorded_date, recorded_at, recorded_by, status",
+            "id, child_id, meal_type_id, notes, recorded_date, recorded_at, recorded_by, status, first_course, second_course, dessert",
           )
           .eq("recorded_date", localDateString()),
         supabase
@@ -200,17 +207,6 @@ export default function BusinessApp() {
       }
       setLunchByChild(lunchMap);
       setUserRole(userResult.data.role);
-
-      if (userResult.data.role === "monitor") {
-        const { data: monitorResult } = await supabase
-          .from("monitors")
-          .select("id")
-          .eq("user_id", session.user.id)
-          .single();
-        if (active && monitorResult) {
-          setMonitorId(monitorResult.id);
-        }
-      }
 
       setState("ready");
     }
@@ -320,6 +316,9 @@ export default function BusinessApp() {
       .map((record) => ({
         child_id: record.child_id,
         status: record.status,
+        first_course: record.first_course,
+        second_course: record.second_course,
+        dessert: record.dessert,
         notes: record.notes,
       }));
     const base = buildVirtualMealList(presentChildIds, savedForDay);
@@ -332,11 +331,7 @@ export default function BusinessApp() {
   // Ventana de edición (#35): mismo día monitor|admin editan libremente;
   // días pasados el monitor queda en solo lectura y el admin rectifica.
   const todayStr = localDateString();
-  const canEditMeals = canEditMealForDate(
-    userRole,
-    attendanceDate,
-    todayStr,
-  );
+  const canEditMeals = canEditMealForDate(userRole, attendanceDate, todayStr);
   const isPastMealDay = attendanceDate < todayStr;
 
   function rejectUneditableMeal(): boolean {
@@ -452,6 +447,9 @@ export default function BusinessApp() {
       .eq("recorded_date", purgeDate)
       .eq("meal_type_id", mealTypeId)
       .eq("status", "todo")
+      .eq("first_course", "todo")
+      .eq("second_course", "todo")
+      .eq("dessert", "todo")
       .is("notes", null);
     if (!purgeResult.error) {
       const purged = new Set(childIds);
@@ -547,6 +545,9 @@ export default function BusinessApp() {
       .map((record) => ({
         child_id: record.child_id,
         status: record.status,
+        first_course: record.first_course,
+        second_course: record.second_course,
+        dessert: record.dessert,
         notes: record.notes,
       }));
     const reconciled = reconcileMealDraftsOnReconfirm({
@@ -577,172 +578,34 @@ export default function BusinessApp() {
     });
   }
 
-  // Registro individual inmediato (vía #32): superseded por la lista
-  // virtual y el guardado conjunto de #33. Se conserva para el contrato
-  // existente (tests de gating/incidencias) y como vía de reintento puntual.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  async function saveStatus(
-    child: Child,
-    mealTypeId: string,
-    status: Database["public"]["Enums"]["meal_status"],
-    notes: string,
-  ) {
-    if (rejectUnrecordable(child)) return;
-    const { data: sessionData } = await supabase.auth.getSession();
-    const session = sessionData.session;
-    if (!session || !mealTypeId) {
-      setToast({ message: "No se ha podido guardar el estado", type: "error" });
-      return;
-    }
-
-    // recorded_by references public.users(id): always the authenticated
-    // user, for every role. The DB trigger and RLS enforce this.
-    const recordedBy = session.user.id;
-
-    const date = localDateString();
-    const result = await supabase
-      .from("meal_records")
-      .upsert(
-        {
-          child_id: child.id,
-          meal_type_id: mealTypeId,
-          recorded_date: date,
-          recorded_by: recordedBy,
-          status,
-          notes,
-          recorded_at: new Date().toISOString(),
-        },
-        { onConflict: "child_id,meal_type_id,recorded_date" },
-      )
-      .select()
-      .single();
-    if (result.error) {
-      setToast({ message: "No se ha podido guardar el estado", type: "error" });
-      return;
-    }
-    const saved = result.data;
-    setRecords((current) => [
-      ...current.filter((record) => record.id !== saved.id),
-      saved,
-    ]);
-    setSelectedChild(null);
-    setToast({
-      message:
-        status === "todo" ? 'Marcado como "Todo"' : "Estado de comida guardado",
-      type: status === "todo" ? "success" : "warning",
-    });
-  }
-
-  // Incidencia atómica individual (vía #32): conservada para el contrato
-  // existente; el guardado conjunto de #33 hace upsert simple sin incidencias.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  async function saveIncident(
-    child: Child,
-    details: {
-      mealTypeId: string;
-      status: MealStatus;
-      notes: string;
-      noFirst: boolean;
-      noSecond: boolean;
-      noGarnish: boolean;
-      noDessert: boolean;
-      comments: string;
-    },
-  ) {
-    const { data: sessionData } = await supabase.auth.getSession();
-    const session = sessionData.session;
-    if (!session || !canManageIncidents || !details.mealTypeId) {
-      setToast({
-        message: "No se puede registrar la incidencia",
-        type: "error",
-      });
-      return;
-    }
-
-    const activeMonitorId = monitorId;
-    // Igual que el registro ordinario: solo presentes confirmados.
-    if (rejectUnrecordable(child)) return;
-    const date = localDateString();
-    const cleanComments = details.comments
-      .replace(/\p{Cc}/gu, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-    const description = [
-      `No ha comido primero: ${details.noFirst ? "sí" : "no"}`,
-      `No ha comido segundo: ${details.noSecond ? "sí" : "no"}`,
-      `No ha comido guarnición: ${details.noGarnish ? "sí" : "no"}`,
-      `No ha comido postre: ${details.noDessert ? "sí" : "no"}`,
-      `Comentarios: ${cleanComments || "sin comentarios"}`,
-    ].join("; ");
-    if (!activeMonitorId) {
-      setToast({
-        message: "No se han podido cargar los datos de la incidencia",
-        type: "error",
-      });
-      return;
-    }
-
-    const mealResult = await supabase.rpc("record_meal_incident", {
-      p_child_id: child.id,
-      p_description: description,
-      p_meal_type_id: details.mealTypeId,
-      p_monitor_id: activeMonitorId,
-      p_notes: details.notes,
-      p_recorded_at: new Date().toISOString(),
-      p_recorded_date: date,
-      p_status: details.status,
-    });
-    if (mealResult.error) {
-      setToast({
-        message: "No se han podido guardar la comida ni la incidencia",
-        type: "error",
-      });
-      return;
-    }
-
-    const incidentsResult = await supabase
-      .from("incidents")
-      .select(
-        "id, child_id, created_at, date, description, family_responded_at, family_response, family_seen, monitor_id, monitor_validated, requires_family_signature, reviewed, send_notification",
-      )
-      .eq("date", date);
-    if (incidentsResult.error) {
-      setToast({
-        message:
-          "Incidencia guardada, pero no se ha podido actualizar su estado",
-        type: "error",
-      });
-      return;
-    }
-    setRecords((current) => [
-      ...current.filter((record) => record.id !== mealResult.data.id),
-      mealResult.data,
-    ]);
-    setIncidents(incidentsResult.data ?? []);
-
-    setSelectedChild(null);
-    setToast({ message: "Incidencia registrada", type: "warning" });
-  }
-
   function handleMealModalSave(
     child: Child,
-    payload: { status: MealStatus; notes: string | null },
+    payload: {
+      firstCourse: MealCourses["firstCourse"];
+      secondCourse: MealCourses["secondCourse"];
+      dessert: MealCourses["dessert"];
+      notes: string | null;
+    },
   ) {
-    // Edición por modal por alumno (valor + notas en el mismo modal): solo
-    // ajusta el borrador virtual de esa fila. Guardar aunque deje Todo pero
-    // con notas cuenta como modificado; revertir a Todo sin notas limpia la
-    // marca. Salir sin guardar no escribe en el servidor.
+    // Edición por modal por alumno (platos + notas en el mismo modal): solo
+    // ajusta el borrador virtual de esa fila. Guardar aunque deje Todo en los
+    // tres platos pero con notas cuenta como modificado; revertir a Todo sin
+    // notas limpia la marca. Salir sin guardar no escribe en el servidor.
     // Ventana (#35): días pasados el monitor es solo lectura y el admin
     // rectifica valor/notas libremente.
     if (rejectUneditableMeal()) return;
     if (rejectUnrecordable(child)) return;
-    const nextStatus = payload.status;
     const nextNotes = payload.notes ?? "";
     setMealDrafts((current) => {
       const next = touchMealDraft(
         current,
         child.id,
-        { status: nextStatus, notes: nextNotes },
+        {
+          firstCourse: payload.firstCourse,
+          secondCourse: payload.secondCourse,
+          dessert: payload.dessert,
+          notes: nextNotes,
+        },
         new Date().toISOString(),
       );
       // El borrador se conserva en el dispositivo; la subida solo ocurre con
@@ -757,8 +620,9 @@ export default function BusinessApp() {
 
   async function saveMealList() {
     // Guardado conjunto: upsert de todos los presentes con
-    // recorded_date = attendance_date y meal_type = primer meal_type activo
-    // por sort_order. Sin ese tipo no hay escrituras ni relleno retroactivo.
+    // recorded_date = attendance_date y el tipo de comida implícito (primer
+    // meal_type activo; la UI ya no expone selector, hay una sola comida al
+    // día). Sin ese tipo no hay escrituras ni relleno retroactivo.
     // La lista confirmada vacía no crea ningún meal_record.
     // La subida solo ocurre con la pulsación explícita de este botón: sin
     // conexión queda bloqueado con aviso y el borrador se conserva.
@@ -777,7 +641,7 @@ export default function BusinessApp() {
     if (!attendanceConfirmed || presentChildIds.length === 0) return;
     if (!defaultMealTypeId) {
       setToast({
-        message: "Sin tipo de comida activo: no se puede guardar la lista",
+        message: "No se puede guardar la lista: falta la comida del día",
         type: "error",
       });
       return;
@@ -815,7 +679,7 @@ export default function BusinessApp() {
       .from("meal_records")
       .upsert(rows, { onConflict: "child_id,meal_type_id,recorded_date" })
       .select(
-        "id, child_id, meal_type_id, notes, recorded_date, recorded_at, recorded_by, status",
+        "id, child_id, meal_type_id, notes, recorded_date, recorded_at, recorded_by, status, first_course, second_course, dessert",
       );
     setSavingMealList(false);
     if (result.error) {
@@ -863,8 +727,6 @@ export default function BusinessApp() {
         </a>
       </section>
     );
-
-  const canManageIncidents = userRole === "admin" || userRole === "monitor";
 
   function handleTogglePresence(childId: string) {
     // Ajuste solo local: nunca escribe en la pauta habitual ni persiste.
@@ -1072,16 +934,17 @@ export default function BusinessApp() {
             ) : (
               <>
                 <p className="mt-2 text-xs text-slate-500">
-                  Lista de comida con Todo pre-seleccionado virtual por cada
-                  presente, sin escribir aún en el servidor. Abre cada alumno
-                  para ajustar excepciones y pulsa Guardar lista de comida.
+                  Lista de comida con Todo pre-seleccionado en cada plato por
+                  cada presente, sin escribir aún en el servidor. Abre cada
+                  alumno para ajustar excepciones y pulsa Guardar lista de
+                  comida.
                 </p>
                 {!defaultMealTypeId && (
                   <p
                     role="alert"
                     className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800"
                   >
-                    Sin tipo de comida activo: no se puede guardar la lista.
+                    No se puede guardar la lista: falta la comida del día.
                   </p>
                 )}
                 {isOffline && (
@@ -1099,7 +962,7 @@ export default function BusinessApp() {
                     className="mt-2 rounded-xl bg-slate-100 px-3 py-2 text-sm text-slate-700"
                   >
                     {canEditMeals
-                      ? "Rectificación de un día pasado: la administración puede cambiar valor/notas libremente."
+                      ? "Rectificación de un día pasado: la administración puede cambiar platos y notas libremente."
                       : "Solo lectura: los días pasados solo los rectifica la administración."}
                   </p>
                 )}
@@ -1111,8 +974,21 @@ export default function BusinessApp() {
                     const entry = virtualMealList.find(
                       (item) => item.childId === child.id,
                     );
-                    const visual = mealStatusVisual(entry?.status ?? "todo");
-                    const label = visual.label;
+                    const courses: MealCourses = {
+                      firstCourse: entry?.firstCourse ?? "todo",
+                      secondCourse: entry?.secondCourse ?? "todo",
+                      dessert: entry?.dessert ?? "todo",
+                    };
+                    const courseVisuals = (
+                      [
+                        ["Primero", courses.firstCourse],
+                        ["Segundo", courses.secondCourse],
+                        ["Postre", courses.dessert],
+                      ] as const
+                    ).map(([courseLabel, courseStatus]) => ({
+                      courseLabel,
+                      ...mealStatusVisual(courseStatus),
+                    }));
                     const savedForChild = records.find(
                       (record) =>
                         record.child_id === child.id &&
@@ -1126,6 +1002,9 @@ export default function BusinessApp() {
                       savedForChild
                         ? {
                             status: savedForChild.status,
+                            first_course: savedForChild.first_course,
+                            second_course: savedForChild.second_course,
+                            dessert: savedForChild.dessert,
                             notes: savedForChild.notes,
                           }
                         : undefined,
@@ -1150,11 +1029,7 @@ export default function BusinessApp() {
                             setSelectedChild(child);
                           }}
                         />
-                        <p className="flex items-center gap-2 px-1 text-sm text-slate-700">
-                          <span
-                            aria-hidden="true"
-                            className={`h-2.5 w-2.5 shrink-0 rounded-full ${visual.dotClass}`}
-                          />
+                        <div className="flex flex-wrap items-center gap-2 px-1 text-sm text-slate-700">
                           {modified && (
                             <span
                               aria-label="Modificado"
@@ -1167,12 +1042,27 @@ export default function BusinessApp() {
                               Modificado
                             </span>
                           )}
-                          Valor elegido:{" "}
-                          <span className={`font-bold ${visual.textClass}`}>
-                            {label}
-                          </span>
-                          {entry?.notes ? ` · ${entry.notes}` : ""}
-                        </p>
+                          {courseVisuals.map((course) => (
+                            <span
+                              key={course.courseLabel}
+                              className="inline-flex items-center gap-1.5"
+                            >
+                              <span
+                                aria-hidden="true"
+                                className={`h-2.5 w-2.5 shrink-0 rounded-full ${course.dotClass}`}
+                              />
+                              {course.courseLabel}:{" "}
+                              <span className={`font-bold ${course.textClass}`}>
+                                {course.label}
+                              </span>
+                            </span>
+                          ))}
+                          {entry?.notes ? (
+                            <span className="w-full truncate text-slate-500">
+                              {entry.notes}
+                            </span>
+                          ) : null}
+                        </div>
                         <button
                           type="button"
                           aria-label={`Ajustar comida de ${child.first_name} ${child.last_name}`}
@@ -1315,13 +1205,18 @@ export default function BusinessApp() {
       <MealRecordModal
         key={selectedChild?.id ?? "closed"}
         child={selectedChild}
-        mealTypes={mealTypes}
-        canManageIncidents={canManageIncidents}
-        initialStatus={
+        initialCourses={
           selectedChild
-            ? (virtualMealList.find(
-                (entry) => entry.childId === selectedChild.id,
-              )?.status ?? "todo")
+            ? (() => {
+                const entry = virtualMealList.find(
+                  (item) => item.childId === selectedChild.id,
+                );
+                return {
+                  firstCourse: entry?.firstCourse ?? "todo",
+                  secondCourse: entry?.secondCourse ?? "todo",
+                  dessert: entry?.dessert ?? "todo",
+                } as const;
+              })()
             : undefined
         }
         initialNotes={
@@ -1334,11 +1229,13 @@ export default function BusinessApp() {
         onClose={() => setSelectedChild(null)}
         onSave={(payload) => {
           // La edición por modal solo ajusta el borrador virtual de la fila
-          // (valor + notas); el guardado conjunto persiste a todos los
+          // (platos + notas); el guardado conjunto persiste a todos los
           // presentes de golpe con upsert simple, sin incidencias.
           if (!selectedChild) return;
           handleMealModalSave(selectedChild, {
-            status: payload.status,
+            firstCourse: payload.firstCourse,
+            secondCourse: payload.secondCourse,
+            dessert: payload.dessert,
             notes: payload.notes ?? "",
           });
         }}

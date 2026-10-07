@@ -12,6 +12,48 @@ export const MEAL_STATUS_OPTIONS: readonly {
   { value: "nada", label: "Nada" },
 ];
 
+export interface MealCourses {
+  firstCourse: MealStatus;
+  secondCourse: MealStatus;
+  dessert: MealStatus;
+}
+
+export const MEAL_COURSES: readonly {
+  key: keyof MealCourses;
+  label: string;
+}[] = [
+  { key: "firstCourse", label: "Primero" },
+  { key: "secondCourse", label: "Segundo" },
+  { key: "dessert", label: "Postre" },
+];
+
+const MEAL_STATUS_RANK: Record<MealStatus, number> = {
+  todo: 0,
+  casi_todo: 1,
+  casi_nada: 2,
+  nada: 3,
+};
+
+/**
+ * Valoración global derivada: el peor de los tres platos. Conserva la
+ * regla histórica de la tarjeta (todo en todo = bien, cualquier otra
+ * cosa = incidencia) y es lo que se escribe en la columna legacy
+ * meal_records.status.
+ */
+export function overallMealStatus(courses: MealCourses): MealStatus {
+  let worst: MealStatus = "todo";
+  for (const course of [
+    courses.firstCourse,
+    courses.secondCourse,
+    courses.dessert,
+  ] as const) {
+    if (MEAL_STATUS_RANK[course] > MEAL_STATUS_RANK[worst]) {
+      worst = course;
+    }
+  }
+  return worst;
+}
+
 export interface MealStatusVisual {
   label: string;
   dotClass: string;
@@ -30,8 +72,7 @@ export const MEAL_STATUS_VISUAL: Record<MealStatus, MealStatusVisual> = {
     label: "Todo",
     dotClass: "bg-emerald-600",
     textClass: "text-emerald-700",
-    pillClass:
-      "border-emerald-100 bg-emerald-50 text-emerald-700",
+    pillClass: "border-emerald-100 bg-emerald-50 text-emerald-700",
   },
   casi_todo: {
     label: "Casi todo",
@@ -79,44 +120,19 @@ export function canEditMealForDate(
 
 export interface MealRecordFormValues {
   childId: string;
-  mealTypeId: string;
-  status: MealStatus;
+  firstCourse: MealStatus;
+  secondCourse: MealStatus;
+  dessert: MealStatus;
   notes: string;
-  noFirst: boolean;
-  noSecond: boolean;
-  noGarnish: boolean;
-  noDessert: boolean;
-  incidentComments: string;
 }
 
-export function buildMealRecordPayload(
-  values: MealRecordFormValues,
-  canManageIncidents: boolean,
-) {
-  const payload = {
-    childId: values.childId,
-    mealTypeId: values.mealTypeId,
-    status: values.status,
-    notes: values.notes.trim().slice(0, MEAL_NOTES_MAX_LENGTH) || null,
-  };
-
-  const hasIncident =
-    values.noFirst ||
-    values.noSecond ||
-    values.noGarnish ||
-    values.noDessert ||
-    values.incidentComments.trim().length > 0;
-
-  if (!canManageIncidents || !hasIncident) return payload;
-
+export function buildMealRecordPayload(values: MealRecordFormValues) {
   return {
-    ...payload,
-    incident: {
-      noFirst: values.noFirst,
-      noSecond: values.noSecond,
-      noGarnish: values.noGarnish,
-      noDessert: values.noDessert,
-      comments: values.incidentComments.trim() || null,
-    },
+    childId: values.childId,
+    firstCourse: values.firstCourse,
+    secondCourse: values.secondCourse,
+    dessert: values.dessert,
+    status: overallMealStatus(values),
+    notes: values.notes.trim().slice(0, MEAL_NOTES_MAX_LENGTH) || null,
   };
 }

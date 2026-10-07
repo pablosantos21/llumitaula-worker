@@ -355,14 +355,14 @@ begin
   if exists (
     select 1 from public.meal_records mr
     join (values
-       ('00000000-0000-4000-8000-000000000621'::uuid, '00000000-0000-4000-8000-000000000225'::uuid, '00000000-0000-4000-8000-000000000612'::uuid, '00000000-0000-4000-8000-000000000115'::uuid, date '2026-08-20', timestamp '2026-08-20 10:00:00+00', 'todo'::public.meal_status, 'School B record'),
-        ('00000000-0000-4000-8000-000000000622'::uuid, '00000000-0000-4000-8000-000000000201'::uuid, '00000000-0000-4000-8000-000000000611'::uuid, '00000000-0000-4000-8000-000000000113'::uuid, date '2026-08-20', timestamp '2026-08-20 10:00:00+00', 'casi_todo'::public.meal_status, 'Admin review'),
-        ('00000000-0000-4000-8000-000000000625'::uuid, '00000000-0000-4000-8000-000000000201'::uuid, '00000000-0000-4000-8000-000000000611'::uuid, '00000000-0000-4000-8000-000000000113'::uuid, date '2026-01-01', timestamp '2026-01-01 10:00:00+00', 'todo'::public.meal_status, 'Historical meal record'),
-       ('00000000-0000-4000-8000-000000000623'::uuid, '00000000-0000-4000-8000-000000000202'::uuid, '00000000-0000-4000-8000-000000000611'::uuid, '00000000-0000-4000-8000-000000000113'::uuid, date '2026-01-01', timestamp '2026-01-01 10:00:00+00', 'nada'::public.meal_status, 'Old meal record'),
-        ('00000000-0000-4000-8000-000000000624'::uuid, '00000000-0000-4000-8000-000000000203'::uuid, '00000000-0000-4000-8000-000000000611'::uuid, '00000000-0000-4000-8000-000000000113'::uuid, date '2026-08-20', timestamp '2026-08-20 10:00:00+00', 'todo'::public.meal_status, 'Other meal record')
-     ) expected(id, child_id, meal_type_id, recorded_by, recorded_date, recorded_at, status, notes) on expected.id = mr.id
-     where (mr.child_id, mr.meal_type_id, mr.recorded_by, mr.recorded_date, mr.recorded_at, mr.status, mr.notes) is distinct from
-           (expected.child_id, expected.meal_type_id, expected.recorded_by, expected.recorded_date, expected.recorded_at, expected.status, expected.notes)
+       ('00000000-0000-4000-8000-000000000621'::uuid, '00000000-0000-4000-8000-000000000225'::uuid, '00000000-0000-4000-8000-000000000612'::uuid, '00000000-0000-4000-8000-000000000115'::uuid, date '2026-08-20', timestamp '2026-08-20 10:00:00+00', 'todo'::public.meal_status, 'School B record', 'todo'::public.meal_status, 'todo'::public.meal_status, 'todo'::public.meal_status),
+        ('00000000-0000-4000-8000-000000000622'::uuid, '00000000-0000-4000-8000-000000000201'::uuid, '00000000-0000-4000-8000-000000000611'::uuid, '00000000-0000-4000-8000-000000000113'::uuid, date '2026-08-20', timestamp '2026-08-20 10:00:00+00', 'casi_todo'::public.meal_status, 'Admin review', 'casi_todo'::public.meal_status, 'casi_todo'::public.meal_status, 'casi_todo'::public.meal_status),
+        ('00000000-0000-4000-8000-000000000625'::uuid, '00000000-0000-4000-8000-000000000201'::uuid, '00000000-0000-4000-8000-000000000611'::uuid, '00000000-0000-4000-8000-000000000113'::uuid, date '2026-01-01', timestamp '2026-01-01 10:00:00+00', 'todo'::public.meal_status, 'Historical meal record', 'todo'::public.meal_status, 'todo'::public.meal_status, 'todo'::public.meal_status),
+       ('00000000-0000-4000-8000-000000000623'::uuid, '00000000-0000-4000-8000-000000000202'::uuid, '00000000-0000-4000-8000-000000000611'::uuid, '00000000-0000-4000-8000-000000000113'::uuid, date '2026-01-01', timestamp '2026-01-01 10:00:00+00', 'nada'::public.meal_status, 'Old meal record', 'nada'::public.meal_status, 'nada'::public.meal_status, 'nada'::public.meal_status),
+        ('00000000-0000-4000-8000-000000000624'::uuid, '00000000-0000-4000-8000-000000000203'::uuid, '00000000-0000-4000-8000-000000000611'::uuid, '00000000-0000-4000-8000-000000000113'::uuid, date '2026-08-20', timestamp '2026-08-20 10:00:00+00', 'todo'::public.meal_status, 'Other meal record', 'todo'::public.meal_status, 'todo'::public.meal_status, 'todo'::public.meal_status)
+     ) expected(id, child_id, meal_type_id, recorded_by, recorded_date, recorded_at, status, notes, first_course, second_course, dessert) on expected.id = mr.id
+     where (mr.child_id, mr.meal_type_id, mr.recorded_by, mr.recorded_date, mr.recorded_at, mr.status, mr.notes, mr.first_course, mr.second_course, mr.dessert) is distinct from
+           (expected.child_id, expected.meal_type_id, expected.recorded_by, expected.recorded_date, expected.recorded_at, expected.status, expected.notes, expected.first_course, expected.second_course, expected.dessert)
   ) then
     raise exception 'seed collision in public.meal_records';
   end if;
@@ -629,10 +629,10 @@ insert into public.meal_types (id, school_id, name, sort_order, created_at) valu
   ('00000000-0000-4000-8000-000000000612', '00000000-0000-4000-8000-000000000002', 'Comida B', 1, timestamp '2026-01-01 00:00:00+00')
 on conflict (id) do nothing;
 
-insert into public.meal_records (id, child_id, meal_type_id, recorded_by, recorded_date, recorded_at, status, notes) values
-  ('00000000-0000-4000-8000-000000000621', '00000000-0000-4000-8000-000000000225', '00000000-0000-4000-8000-000000000612', '00000000-0000-4000-8000-000000000115', date '2026-08-20', timestamp '2026-08-20 10:00:00+00', 'todo', 'School B record'),
-  ('00000000-0000-4000-8000-000000000622', '00000000-0000-4000-8000-000000000201', '00000000-0000-4000-8000-000000000611', '00000000-0000-4000-8000-000000000113', date '2026-08-20', timestamp '2026-08-20 10:00:00+00', 'casi_todo', 'Admin review'),
-  ('00000000-0000-4000-8000-000000000625', '00000000-0000-4000-8000-000000000201', '00000000-0000-4000-8000-000000000611', '00000000-0000-4000-8000-000000000113', date '2026-01-01', timestamp '2026-01-01 10:00:00+00', 'todo', 'Historical meal record'),
-  ('00000000-0000-4000-8000-000000000623', '00000000-0000-4000-8000-000000000202', '00000000-0000-4000-8000-000000000611', '00000000-0000-4000-8000-000000000113', date '2026-01-01', timestamp '2026-01-01 10:00:00+00', 'nada', 'Old meal record'),
-  ('00000000-0000-4000-8000-000000000624', '00000000-0000-4000-8000-000000000203', '00000000-0000-4000-8000-000000000611', '00000000-0000-4000-8000-000000000113', date '2026-08-20', timestamp '2026-08-20 10:00:00+00', 'todo', 'Other meal record')
+insert into public.meal_records (id, child_id, meal_type_id, recorded_by, recorded_date, recorded_at, status, notes, first_course, second_course, dessert) values
+  ('00000000-0000-4000-8000-000000000621', '00000000-0000-4000-8000-000000000225', '00000000-0000-4000-8000-000000000612', '00000000-0000-4000-8000-000000000115', date '2026-08-20', timestamp '2026-08-20 10:00:00+00', 'todo', 'School B record', 'todo', 'todo', 'todo'),
+  ('00000000-0000-4000-8000-000000000622', '00000000-0000-4000-8000-000000000201', '00000000-0000-4000-8000-000000000611', '00000000-0000-4000-8000-000000000113', date '2026-08-20', timestamp '2026-08-20 10:00:00+00', 'casi_todo', 'Admin review', 'casi_todo', 'casi_todo', 'casi_todo'),
+  ('00000000-0000-4000-8000-000000000625', '00000000-0000-4000-8000-000000000201', '00000000-0000-4000-8000-000000000611', '00000000-0000-4000-8000-000000000113', date '2026-01-01', timestamp '2026-01-01 10:00:00+00', 'todo', 'Historical meal record', 'todo', 'todo', 'todo'),
+  ('00000000-0000-4000-8000-000000000623', '00000000-0000-4000-8000-000000000202', '00000000-0000-4000-8000-000000000611', '00000000-0000-4000-8000-000000000113', date '2026-01-01', timestamp '2026-01-01 10:00:00+00', 'nada', 'Old meal record', 'nada', 'nada', 'nada'),
+  ('00000000-0000-4000-8000-000000000624', '00000000-0000-4000-8000-000000000203', '00000000-0000-4000-8000-000000000611', '00000000-0000-4000-8000-000000000113', date '2026-08-20', timestamp '2026-08-20 10:00:00+00', 'todo', 'Other meal record', 'todo', 'todo', 'todo')
 on conflict (id) do nothing;

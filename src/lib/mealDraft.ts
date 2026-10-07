@@ -1,7 +1,6 @@
-import type { MealStatus } from "./mealRecord.ts";
+import type { MealCourses, MealStatus } from "./mealRecord.ts";
 
-export interface MealDraftValue {
-  status: MealStatus;
+export interface MealDraftValue extends MealCourses {
   notes: string;
   updatedAt: string;
 }
@@ -30,7 +29,9 @@ const MEAL_STATUSES: readonly MealStatus[] = [
 
 /**
  * Borrador en dispositivo: clave por escuela:clase:fecha:tipo. Solo los
- * alumnos tocados viven en el mapa (childId -> valor, notas, modificadoEn).
+ * alumnos tocados viven en el mapa (childId -> valor por plato, notas,
+ * modificadoEn). El tipo sigue en la clave como discriminante implícito
+ * aunque la UI ya no lo exponga.
  */
 export function buildMealDraftKey(input: MealDraftKeyInput): string {
   const parts = [
@@ -42,40 +43,73 @@ export function buildMealDraftKey(input: MealDraftKeyInput): string {
   return `meal-draft:${parts.join(":")}`;
 }
 
+/** Platos de una fila guardada, con réplica del status legacy si faltan. */
+export function savedCourses(saved: {
+  status?: MealStatus;
+  first_course?: MealStatus | null;
+  second_course?: MealStatus | null;
+  dessert?: MealStatus | null;
+}): MealCourses {
+  const fallback = saved.status ?? "todo";
+  return {
+    firstCourse: saved.first_course ?? fallback,
+    secondCourse: saved.second_course ?? fallback,
+    dessert: saved.dessert ?? fallback,
+  };
+}
+
 /**
  * Todo puro sin notas: el valor intacto que ni el borrador ni la fila marcan
  * como modificado, y el único que la re-confirmación puede purgar.
  */
-export function isPureTodo(status: MealStatus, notes: string | null): boolean {
-  if (status !== "todo") return false;
+export function isPureTodo(
+  courses: MealCourses,
+  notes: string | null,
+): boolean {
+  if (
+    courses.firstCourse !== "todo" ||
+    courses.secondCourse !== "todo" ||
+    courses.dessert !== "todo"
+  )
+    return false;
   return (notes ?? "").trim().length === 0;
 }
 
 /**
  * Guardar en el modal aunque deje Todo pero con notas cuenta como modificado;
- * revertir a Todo sin notas limpia la marca.
+ * revertir a Todo en los tres platos sin notas limpia la marca.
  */
 export function isMealDraftModified(
-  status: MealStatus,
+  courses: MealCourses,
   notes: string,
 ): boolean {
-  return !isPureTodo(status, notes);
+  return !isPureTodo(courses, notes);
 }
 
 /**
  * Toca el borrador de un alumno. Devuelve un mapa nuevo sin mutar el
- * original; volver a Todo sin notas elimina la entrada (limpia la marca).
+ * original; volver a Todo en los tres platos sin notas elimina la entrada
+ * (limpia la marca).
  */
 export function touchMealDraft(
   drafts: MealDraftMap,
   childId: string,
-  patch: { status?: MealStatus; notes?: string },
+  patch: {
+    firstCourse?: MealStatus;
+    secondCourse?: MealStatus;
+    dessert?: MealStatus;
+    notes?: string;
+  },
   nowIso: string = new Date().toISOString(),
 ): MealDraftMap {
   const current = drafts[childId];
-  const status = patch.status ?? current?.status ?? "todo";
+  const courses: MealCourses = {
+    firstCourse: patch.firstCourse ?? current?.firstCourse ?? "todo",
+    secondCourse: patch.secondCourse ?? current?.secondCourse ?? "todo",
+    dessert: patch.dessert ?? current?.dessert ?? "todo",
+  };
   const notes = patch.notes ?? current?.notes ?? "";
-  if (!isMealDraftModified(status, notes)) {
+  if (!isMealDraftModified(courses, notes)) {
     if (!(childId in drafts)) return { ...drafts };
     const next = { ...drafts };
     delete next[childId];
@@ -83,19 +117,58 @@ export function touchMealDraft(
   }
   return {
     ...drafts,
-    [childId]: { status, notes, updatedAt: nowIso },
+    [childId]: { ...courses, notes, updatedAt: nowIso },
   };
 }
 
 function isValidDraftValue(value: unknown): value is MealDraftValue {
   if (typeof value !== "object" || value === null) return false;
   const candidate = value as Record<string, unknown>;
+  // Acepta borradores nuevos por plato y los antiguos de un solo status.
+  if (typeof candidate.notes !== "string") return false;
+  if (typeof candidate.updatedAt !== "string") return false;
+  const courses = ["firstCourse", "secondCourse", "dessert"].map(
+    (key) => candidate[key],
+  );
+  if (
+    courses.every(
+      (course): course is MealStatus =>
+        typeof course === "string" &&
+        (MEAL_STATUSES as readonly string[]).includes(course),
+    )
+  ) {
+    return true;
+  }
+  // Borrador antiguo {status, notes}: se migra a los tres platos.
   return (
     typeof candidate.status === "string" &&
-    (MEAL_STATUSES as readonly string[]).includes(candidate.status) &&
-    typeof candidate.notes === "string" &&
-    typeof candidate.updatedAt === "string"
+    (MEAL_STATUSES as readonly string[]).includes(candidate.status)
   );
+}
+
+function normalizeDraftValue(value: MealDraftValue): MealDraftValue {
+  const candidate = value as MealDraftValue & { status?: MealStatus };
+  if (
+    typeof candidate.firstCourse === "string" &&
+    typeof candidate.secondCourse === "string" &&
+    typeof candidate.dessert === "string"
+  ) {
+    return {
+      firstCourse: candidate.firstCourse,
+      secondCourse: candidate.secondCourse,
+      dessert: candidate.dessert,
+      notes: candidate.notes,
+      updatedAt: candidate.updatedAt,
+    };
+  }
+  const fallback = candidate.status ?? "todo";
+  return {
+    firstCourse: fallback,
+    secondCourse: fallback,
+    dessert: fallback,
+    notes: candidate.notes,
+    updatedAt: candidate.updatedAt,
+  };
 }
 
 /**
@@ -122,7 +195,8 @@ export function loadMealDrafts(
     for (const [childId, value] of Object.entries(
       parsed as Record<string, unknown>,
     )) {
-      if (isValidDraftValue(value)) next[childId] = value;
+      if (isValidDraftValue(value))
+        next[childId] = normalizeDraftValue(value as MealDraftValue);
     }
     return next;
   } catch {
@@ -165,7 +239,10 @@ export function clearMealDrafts(
 }
 
 interface SavedMealValue {
-  status: MealStatus;
+  status?: MealStatus;
+  first_course?: MealStatus | null;
+  second_course?: MealStatus | null;
+  dessert?: MealStatus | null;
   notes: string | null;
 }
 
@@ -179,7 +256,7 @@ export function isMealRowModified(
 ): boolean {
   if (draft) return true;
   if (!saved) return false;
-  return !isPureTodo(saved.status, saved.notes);
+  return !isPureTodo(savedCourses(saved), saved.notes);
 }
 
 interface ReconfirmInput {
@@ -226,7 +303,7 @@ export function reconcileMealDraftsOnReconfirm(
     if (nextSet.has(childId)) continue;
     const saved = savedByChild.get(childId);
     if (!saved) continue;
-    if (!isPureTodo(saved.status, saved.notes)) continue;
+    if (!isPureTodo(savedCourses(saved), saved.notes)) continue;
     purgeChildIds.push(childId);
   }
 

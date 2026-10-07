@@ -18,24 +18,74 @@ async function source(path) {
 
 // --- lib: lista virtual ---
 
-test("confirmar muestra Todo virtual por cada presente sin escribir", () => {
+test("confirmar muestra Todo virtual por plato y presente sin escribir", () => {
   const list = buildVirtualMealList(["a", "b"]);
 
   assert.deepEqual(list, [
-    { childId: "a", status: "todo", notes: "" },
-    { childId: "b", status: "todo", notes: "" },
+    {
+      childId: "a",
+      firstCourse: "todo",
+      secondCourse: "todo",
+      dessert: "todo",
+      notes: "",
+    },
+    {
+      childId: "b",
+      firstCourse: "todo",
+      secondCourse: "todo",
+      dessert: "todo",
+      notes: "",
+    },
   ]);
 });
 
 test("la lista virtual parte de lo ya guardado hoy para re-guardar", () => {
   const list = buildVirtualMealList(
     ["a", "b"],
-    [{ child_id: "a", status: "nada", notes: "poco" }],
+    [
+      {
+        child_id: "a",
+        status: "todo",
+        first_course: "todo",
+        second_course: "nada",
+        dessert: "casi_todo",
+        notes: "poco",
+      },
+    ],
   );
 
   assert.deepEqual(list, [
-    { childId: "a", status: "nada", notes: "poco" },
-    { childId: "b", status: "todo", notes: "" },
+    {
+      childId: "a",
+      firstCourse: "todo",
+      secondCourse: "nada",
+      dessert: "casi_todo",
+      notes: "poco",
+    },
+    {
+      childId: "b",
+      firstCourse: "todo",
+      secondCourse: "todo",
+      dessert: "todo",
+      notes: "",
+    },
+  ]);
+});
+
+test("la fila legacy sin platos replica el status a los tres", () => {
+  const list = buildVirtualMealList(
+    ["a"],
+    [{ child_id: "a", status: "nada", notes: null }],
+  );
+
+  assert.deepEqual(list, [
+    {
+      childId: "a",
+      firstCourse: "nada",
+      secondCourse: "nada",
+      dessert: "nada",
+      notes: "",
+    },
   ]);
 });
 
@@ -44,18 +94,30 @@ test("el ajuste por modal actualiza solo esa fila sin mutar", () => {
   const snapshot = JSON.parse(JSON.stringify(initial));
 
   const next = applyMealDraft(initial, "a", {
-    status: "casi_nada",
+    secondCourse: "casi_nada",
     notes: "mitad",
   });
 
   assert.deepEqual(next, [
-    { childId: "a", status: "casi_nada", notes: "mitad" },
-    { childId: "b", status: "todo", notes: "" },
+    {
+      childId: "a",
+      firstCourse: "todo",
+      secondCourse: "casi_nada",
+      dessert: "todo",
+      notes: "mitad",
+    },
+    {
+      childId: "b",
+      firstCourse: "todo",
+      secondCourse: "todo",
+      dessert: "todo",
+      notes: "",
+    },
   ]);
   assert.deepEqual(initial, snapshot);
 });
 
-// --- lib: tipo por defecto y filas ---
+// --- lib: tipo implícito y filas ---
 
 test("el guardado usa el primer meal_type activo por sort_order", () => {
   assert.equal(
@@ -76,8 +138,20 @@ test("el guardado conjunto hace una fila por presente con attendance_date", () =
   const rows = buildMealListRows({
     presentChildIds: ["a", "b"],
     drafts: [
-      { childId: "a", status: "casi_todo", notes: " bien " },
-      { childId: "b", status: "todo", notes: "" },
+      {
+        childId: "a",
+        firstCourse: "casi_todo",
+        secondCourse: "nada",
+        dessert: "todo",
+        notes: " bien ",
+      },
+      {
+        childId: "b",
+        firstCourse: "todo",
+        secondCourse: "todo",
+        dessert: "todo",
+        notes: "",
+      },
     ],
     mealTypeId: "mt-1",
     recordedDate: "2026-10-07",
@@ -92,7 +166,10 @@ test("el guardado conjunto hace una fila por presente con attendance_date", () =
       recorded_date: "2026-10-07",
       recorded_by: "user-1",
       recorded_at: "2026-10-07T10:00:00.000Z",
-      status: "casi_todo",
+      status: "nada",
+      first_course: "casi_todo",
+      second_course: "nada",
+      dessert: "todo",
       notes: "bien",
     },
     {
@@ -102,6 +179,9 @@ test("el guardado conjunto hace una fila por presente con attendance_date", () =
       recorded_by: "user-1",
       recorded_at: "2026-10-07T10:00:00.000Z",
       status: "todo",
+      first_course: "todo",
+      second_course: "todo",
+      dessert: "todo",
       notes: null,
     },
   ]);
@@ -122,7 +202,15 @@ test("lista vacía o sin tipo no produce ninguna fila", () => {
   assert.deepEqual(
     buildMealListRows({
       presentChildIds: ["a"],
-      drafts: [{ childId: "a", status: "todo", notes: "" }],
+      drafts: [
+        {
+          childId: "a",
+          firstCourse: "todo",
+          secondCourse: "todo",
+          dessert: "todo",
+          notes: "",
+        },
+      ],
       mealTypeId: "",
       recordedDate: "2026-10-07",
       recordedBy: "user-1",
@@ -143,20 +231,38 @@ test("confirmar solo escribe daily_attendance y muestra Todo virtual", async () 
   assert.ok(confirmFn, "expected a confirmAttendance function");
   assert.doesNotMatch(confirmFn[0], /from\("meal_records"\)/);
   assert.match(app, /buildVirtualMealList/);
-  assert.match(app, /Todo pre-seleccionado virtual|Todo.*virtual/i);
+  assert.match(app, /Todo pre-seleccionado en cada plato|Todo.*plato/i);
 });
 
-test("la edición es por modal por alumno y la lista muestra el valor", async () => {
+test("la edición es por modal por alumno y la lista muestra los platos", async () => {
   const app = await source("src/components/BusinessApp.tsx");
 
   assert.match(app, /handleMealModalSave/);
-  assert.match(app, /Valor elegido/);
+  assert.match(app, /Primero/);
+  assert.match(app, /Segundo/);
+  assert.match(app, /Postre/);
   assert.match(app, /Ajustar comida de/);
-  assert.match(app, /initialStatus/);
+  assert.match(app, /initialCourses/);
   assert.match(app, /initialNotes/);
 });
 
-test("guardar la lista hace upsert conjunto con attendance_date y primer tipo", async () => {
+test("el modal ya no pide tipo de comida ni incidencias", async () => {
+  const [modal, mealRecord] = await Promise.all([
+    source("src/components/MealRecordModal.tsx"),
+    source("src/lib/mealRecord.ts"),
+  ]);
+
+  assert.doesNotMatch(modal, /Tipo de comida/);
+  assert.doesNotMatch(modal, /Incidencias/);
+  assert.doesNotMatch(modal, /incidentComments|canManageIncidents/);
+  assert.match(modal, /MEAL_COURSES/);
+  assert.match(modal, /¿[Cc]ómo ha comido\?/);
+  assert.match(mealRecord, /Primero/);
+  assert.match(mealRecord, /Segundo/);
+  assert.match(mealRecord, /Postre/);
+});
+
+test("guardar la lista hace upsert conjunto con attendance_date y tipo implícito", async () => {
   const app = await source("src/components/BusinessApp.tsx");
 
   assert.match(app, /Guardar lista de comida/);
@@ -169,6 +275,8 @@ test("guardar la lista hace upsert conjunto con attendance_date y primer tipo", 
     app,
     /onConflict:\s*["']child_id,meal_type_id,recorded_date["']/,
   );
+  assert.doesNotMatch(app, /record_meal_incident/);
+  assert.doesNotMatch(app, /saveIncident/);
 });
 
 test("sin tipo activo o lista vacía no hay escrituras", async () => {

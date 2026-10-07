@@ -1,14 +1,24 @@
-import { MEAL_NOTES_MAX_LENGTH, type MealStatus } from "./mealRecord.ts";
+import {
+  MEAL_NOTES_MAX_LENGTH,
+  overallMealStatus,
+  type MealStatus,
+} from "./mealRecord.ts";
 
 export interface VirtualMealEntry {
   childId: string;
-  status: MealStatus;
+  firstCourse: MealStatus;
+  secondCourse: MealStatus;
+  dessert: MealStatus;
   notes: string;
 }
 
 export interface SavedMealRef {
   child_id: string;
-  status: MealStatus;
+  /** Fila anterior a los platos: se replica a los tres. */
+  status?: MealStatus;
+  first_course?: MealStatus | null;
+  second_course?: MealStatus | null;
+  dessert?: MealStatus | null;
   notes: string | null;
 }
 
@@ -19,7 +29,7 @@ interface MealTypeRef {
 }
 
 /**
- * Lista virtual de comida: un Todo pre-seleccionado por cada presente,
+ * Lista virtual de comida: un Todo pre-seleccionado por plato y presente,
  * sin escribir aún en meal_records. Si ya existe un registro guardado hoy
  * para ese alumno, se usa como punto de partida para re-guardar.
  * No muta ninguna entrada.
@@ -33,10 +43,20 @@ export function buildVirtualMealList(
   );
   return presentChildIds.map((childId) => {
     const existing = savedByChild.get(childId);
-    if (!existing) return { childId, status: "todo" as const, notes: "" };
+    if (!existing)
+      return {
+        childId,
+        firstCourse: "todo" as const,
+        secondCourse: "todo" as const,
+        dessert: "todo" as const,
+        notes: "",
+      };
+    const fallback = existing.status ?? "todo";
     return {
       childId,
-      status: existing.status,
+      firstCourse: existing.first_course ?? fallback,
+      secondCourse: existing.second_course ?? fallback,
+      dessert: existing.dessert ?? fallback,
       notes: existing.notes ?? "",
     };
   });
@@ -49,7 +69,12 @@ export function buildVirtualMealList(
 export function applyMealDraft(
   list: readonly VirtualMealEntry[],
   childId: string,
-  patch: { status?: MealStatus; notes?: string },
+  patch: {
+    firstCourse?: MealStatus;
+    secondCourse?: MealStatus;
+    dessert?: MealStatus;
+    notes?: string;
+  },
 ): VirtualMealEntry[] {
   let found = false;
   const next = list.map((entry) => {
@@ -57,7 +82,13 @@ export function applyMealDraft(
     found = true;
     return {
       ...entry,
-      ...(patch.status !== undefined ? { status: patch.status } : null),
+      ...(patch.firstCourse !== undefined
+        ? { firstCourse: patch.firstCourse }
+        : null),
+      ...(patch.secondCourse !== undefined
+        ? { secondCourse: patch.secondCourse }
+        : null),
+      ...(patch.dessert !== undefined ? { dessert: patch.dessert } : null),
       ...(patch.notes !== undefined ? { notes: patch.notes } : null),
     };
   });
@@ -65,8 +96,10 @@ export function applyMealDraft(
 }
 
 /**
- * Primer meal_type activo por sort_order. Sin ese tipo no hay escrituras
- * ni relleno retroactivo: se devuelve "" y el guardado conjunto no escribe.
+ * Tipo de comida implícito: primer meal_type activo por sort_order. La UI
+ * ya no expone selector (una sola comida al día); sin tipo no hay
+ * escrituras ni relleno retroactivo: se devuelve "" y el guardado conjunto
+ * no escribe.
  */
 export function pickDefaultMealTypeId(
   mealTypes: readonly MealTypeRef[],
@@ -86,6 +119,9 @@ export interface MealListRow {
   recorded_by: string;
   recorded_at: string;
   status: MealStatus;
+  first_course: MealStatus;
+  second_course: MealStatus;
+  dessert: MealStatus;
   notes: string | null;
 }
 
@@ -105,8 +141,9 @@ function cleanNotes(notes: string): string | null {
 
 /**
  * Filas para el guardado conjunto: un upsert por cada presente con
- * recorded_date = attendance_date y el primer meal_type activo.
- * Lista vacía o sin tipo de comida no produce ninguna fila.
+ * recorded_date = attendance_date y el tipo de comida implícito.
+ * status es la valoración global derivada (peor plato) para compat.
+ * Lista vacía o sin tipo no produce ninguna fila.
  * Re-guardar el mismo día sobrescribe libremente (misma clave
  * child_id, meal_type_id, recorded_date).
  */
@@ -118,13 +155,21 @@ export function buildMealListRows(input: MealListRowsInput): MealListRow[] {
   );
   return input.presentChildIds.map((childId) => {
     const draft = draftByChild.get(childId);
+    const courses = {
+      firstCourse: draft?.firstCourse ?? "todo",
+      secondCourse: draft?.secondCourse ?? "todo",
+      dessert: draft?.dessert ?? "todo",
+    } as const;
     return {
       child_id: childId,
       meal_type_id: input.mealTypeId,
       recorded_date: input.recordedDate,
       recorded_by: input.recordedBy,
       recorded_at: input.recordedAt,
-      status: draft?.status ?? "todo",
+      status: overallMealStatus(courses),
+      first_course: courses.firstCourse,
+      second_course: courses.secondCourse,
+      dessert: courses.dessert,
       notes: draft ? cleanNotes(draft.notes) : null,
     };
   });

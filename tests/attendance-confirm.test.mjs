@@ -40,8 +40,9 @@ test("only monitors and admins of the centre can confirm", async () => {
 
   assert.match(lib, /canConfirmAttendance/);
   assert.match(app, /canConfirmAttendance|canConfirm/);
-  assert.match(app, /userRole === "admin"/);
-  assert.match(app, /userRole === "monitor"/);
+  assert.match(app, /canConfirmAttendance\(userRole\)/);
+  assert.match(lib, /"admin"/);
+  assert.match(lib, /"monitor"/);
 });
 
 test("confirming never writes the weekly pattern nor meal records", async () => {

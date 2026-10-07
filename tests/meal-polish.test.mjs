@@ -76,7 +76,10 @@ test("existe policy SELECT para padre sobre meal_records vía parents_children",
 test("el monitor solo escribe el día en curso (RLS con recorded_date = CURRENT_DATE)", async () => {
   const migrations = await migrationSources();
   const combined = migrations.map((m) => m.sql).join("\n");
-  assert.match(combined, /meal_records_monitor_update[\s\S]*recorded_date\s*=\s*CURRENT_DATE/);
+  assert.match(
+    combined,
+    /meal_records_monitor_update[\s\S]*recorded_date\s*=\s*CURRENT_DATE/,
+  );
 });
 
 // --- UI: tarjeta/lista con texto literal y color final ---
@@ -108,6 +111,7 @@ test("las notas se editan en el mismo modal de comida", async () => {
   const modal = await source("src/components/MealRecordModal.tsx");
 
   assert.match(app, /initialNotes/);
+  assert.match(app, /initialCourses/);
   assert.match(modal, /Notas de la comida/);
-  assert.match(modal, /name="status"/);
+  assert.match(modal, /type="checkbox"/);
 });

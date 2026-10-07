@@ -35,6 +35,12 @@ function memoryStorage(seed = {}) {
   };
 }
 
+const TODO = {
+  firstCourse: "todo",
+  secondCourse: "todo",
+  dessert: "todo",
+};
+
 // --- lib: clave por escuela:clase:fecha:tipo ---
 
 test("la clave del borrador distingue escuela, clase, fecha y tipo", () => {
@@ -84,21 +90,24 @@ test("la clave del borrador distingue escuela, clase, fecha y tipo", () => {
 
 // --- lib: solo tocados, marca y limpieza ---
 
-test("Todo con notas cuenta como modificado; Todo sin notas limpia la marca", () => {
-  assert.equal(isPureTodo("todo", null), true);
-  assert.equal(isPureTodo("todo", "  "), true);
-  assert.equal(isPureTodo("todo", "nota"), false);
-  assert.equal(isPureTodo("nada", null), false);
-  assert.equal(isMealDraftModified("todo", ""), false);
-  assert.equal(isMealDraftModified("todo", "   "), false);
-  assert.equal(isMealDraftModified("todo", "come despacio"), true);
-  assert.equal(isMealDraftModified("nada", ""), true);
+test("Todo en los tres platos con notas cuenta como modificado", () => {
+  assert.equal(isPureTodo(TODO, null), true);
+  assert.equal(isPureTodo(TODO, "  "), true);
+  assert.equal(isPureTodo(TODO, "nota"), false);
+  assert.equal(isPureTodo({ ...TODO, dessert: "nada" }, null), false);
+  assert.equal(isMealDraftModified(TODO, ""), false);
+  assert.equal(isMealDraftModified(TODO, "   "), false);
+  assert.equal(isMealDraftModified(TODO, "come despacio"), true);
+  assert.equal(
+    isMealDraftModified({ ...TODO, secondCourse: "nada" }, ""),
+    true,
+  );
 
   let drafts = {};
   drafts = touchMealDraft(
     drafts,
     "a",
-    { status: "todo", notes: "come despacio" },
+    { ...TODO, notes: "come despacio" },
     "2026-10-07T10:00:00.000Z",
   );
   assert.ok("a" in drafts);
@@ -106,7 +115,7 @@ test("Todo con notas cuenta como modificado; Todo sin notas limpia la marca", ()
   drafts = touchMealDraft(
     drafts,
     "a",
-    { status: "todo", notes: "" },
+    { ...TODO, notes: "" },
     "2026-10-07T11:00:00.000Z",
   );
   assert.ok(!("a" in drafts));
@@ -124,14 +133,15 @@ test("el borrador solo guarda alumnos tocados y sobrevive a recarga", () => {
   drafts = touchMealDraft(
     drafts,
     "a",
-    { status: "casi_nada", notes: "mitad" },
+    { secondCourse: "casi_nada", notes: "mitad" },
     "2026-10-07T10:00:00.000Z",
   );
   persistMealDrafts(storage, key, drafts);
 
   const reloaded = loadMealDrafts(storage, key);
   assert.deepEqual(Object.keys(reloaded), ["a"]);
-  assert.equal(reloaded.a.status, "casi_nada");
+  assert.equal(reloaded.a.secondCourse, "casi_nada");
+  assert.equal(reloaded.a.firstCourse, "todo");
   assert.equal(reloaded.a.notes, "mitad");
 
   clearMealDrafts(storage, key);
@@ -147,33 +157,54 @@ test("el borrador corrupto se ignora sin romper", () => {
 test("la fila marca modificado con borrador o con valor guardado editado", () => {
   assert.equal(
     isMealRowModified(
-      { status: "casi_todo", notes: "", updatedAt: "x" },
+      { ...TODO, secondCourse: "casi_todo", notes: "", updatedAt: "x" },
       undefined,
     ),
     true,
   );
   assert.equal(
-    isMealRowModified(
-      { status: "todo", notes: "lento", updatedAt: "x" },
-      undefined,
-    ),
+    isMealRowModified({ ...TODO, notes: "lento", updatedAt: "x" }, undefined),
     true,
   );
   assert.equal(isMealRowModified(undefined, undefined), false);
   assert.equal(
-    isMealRowModified(undefined, { status: "todo", notes: null }),
+    isMealRowModified(undefined, {
+      status: "todo",
+      first_course: "todo",
+      second_course: "todo",
+      dessert: "todo",
+      notes: null,
+    }),
     false,
   );
   assert.equal(
-    isMealRowModified(undefined, { status: "todo", notes: "  " }),
+    isMealRowModified(undefined, {
+      status: "todo",
+      first_course: "todo",
+      second_course: "todo",
+      dessert: "todo",
+      notes: "  ",
+    }),
     false,
   );
   assert.equal(
-    isMealRowModified(undefined, { status: "nada", notes: null }),
+    isMealRowModified(undefined, {
+      status: "nada",
+      first_course: "nada",
+      second_course: "nada",
+      dessert: "nada",
+      notes: null,
+    }),
     true,
   );
   assert.equal(
-    isMealRowModified(undefined, { status: "todo", notes: "nota" }),
+    isMealRowModified(undefined, {
+      status: "todo",
+      first_course: "todo",
+      second_course: "todo",
+      dessert: "todo",
+      notes: "nota",
+    }),
     true,
   );
 });
@@ -185,12 +216,22 @@ test("re-confirmar: nuevo presente consigue Todo virtual sin tocar el borrador",
     prevPresentIds: ["a"],
     nextPresentIds: ["a", "b"],
     drafts: {
-      a: { status: "nada", notes: "", updatedAt: "2026-10-07T10:00:00.000Z" },
+      a: {
+        ...TODO,
+        dessert: "nada",
+        notes: "",
+        updatedAt: "2026-10-07T10:00:00.000Z",
+      },
     },
     savedRecords: [],
   });
   assert.deepEqual(result.drafts, {
-    a: { status: "nada", notes: "", updatedAt: "2026-10-07T10:00:00.000Z" },
+    a: {
+      ...TODO,
+      dessert: "nada",
+      notes: "",
+      updatedAt: "2026-10-07T10:00:00.000Z",
+    },
   });
   assert.deepEqual(result.purgeChildIds, []);
 });
@@ -200,12 +241,26 @@ test("re-confirmar: el ausente sale del borrador y solo se purga el todo puro", 
     prevPresentIds: ["a", "b", "c"],
     nextPresentIds: ["a"],
     drafts: {
-      b: { status: "nada", notes: "", updatedAt: "t" },
-      c: { status: "todo", notes: "nota", updatedAt: "t" },
+      b: { ...TODO, dessert: "nada", notes: "", updatedAt: "t" },
+      c: { ...TODO, notes: "nota", updatedAt: "t" },
     },
     savedRecords: [
-      { child_id: "b", status: "todo", notes: null },
-      { child_id: "c", status: "todo", notes: "nota" },
+      {
+        child_id: "b",
+        status: "todo",
+        first_course: "todo",
+        second_course: "todo",
+        dessert: "todo",
+        notes: null,
+      },
+      {
+        child_id: "c",
+        status: "todo",
+        first_course: "todo",
+        second_course: "todo",
+        dessert: "todo",
+        notes: "nota",
+      },
     ],
   });
   assert.deepEqual(result.drafts, {});
@@ -214,15 +269,29 @@ test("re-confirmar: el ausente sale del borrador y solo se purga el todo puro", 
 
 test("re-confirmar: nunca se sobrescribe un valor editado ni se purga con notas", () => {
   const drafts = {
-    a: { status: "casi_todo", notes: "", updatedAt: "t" },
+    a: { ...TODO, firstCourse: "casi_todo", notes: "", updatedAt: "t" },
   };
   const result = reconcileMealDraftsOnReconfirm({
     prevPresentIds: ["a", "b"],
     nextPresentIds: ["a"],
     drafts,
     savedRecords: [
-      { child_id: "a", status: "nada", notes: null },
-      { child_id: "b", status: "casi_nada", notes: null },
+      {
+        child_id: "a",
+        status: "nada",
+        first_course: "nada",
+        second_course: "nada",
+        dessert: "nada",
+        notes: null,
+      },
+      {
+        child_id: "b",
+        status: "todo",
+        first_course: "todo",
+        second_course: "casi_nada",
+        dessert: "todo",
+        notes: null,
+      },
     ],
   });
   assert.deepEqual(result.drafts, drafts);
@@ -231,13 +300,22 @@ test("re-confirmar: nunca se sobrescribe un valor editado ni se purga con notas"
 
 test("re-confirmar sin cambios no toca nada", () => {
   const drafts = {
-    a: { status: "nada", notes: "", updatedAt: "t" },
+    a: { ...TODO, dessert: "nada", notes: "", updatedAt: "t" },
   };
   const result = reconcileMealDraftsOnReconfirm({
     prevPresentIds: ["a"],
     nextPresentIds: ["a"],
     drafts,
-    savedRecords: [{ child_id: "a", status: "todo", notes: null }],
+    savedRecords: [
+      {
+        child_id: "a",
+        status: "todo",
+        first_course: "todo",
+        second_course: "todo",
+        dessert: "todo",
+        notes: null,
+      },
+    ],
   });
   assert.deepEqual(result.drafts, drafts);
   assert.deepEqual(result.purgeChildIds, []);
@@ -265,7 +343,9 @@ test("re-confirmar ajusta borrador sin perder ediciones y purga solo todo puro",
   assert.match(app, /reconcileMealDraftsOnReconfirm/);
   assert.match(app, /purgeChildIds/);
   assert.match(app, /purgeAbsentPureTodoMeals/);
-  assert.match(app, /\.eq\("status", "todo"\)/);
+  assert.match(app, /\.eq\("first_course", "todo"\)/);
+  assert.match(app, /\.eq\("second_course", "todo"\)/);
+  assert.match(app, /\.eq\("dessert", "todo"\)/);
 });
 
 test("sin conexión guardar queda bloqueado con aviso y el borrador se conserva", async () => {

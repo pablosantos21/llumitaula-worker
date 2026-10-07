@@ -413,32 +413,41 @@ export type Database = {
       meal_records: {
         Row: {
           child_id: string
+          dessert: Database["public"]["Enums"]["meal_status"]
+          first_course: Database["public"]["Enums"]["meal_status"]
           id: string
           meal_type_id: string
           notes: string | null
           recorded_at: string
           recorded_by: string
           recorded_date: string
+          second_course: Database["public"]["Enums"]["meal_status"]
           status: Database["public"]["Enums"]["meal_status"]
         }
         Insert: {
           child_id: string
+          dessert?: Database["public"]["Enums"]["meal_status"]
+          first_course?: Database["public"]["Enums"]["meal_status"]
           id?: string
           meal_type_id: string
           notes?: string | null
           recorded_at?: string
           recorded_by: string
           recorded_date?: string
+          second_course?: Database["public"]["Enums"]["meal_status"]
           status: Database["public"]["Enums"]["meal_status"]
         }
         Update: {
           child_id?: string
+          dessert?: Database["public"]["Enums"]["meal_status"]
+          first_course?: Database["public"]["Enums"]["meal_status"]
           id?: string
           meal_type_id?: string
           notes?: string | null
           recorded_at?: string
           recorded_by?: string
           recorded_date?: string
+          second_course?: Database["public"]["Enums"]["meal_status"]
           status?: Database["public"]["Enums"]["meal_status"]
         }
         Relationships: [
@@ -758,12 +767,15 @@ export type Database = {
         }
         Returns: {
           child_id: string
+          dessert: Database["public"]["Enums"]["meal_status"]
+          first_course: Database["public"]["Enums"]["meal_status"]
           id: string
           meal_type_id: string
           notes: string | null
           recorded_at: string
           recorded_by: string
           recorded_date: string
+          second_course: Database["public"]["Enums"]["meal_status"]
           status: Database["public"]["Enums"]["meal_status"]
         }
         SetofOptions: {
