@@ -67,6 +67,8 @@ export default function BusinessApp() {
   const [attendanceRows, setAttendanceRows] = useState<AttendanceRow[]>([]);
   const [confirmingAttendance, setConfirmingAttendance] = useState(false);
   const [confirmEmptyChecked, setConfirmEmptyChecked] = useState(false);
+  const [attendanceListOpen, setAttendanceListOpen] = useState(true);
+  const [confirmedByName, setConfirmedByName] = useState<string | null>(null);
   const [isOffline, setIsOffline] = useState(
     typeof navigator !== "undefined" ? !navigator.onLine : false,
   );
@@ -264,6 +266,30 @@ export default function BusinessApp() {
     return true;
   }
 
+  async function resolveConfirmedByName(
+    userId: string,
+  ): Promise<string | null> {
+    const monitorResult = await supabase
+      .from("monitors")
+      .select("first_name, last_name")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (!monitorResult.error && monitorResult.data) {
+      const fullName =
+        `${monitorResult.data.first_name ?? ""} ${monitorResult.data.last_name ?? ""}`.trim();
+      if (fullName) return fullName;
+    }
+    const userResult = await supabase
+      .from("users")
+      .select("full_name")
+      .eq("id", userId)
+      .maybeSingle();
+    if (!userResult.error && userResult.data?.full_name) {
+      return userResult.data.full_name;
+    }
+    return null;
+  }
+
   useEffect(() => {
     if (!selectedClassId || state !== "ready") return;
     const classId = selectedClassId;
@@ -277,7 +303,20 @@ export default function BusinessApp() {
         .eq("attendance_date", localDateString());
       if (!active) return;
       if (!result.error) {
-        setAttendanceRows(result.data ?? []);
+        const rows = result.data ?? [];
+        setAttendanceRows(rows);
+        if (rows.length > 0) {
+          setAttendanceListOpen(false);
+          const meta = getAttendanceConfirmationMeta(rows);
+          if (meta) {
+            const name = await resolveConfirmedByName(meta.confirmedBy);
+            if (!active) return;
+            setConfirmedByName(name);
+          }
+        } else {
+          setAttendanceListOpen(true);
+          setConfirmedByName(null);
+        }
       }
     }
 
@@ -292,6 +331,8 @@ export default function BusinessApp() {
     setPresenceOverride({});
     setAttendanceRows([]);
     setConfirmEmptyChecked(false);
+    setAttendanceListOpen(true);
+    setConfirmedByName(null);
   }
 
   async function confirmAttendance() {
@@ -353,6 +394,9 @@ export default function BusinessApp() {
     setAttendanceRows(result.data ?? rows);
     setPresenceOverride({});
     setConfirmEmptyChecked(false);
+    setAttendanceListOpen(false);
+    const confirmerName = await resolveConfirmedByName(session.user.id);
+    setConfirmedByName(confirmerName);
     setToast({
       message:
         presentCount === 0
@@ -570,112 +614,143 @@ export default function BusinessApp() {
             aria-label="Pasar lista"
             className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
           >
-            <div className="flex items-baseline justify-between gap-3">
+            <div className="flex items-center justify-between gap-3">
               <h2 className="text-base font-bold text-slate-900">
                 Pasar lista
               </h2>
-              <p className="text-sm text-slate-500">
-                {presentCount === 1
-                  ? "1 previsto"
-                  : `${presentCount} previstos`}
-              </p>
-            </div>
-            <p className="mt-1 text-xs text-slate-500">
-              Lista pre-marcada según la pauta semanal. El ajuste de hoy no
-              modifica la pauta habitual.
-            </p>
-            {weekend && (
-              <p
-                role="alert"
-                className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800"
-              >
-                Hoy no hay servicio de comedor. La lista aparece desmarcada.
-              </p>
-            )}
-            {isOffline && (
-              <p
-                role="alert"
-                className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800"
-              >
-                Sin conexión: pasar lista y confirmar requieren conexión.
-              </p>
-            )}
-            <ul className="mt-3 flex flex-col gap-2">
-              {dailyRows.map(({ child, present, origin }) => (
-                <li
-                  key={child.id}
-                  className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 px-3 py-2"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-bold text-slate-900">
-                      {`${child.first_name} ${child.last_name}`}
-                    </p>
-                    <p className="text-xs text-slate-500">
-                      {originLabel(origin)}
-                    </p>
-                  </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <p className="text-sm text-slate-500">
+                  {presentCount === 1
+                    ? "1 previsto"
+                    : `${presentCount} previstos`}
+                </p>
+                {attendanceConfirmed && (
                   <button
                     type="button"
-                    role="switch"
-                    aria-checked={present}
-                    aria-label={`Asistencia de ${child.first_name} ${child.last_name}`}
-                    onClick={() => handleTogglePresence(child.id)}
-                    className={`relative h-7 w-12 shrink-0 rounded-full transition-colors ${
-                      present ? "bg-emerald-600" : "bg-slate-200"
-                    }`}
+                    aria-expanded={attendanceListOpen}
+                    aria-controls="lista-asistencia"
+                    onClick={() => setAttendanceListOpen((current) => !current)}
+                    className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-200"
                   >
-                    <span
-                      className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-all ${
-                        present ? "left-6" : "left-1"
-                      }`}
-                    />
+                    {attendanceListOpen ? "Ocultar lista" : "Ver lista"}
                   </button>
-                </li>
-              ))}
-            </ul>
-            {attendanceSummary.status !== "never-passed" && attendanceMeta && (
-              <p className="mt-3 rounded-xl bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
-                {attendanceSummary.status === "confirmed-empty"
-                  ? "Lista confirmada vacía"
-                  : "Lista confirmada"}
-                {` · ${attendanceSummary.presentCount} presentes · confirmada por ${attendanceMeta.confirmedBy} · ${new Date(attendanceMeta.confirmedAt).toLocaleTimeString()}`}
-              </p>
-            )}
-            {presentCount === 0 && (
-              <label className="mt-3 flex items-start gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700">
-                <input
-                  type="checkbox"
-                  checked={confirmEmptyChecked}
-                  onChange={(event) =>
-                    setConfirmEmptyChecked(event.target.checked)
+                )}
+              </div>
+            </div>
+            {attendanceConfirmed && !attendanceListOpen ? (
+              <>
+                {attendanceSummary.status !== "never-passed" &&
+                  attendanceMeta && (
+                    <p className="mt-3 rounded-xl bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+                      {attendanceSummary.status === "confirmed-empty"
+                        ? "Lista confirmada vacía"
+                        : "Lista confirmada"}
+                      {` · ${attendanceSummary.presentCount} presentes · confirmada por ${confirmedByName ?? attendanceMeta.confirmedBy} · ${new Date(attendanceMeta.confirmedAt).toLocaleTimeString()}`}
+                    </p>
+                  )}
+              </>
+            ) : (
+              <>
+                <p className="mt-1 text-xs text-slate-500">
+                  Lista pre-marcada según la pauta semanal. El ajuste de hoy no
+                  modifica la pauta habitual.
+                </p>
+                {weekend && (
+                  <p
+                    role="alert"
+                    className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800"
+                  >
+                    Hoy no hay servicio de comedor. La lista aparece desmarcada.
+                  </p>
+                )}
+                {isOffline && (
+                  <p
+                    role="alert"
+                    className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800"
+                  >
+                    Sin conexión: pasar lista y confirmar requieren conexión.
+                  </p>
+                )}
+                <ul id="lista-asistencia" className="mt-3 flex flex-col gap-2">
+                  {dailyRows.map(({ child, present, origin }) => (
+                    <li
+                      key={child.id}
+                      className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 px-3 py-2"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-bold text-slate-900">
+                          {`${child.first_name} ${child.last_name}`}
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          {originLabel(origin)}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={present}
+                        aria-label={`Asistencia de ${child.first_name} ${child.last_name}`}
+                        onClick={() => handleTogglePresence(child.id)}
+                        className={`relative h-7 w-12 shrink-0 rounded-full transition-colors ${
+                          present ? "bg-emerald-600" : "bg-slate-200"
+                        }`}
+                      >
+                        <span
+                          className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition-all ${
+                            present ? "left-6" : "left-1"
+                          }`}
+                        />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                {attendanceSummary.status !== "never-passed" &&
+                  attendanceMeta && (
+                    <p className="mt-3 rounded-xl bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+                      {attendanceSummary.status === "confirmed-empty"
+                        ? "Lista confirmada vacía"
+                        : "Lista confirmada"}
+                      {` · ${attendanceSummary.presentCount} presentes · confirmada por ${confirmedByName ?? attendanceMeta.confirmedBy} · ${new Date(attendanceMeta.confirmedAt).toLocaleTimeString()}`}
+                    </p>
+                  )}
+                {presentCount === 0 && (
+                  <label className="mt-3 flex items-start gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={confirmEmptyChecked}
+                      onChange={(event) =>
+                        setConfirmEmptyChecked(event.target.checked)
+                      }
+                      aria-label="Confirmo que hoy no viene nadie: lista vacía"
+                    />
+                    <span>Confirmo que hoy no viene nadie (lista vacía)</span>
+                  </label>
+                )}
+                {!canConfirm && (
+                  <p className="mt-3 text-sm text-slate-500">
+                    Solo el monitor o la administración puede confirmar la
+                    lista.
+                  </p>
+                )}
+                <button
+                  type="button"
+                  onClick={() => void confirmAttendance()}
+                  disabled={
+                    !canConfirm ||
+                    confirmingAttendance ||
+                    isOffline ||
+                    (presentCount === 0 && !confirmEmptyChecked)
                   }
-                  aria-label="Confirmo que hoy no viene nadie: lista vacía"
-                />
-                <span>Confirmo que hoy no viene nadie (lista vacía)</span>
-              </label>
+                  className="mt-3 w-full rounded-xl bg-emerald-600 px-5 py-3 font-medium text-white disabled:opacity-50"
+                >
+                  {confirmingAttendance
+                    ? "Confirmando…"
+                    : attendanceSummary.status === "never-passed"
+                      ? "Confirmar lista"
+                      : "Re-confirmar lista"}
+                </button>
+              </>
             )}
-            {!canConfirm && (
-              <p className="mt-3 text-sm text-slate-500">
-                Solo el monitor o la administración puede confirmar la lista.
-              </p>
-            )}
-            <button
-              type="button"
-              onClick={() => void confirmAttendance()}
-              disabled={
-                !canConfirm ||
-                confirmingAttendance ||
-                isOffline ||
-                (presentCount === 0 && !confirmEmptyChecked)
-              }
-              className="mt-3 w-full rounded-xl bg-emerald-600 px-5 py-3 font-medium text-white disabled:opacity-50"
-            >
-              {confirmingAttendance
-                ? "Confirmando…"
-                : attendanceSummary.status === "never-passed"
-                  ? "Confirmar lista"
-                  : "Re-confirmar lista"}
-            </button>
           </section>
           <section
             aria-label="Registro de comida"
