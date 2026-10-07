@@ -47,6 +47,7 @@ import {
 import type { Database } from "../types/database";
 import FeedbackToast from "./FeedbackToast";
 import StudentCard from "./StudentCard";
+import TopNav from "./TopNav";
 
 type Child = Database["public"]["Tables"]["children"]["Row"];
 type SchoolClass = Database["public"]["Tables"]["classes"]["Row"];
@@ -165,7 +166,7 @@ export default function BusinessApp() {
         supabase
           .from("incidents")
           .select(
-            "id, child_id, created_at, date, description, family_responded_at, family_response, family_seen, monitor_id, monitor_validated, requires_family_signature, reviewed, send_notification",
+            "id, child_id, category, created_at, date, description, family_responded_at, family_response, family_seen, monitor_id, monitor_validated, requires_family_signature, reviewed, send_notification",
           )
           .eq("date", localDateString()),
         supabase
@@ -1153,38 +1154,41 @@ export default function BusinessApp() {
 
   return (
     <>
-      <header className="sticky top-0 z-40 flex items-center justify-between border-b border-slate-200 bg-white/90 px-4 py-3 shadow-sm backdrop-blur-md">
-        <div className="flex items-center gap-3">
-          {selectedClass && (
-            <button
-              type="button"
-              onClick={() => handleSelectClass(null)}
-              className="rounded-full bg-slate-100 px-3 py-2 text-sm text-slate-600 hover:bg-slate-200"
-            >
-              ← Volver
-            </button>
-          )}
-          <div>
-            <h1 className="text-lg font-bold leading-none text-slate-900">
-              {selectedClass ? selectedClass.name : "Clases"}
-            </h1>
-            <p className="mt-1 text-xs font-medium text-slate-500">
-              {selectedClass
-                ? "Datos visibles según los permisos de tu cuenta"
-                : "Selecciona una clase para ver sus alumnos"}
-            </p>
+      <header className="sticky top-0 z-40 flex flex-col gap-3 border-b border-slate-200 bg-white/90 px-4 py-3 shadow-sm backdrop-blur-md">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            {selectedClass && (
+              <button
+                type="button"
+                onClick={() => handleSelectClass(null)}
+                className="rounded-full bg-slate-100 px-3 py-2 text-sm text-slate-600 hover:bg-slate-200"
+              >
+                ← Volver
+              </button>
+            )}
+            <div>
+              <h1 className="text-lg font-bold leading-none text-slate-900">
+                {selectedClass ? selectedClass.name : "Clases"}
+              </h1>
+              <p className="mt-1 text-xs font-medium text-slate-500">
+                {selectedClass
+                  ? "Datos visibles según los permisos de tu cuenta"
+                  : "Selecciona una clase para ver sus alumnos"}
+              </p>
+            </div>
           </div>
+          <button
+            type="button"
+            onClick={async () => {
+              await supabase.auth.signOut();
+              window.location.assign("/setup");
+            }}
+            className="rounded-full bg-slate-100 px-3 py-2 text-sm text-slate-600 hover:bg-slate-200"
+          >
+            Salir
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={async () => {
-            await supabase.auth.signOut();
-            window.location.assign("/setup");
-          }}
-          className="rounded-full bg-slate-100 px-3 py-2 text-sm text-slate-600 hover:bg-slate-200"
-        >
-          Salir
-        </button>
+        <TopNav active="clases" />
       </header>
       {content}
       {isOffline && !selectedClass && (

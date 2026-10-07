@@ -1,28 +1,42 @@
 ---
 import MainLayout from "../../layouts/MainLayout.astro";
+import TopNav from "../../components/TopNav.astro";
 import { createIncident, getClassesWithChildren } from "../../lib/incidents";
+import {
+  INCIDENT_CATEGORIES,
+  INCIDENT_CATEGORY_LABELS,
+  isIncidentCategory,
+} from "../../lib/incidentCategories";
 
 const monitorId = Astro.cookies.get("monitor_id")?.value;
 
 if (!monitorId) {
-  return Astro.redirect("/login?redirect=/incidencias/nova");
+  return Astro.redirect("/setup");
 }
 
 const classesWithChildren = await getClassesWithChildren(monitorId);
+
+let formError: string | null = null;
 
 // Handle form submission
 if (Astro.request.method === "POST") {
   const formData = await Astro.request.formData();
   const kidId = formData.get("kid")?.toString();
+  const categoryValue = formData.get("category")?.toString() ?? "";
   const date = formData.get("date")?.toString() || new Date().toISOString().split("T")[0];
   const comments = formData.get("comments")?.toString() || "";
   const requiresSignature = formData.get("requiresSignature") === "on";
   const sendNotification = formData.get("sendNotification") === "on";
 
-  if (kidId) {
+  if (!kidId) {
+    formError = "Cal triar un alumne per crear la incidència.";
+  } else if (!isIncidentCategory(categoryValue)) {
+    formError = "Cal triar una categoria per crear la incidència.";
+  } else {
     await createIncident({
       child_id: kidId,
       monitor_id: monitorId,
+      category: categoryValue,
       date,
       description: comments,
       requires_family_signature: requiresSignature,
@@ -31,9 +45,9 @@ if (Astro.request.method === "POST") {
       family_seen: false,
       monitor_validated: false,
     });
-  }
 
-  return Astro.redirect("/incidencias");
+    return Astro.redirect("/incidencias");
+  }
 }
 
 const todayStr = new Date().toISOString().split("T")[0];
@@ -50,21 +64,32 @@ const studentsJson = JSON.stringify(
 <MainLayout title="Nova Incidència">
   <div class="flex-1 flex flex-col min-h-0">
     <header
-      class="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-slate-200 px-4 py-3 flex items-center justify-between shadow-sm"
+      class="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-slate-200 px-4 py-3 flex flex-col gap-3 shadow-sm"
     >
-      <a
-        href="/incidencias"
-        class="p-2 -ml-2 text-slate-500 hover:text-slate-800 rounded-full hover:bg-slate-100"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-6 h-6">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
-        </svg>
-      </a>
-      <h1 class="text-lg font-bold text-slate-900">Nova incidència</h1>
-      <div class="w-10"></div>
+      <div class="flex items-center justify-between">
+        <a
+          href="/incidencias"
+          class="p-2 -ml-2 text-slate-500 hover:text-slate-800 rounded-full hover:bg-slate-100"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-6 h-6">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
+          </svg>
+        </a>
+        <h1 class="text-lg font-bold text-slate-900">Nova incidència</h1>
+        <div class="w-10"></div>
+      </div>
+      <TopNav active="incidencias" />
     </header>
 
     <div class="flex-1 overflow-y-auto px-4 pt-4 pb-6">
+      {formError && (
+        <p
+          role="alert"
+          class="mb-4 rounded-xl bg-red-50 px-4 py-3 text-sm font-medium text-red-800 border border-red-100"
+        >
+          {formError}
+        </p>
+      )}
       <form method="POST" class="space-y-5">
         <!-- Class selector -->
         <div class="flex flex-col gap-1.5">
@@ -95,6 +120,24 @@ const studentsJson = JSON.stringify(
             class="h-12 px-4 rounded-xl border border-slate-200 bg-white text-slate-900 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all appearance-none bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2020%2020%22%20fill%3D%22%239CA3AF%22%3E%3Cpath%20fill-rule%3D%22evenodd%22%20d%3D%22M5.23%207.21a.75.75%200%20011.06.02L10%2011.168l3.71-3.938a.75.75%200%20111.08%201.04l-4.25%204.5a.75.75%200%2001-1.08%200l-4.25-4.5a.75.75%200%2001.02-1.06z%22%20clip-rule%3D%22evenodd%22%2F%3E%3C%2Fsvg%3E')] bg-[length:1.5rem] bg-[right_0.75rem_center] bg-no-repeat pr-10"
           >
             <option value="">Selecciona un alumne</option>
+          </select>
+        </div>
+
+        <!-- Category -->
+        <div class="flex flex-col gap-1.5">
+          <label for="incident-category" class="text-sm font-medium text-slate-700 ml-1">
+            Categoria
+          </label>
+          <select
+            id="incident-category"
+            name="category"
+            required
+            class="h-12 px-4 rounded-xl border border-slate-200 bg-white text-slate-900 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all appearance-none bg-[url('data:image/svg+xml;charset=utf-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2020%2020%22%20fill%3D%22%239CA3AF%22%3E%3Cpath%20fill-rule%3D%22evenodd%22%20d%3D%22M5.23%207.21a.75.75%200%20011.06.02L10%2011.168l3.71-3.938a.75.75%200%20111.08%201.04l-4.25%204.5a.75.75%200%2001-1.08%200l-4.25-4.5a.75.75%200%2001.02-1.06z%22%20clip-rule%3D%22evenodd%22%2F%3E%3C%2Fsvg%3E')] bg-[length:1.5rem] bg-[right_0.75rem_center] bg-no-repeat pr-10"
+          >
+            <option value="">Selecciona una categoria</option>
+            {INCIDENT_CATEGORIES.map((category) => (
+              <option value={category}>{INCIDENT_CATEGORY_LABELS[category]}</option>
+            ))}
           </select>
         </div>
 

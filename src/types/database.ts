@@ -349,6 +349,7 @@ export type Database = {
       }
       incidents: {
         Row: {
+          category: string | null
           child_id: string | null
           created_at: string | null
           date: string | null
@@ -364,6 +365,7 @@ export type Database = {
           send_notification: boolean | null
         }
         Insert: {
+          category?: string | null
           child_id?: string | null
           created_at?: string | null
           date?: string | null
@@ -379,6 +381,7 @@ export type Database = {
           send_notification?: boolean | null
         }
         Update: {
+          category?: string | null
           child_id?: string | null
           created_at?: string | null
           date?: string | null
