@@ -214,11 +214,12 @@ test("incidence descriptions preserve flags and comments as readable text", asyn
 test("incident-capable users keep comments even when no flag is checked", async () => {
   const app = await source("src/components/BusinessApp.tsx");
 
-  assert.match(
-    app,
-    /if \([\s\S]*?"incident" in payload[\s\S]*?payload\.incident[\s\S]*?\) \{[\s\S]*?saveIncident\(selectedChild!,[\s\S]*?return;/,
-  );
-  assert.match(app, /saveStatus\([\s\S]*?payload\.status/);
+  // #33: la edición por modal solo ajusta el borrador virtual de la fila
+  // (valor + notas, sin escribir en servidor); el guardado conjunto persiste.
+  assert.match(app, /handleMealModalSave/);
+  assert.match(app, /handleMealModalSave\(selectedChild/);
+  assert.match(app, /handleMealModalSave\([\s\S]*?payload\.status/);
+  assert.match(app, /handleMealModalSave\([\s\S]*?payload\.notes/);
 });
 
 test("manager todo bien stays on the ordinary meal upsert path", async () => {
@@ -235,10 +236,10 @@ test("manager todo bien stays on the ordinary meal upsert path", async () => {
     mealRecord,
     /if \(!canManageIncidents \|\| !hasIncident\) return payload;/,
   );
-  assert.match(
-    app,
-    /if \("incident" in payload && payload\.incident\) \{[\s\S]*?saveIncident\([\s\S]*?return;[\s\S]*?\}[\s\S]*?void saveStatus\(/,
-  );
+  // #33: el modal guarda en borrador y el botón conjunto hace el upsert.
+  assert.match(app, /onSave=\{\(payload\) => \{[\s\S]*?handleMealModalSave\(/);
+  assert.match(app, /async function saveMealList\(/);
+  assert.match(app, /buildMealListRows\(/);
 });
 
 test("manager incidence stays on the atomic RPC path", async () => {
@@ -252,8 +253,11 @@ test("manager incidence stays on the atomic RPC path", async () => {
     app,
     /saveIncident[\s\S]*?\.rpc\("record_meal_incident",[\s\S]*?p_child_id/,
   );
-  assert.doesNotMatch(
-    app,
-    /saveIncident[\s\S]*?\.from\("meal_records"\)[\s\S]*?\.upsert\(/,
+  // El upsert directo vive en saveStatus/saveMealList, nunca dentro de
+  // saveIncident (vía atómica RPC).
+  const saveIncidentFn = app.match(
+    /async function saveIncident\([\s\S]*?\n {2}\}/,
   );
+  assert.ok(saveIncidentFn, "expected a saveIncident function");
+  assert.doesNotMatch(saveIncidentFn[0], /\.from\("meal_records"\)/);
 });

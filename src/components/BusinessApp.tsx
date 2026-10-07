@@ -21,7 +21,13 @@ import {
   summarizeAttendance,
   type AttendanceRow,
 } from "../lib/attendance";
-import type { MealStatus } from "../lib/mealRecord";
+import {
+  applyMealDraft,
+  buildMealListRows,
+  buildVirtualMealList,
+  pickDefaultMealTypeId,
+} from "../lib/mealList.ts";
+import { MEAL_STATUS_OPTIONS, type MealStatus } from "../lib/mealRecord";
 import type { Database } from "../types/database";
 import FeedbackToast from "./FeedbackToast";
 import StudentCard from "./StudentCard";
@@ -68,6 +74,10 @@ export default function BusinessApp() {
   const [confirmingAttendance, setConfirmingAttendance] = useState(false);
   const [confirmEmptyChecked, setConfirmEmptyChecked] = useState(false);
   const [attendanceListOpen, setAttendanceListOpen] = useState(true);
+  const [mealDrafts, setMealDrafts] = useState<
+    Record<string, { status: MealStatus; notes: string }>
+  >({});
+  const [savingMealList, setSavingMealList] = useState(false);
   const [confirmedByName, setConfirmedByName] = useState<string | null>(null);
   const [isOffline, setIsOffline] = useState(
     typeof navigator !== "undefined" ? !navigator.onLine : false,
@@ -252,6 +262,40 @@ export default function BusinessApp() {
       visibleChildren.filter((child) => !presentChildIds.includes(child.id)),
     [visibleChildren, presentChildIds],
   );
+  const attendanceDate =
+    attendanceRows[0]?.attendance_date ?? localDateString();
+  const defaultMealTypeId = useMemo(
+    () => pickDefaultMealTypeId(mealTypes),
+    [mealTypes],
+  );
+  const virtualMealList = useMemo(() => {
+    const savedForDay = records
+      .filter(
+        (record) =>
+          record.recorded_date === attendanceDate &&
+          (defaultMealTypeId
+            ? record.meal_type_id === defaultMealTypeId
+            : true),
+      )
+      .map((record) => ({
+        child_id: record.child_id,
+        status: record.status,
+        notes: record.notes,
+      }));
+    const base = buildVirtualMealList(presentChildIds, savedForDay);
+    let withDrafts = base;
+    for (const [childId, draft] of Object.entries(mealDrafts)) {
+      withDrafts = applyMealDraft(withDrafts, childId, draft);
+    }
+    return withDrafts;
+  }, [presentChildIds, records, attendanceDate, defaultMealTypeId, mealDrafts]);
+  const mealStatusLabelByValue = useMemo(
+    () =>
+      new Map(
+        MEAL_STATUS_OPTIONS.map((option) => [option.value, option.label]),
+      ),
+    [],
+  );
 
   function rejectUnrecordable(child: Child): boolean {
     // El registro filtra a los presentes de la lista confirmada: sin
@@ -333,6 +377,8 @@ export default function BusinessApp() {
     setConfirmEmptyChecked(false);
     setAttendanceListOpen(true);
     setConfirmedByName(null);
+    setMealDrafts({});
+    setSelectedChild(null);
   }
 
   async function confirmAttendance() {
@@ -395,6 +441,9 @@ export default function BusinessApp() {
     setPresenceOverride({});
     setConfirmEmptyChecked(false);
     setAttendanceListOpen(false);
+    // Confirmar solo escribe daily_attendance: la lista de comida queda en
+    // Todo virtual por cada presente, sin crear filas en meal_records.
+    setMealDrafts({});
     const confirmerName = await resolveConfirmedByName(session.user.id);
     setConfirmedByName(confirmerName);
     setToast({
@@ -406,6 +455,10 @@ export default function BusinessApp() {
     });
   }
 
+  // Registro individual inmediato (vía #32): superseded por la lista
+  // virtual y el guardado conjunto de #33. Se conserva para el contrato
+  // existente (tests de gating/incidencias) y como vía de reintento puntual.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async function saveStatus(
     child: Child,
     mealTypeId: string,
@@ -453,13 +506,14 @@ export default function BusinessApp() {
     setSelectedChild(null);
     setToast({
       message:
-        status === "todo"
-          ? 'Marcado como "Todo"'
-          : "Estado de comida guardado",
+        status === "todo" ? 'Marcado como "Todo"' : "Estado de comida guardado",
       type: status === "todo" ? "success" : "warning",
     });
   }
 
+  // Incidencia atómica individual (vía #32): conservada para el contrato
+  // existente; el guardado conjunto de #33 hace upsert simple sin incidencias.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async function saveIncident(
     child: Child,
     details: {
@@ -546,6 +600,92 @@ export default function BusinessApp() {
 
     setSelectedChild(null);
     setToast({ message: "Incidencia registrada", type: "warning" });
+  }
+
+  function handleMealModalSave(
+    child: Child,
+    payload: { status: MealStatus; notes: string | null },
+  ) {
+    // Edición por modal por alumno (valor + notas): solo ajusta el borrador
+    // virtual de esa fila. Salir sin guardar no escribe en el servidor.
+    if (rejectUnrecordable(child)) return;
+    const next = {
+      status: payload.status,
+      notes: payload.notes ?? "",
+    };
+    setMealDrafts((current) => ({ ...current, [child.id]: next }));
+    setSelectedChild(null);
+  }
+
+  async function saveMealList() {
+    // Guardado conjunto: upsert de todos los presentes con
+    // recorded_date = attendance_date y meal_type = primer meal_type activo
+    // por sort_order. Sin ese tipo no hay escrituras ni relleno retroactivo.
+    // La lista confirmada vacía no crea ningún meal_record.
+    if (savingMealList) return;
+    if (!attendanceConfirmed || presentChildIds.length === 0) return;
+    if (!defaultMealTypeId) {
+      setToast({
+        message: "Sin tipo de comida activo: no se puede guardar la lista",
+        type: "error",
+      });
+      return;
+    }
+    for (const childId of presentChildIds) {
+      if (!canRecordMeal(attendanceRows, childId)) {
+        setToast({
+          message:
+            "Solo se puede registrar a alumnos presentes de la lista confirmada",
+          type: "error",
+        });
+        return;
+      }
+    }
+    const { data: sessionData } = await supabase.auth.getSession();
+    const session = sessionData.session;
+    if (!session) {
+      setToast({
+        message: "No se ha podido guardar la lista de comida",
+        type: "error",
+      });
+      return;
+    }
+    const rows = buildMealListRows({
+      presentChildIds,
+      drafts: virtualMealList,
+      mealTypeId: defaultMealTypeId,
+      recordedDate: attendanceDate,
+      recordedBy: session.user.id,
+      recordedAt: new Date().toISOString(),
+    });
+    if (rows.length === 0) return;
+    setSavingMealList(true);
+    const result = await supabase
+      .from("meal_records")
+      .upsert(rows, { onConflict: "child_id,meal_type_id,recorded_date" })
+      .select(
+        "id, child_id, meal_type_id, notes, recorded_date, recorded_at, recorded_by, status",
+      );
+    setSavingMealList(false);
+    if (result.error) {
+      setToast({
+        message: "No se ha podido guardar la lista de comida",
+        type: "error",
+      });
+      return;
+    }
+    const saved = result.data ?? [];
+    setRecords((current) => {
+      const savedIds = new Set(saved.map((row) => row.id));
+      return [
+        ...current.filter((record) => !savedIds.has(record.id)),
+        ...saved,
+      ];
+    });
+    // Re-guardar el mismo día sobrescribe libremente: limpiamos el borrador
+    // para que la lista muestre lo guardado.
+    setMealDrafts({});
+    setToast({ message: "Lista de comida guardada", type: "success" });
   }
 
   if (state === "loading")
@@ -776,21 +916,76 @@ export default function BusinessApp() {
                 registrar.
               </p>
             ) : (
-              <div className="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {recordableChildren.map((child) => (
-                  <StudentCard
-                    key={child.id}
-                    name={`${child.first_name} ${child.last_name}`}
-                    status={statusFor(
-                      records.filter((record) => record.child_id === child.id),
-                      incidents.filter(
-                        (incident) => incident.child_id === child.id,
-                      ),
-                    )}
-                    onClick={() => setSelectedChild(child)}
-                  />
-                ))}
-              </div>
+              <>
+                <p className="mt-2 text-xs text-slate-500">
+                  Lista de comida con Todo pre-seleccionado virtual por cada
+                  presente, sin escribir aún en el servidor. Abre cada alumno
+                  para ajustar excepciones y pulsa Guardar lista de comida.
+                </p>
+                {!defaultMealTypeId && (
+                  <p
+                    role="alert"
+                    className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800"
+                  >
+                    Sin tipo de comida activo: no se puede guardar la lista.
+                  </p>
+                )}
+                <ul
+                  aria-label="Lista de comida"
+                  className="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3"
+                >
+                  {recordableChildren.map((child) => {
+                    const entry = virtualMealList.find(
+                      (item) => item.childId === child.id,
+                    );
+                    const label = mealStatusLabelByValue.get(
+                      entry?.status ?? "todo",
+                    );
+                    return (
+                      <li
+                        key={child.id}
+                        className="flex flex-col gap-2 rounded-2xl border border-slate-100 p-3 shadow-sm"
+                      >
+                        <StudentCard
+                          name={`${child.first_name} ${child.last_name}`}
+                          status={statusFor(
+                            records.filter(
+                              (record) => record.child_id === child.id,
+                            ),
+                            incidents.filter(
+                              (incident) => incident.child_id === child.id,
+                            ),
+                          )}
+                          onClick={() => setSelectedChild(child)}
+                        />
+                        <p className="px-1 text-sm text-slate-700">
+                          Valor elegido:{" "}
+                          <span className="font-bold text-slate-900">
+                            {label}
+                          </span>
+                          {entry?.notes ? ` · ${entry.notes}` : ""}
+                        </p>
+                        <button
+                          type="button"
+                          aria-label={`Ajustar comida de ${child.first_name} ${child.last_name}`}
+                          onClick={() => setSelectedChild(child)}
+                          className="rounded-xl bg-slate-100 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200"
+                        >
+                          Ajustar
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+                <button
+                  type="button"
+                  onClick={() => void saveMealList()}
+                  disabled={savingMealList || !defaultMealTypeId || isOffline}
+                  className="mt-3 w-full rounded-xl bg-emerald-600 px-5 py-3 font-medium text-white disabled:opacity-50"
+                >
+                  {savingMealList ? "Guardando…" : "Guardar lista de comida"}
+                </button>
+              </>
             )}
             {attendanceConfirmed && absentChildren.length > 0 && (
               <ul
@@ -902,24 +1097,30 @@ export default function BusinessApp() {
         child={selectedChild}
         mealTypes={mealTypes}
         canManageIncidents={canManageIncidents}
+        initialStatus={
+          selectedChild
+            ? (virtualMealList.find(
+                (entry) => entry.childId === selectedChild.id,
+              )?.status ?? "todo")
+            : undefined
+        }
+        initialNotes={
+          selectedChild
+            ? (virtualMealList.find(
+                (entry) => entry.childId === selectedChild.id,
+              )?.notes ?? "")
+            : undefined
+        }
         onClose={() => setSelectedChild(null)}
         onSave={(payload) => {
-          if ("incident" in payload && payload.incident) {
-            void saveIncident(selectedChild!, {
-              mealTypeId: payload.mealTypeId,
-              status: payload.status,
-              notes: payload.notes ?? "",
-              ...payload.incident,
-              comments: payload.incident.comments ?? "",
-            });
-            return;
-          }
-          void saveStatus(
-            selectedChild!,
-            payload.mealTypeId,
-            payload.status,
-            payload.notes ?? "",
-          );
+          // La edición por modal solo ajusta el borrador virtual de la fila
+          // (valor + notas); el guardado conjunto persiste a todos los
+          // presentes de golpe con upsert simple, sin incidencias.
+          if (!selectedChild) return;
+          handleMealModalSave(selectedChild, {
+            status: payload.status,
+            notes: payload.notes ?? "",
+          });
         }}
       />
       <FeedbackToast

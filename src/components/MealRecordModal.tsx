@@ -5,6 +5,7 @@ import {
   MEAL_NOTES_MAX_LENGTH,
   MEAL_STATUS_OPTIONS,
   type MealRecordFormValues,
+  type MealStatus,
 } from "../lib/mealRecord";
 
 interface Child {
@@ -17,29 +18,40 @@ interface MealRecordModalProps {
   child: Child | null;
   mealTypes: { id: string; name: string }[];
   canManageIncidents: boolean;
+  initialStatus?: MealStatus;
+  initialNotes?: string;
   onClose: () => void;
   onSave: (payload: ReturnType<typeof buildMealRecordPayload>) => void;
 }
 
-const initialValues: Omit<MealRecordFormValues, "childId"> = {
-  mealTypeId: "",
-  status: "todo",
-  notes: "",
-  noFirst: false,
-  noSecond: false,
-  noGarnish: false,
-  noDessert: false,
-  incidentComments: "",
-};
+function baseInitialValues(
+  initialStatus?: MealStatus,
+  initialNotes?: string,
+): Omit<MealRecordFormValues, "childId"> {
+  return {
+    mealTypeId: "",
+    status: initialStatus ?? "todo",
+    notes: initialNotes ?? "",
+    noFirst: false,
+    noSecond: false,
+    noGarnish: false,
+    noDessert: false,
+    incidentComments: "",
+  };
+}
 
 export default function MealRecordModal({
   child,
   mealTypes,
   canManageIncidents,
+  initialStatus,
+  initialNotes,
   onClose,
   onSave,
 }: MealRecordModalProps) {
-  const [values, setValues] = useState(initialValues);
+  const [values, setValues] = useState(() =>
+    baseInitialValues(initialStatus, initialNotes),
+  );
   const firstFieldRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
