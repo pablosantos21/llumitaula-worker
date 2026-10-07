@@ -37,7 +37,11 @@ import {
   touchMealDraft,
   type MealDraftMap,
 } from "../lib/mealDraft.ts";
-import { MEAL_STATUS_OPTIONS, type MealStatus } from "../lib/mealRecord";
+import {
+  canEditMealForDate,
+  mealStatusVisual,
+  type MealStatus,
+} from "../lib/mealRecord";
 import type { Database } from "../types/database";
 import FeedbackToast from "./FeedbackToast";
 import StudentCard from "./StudentCard";
@@ -325,13 +329,27 @@ export default function BusinessApp() {
     }
     return withDrafts;
   }, [presentChildIds, records, attendanceDate, defaultMealTypeId, mealDrafts]);
-  const mealStatusLabelByValue = useMemo(
-    () =>
-      new Map(
-        MEAL_STATUS_OPTIONS.map((option) => [option.value, option.label]),
-      ),
-    [],
+  // Ventana de edición (#35): mismo día monitor|admin editan libremente;
+  // días pasados el monitor queda en solo lectura y el admin rectifica.
+  const todayStr = localDateString();
+  const canEditMeals = canEditMealForDate(
+    userRole,
+    attendanceDate,
+    todayStr,
   );
+  const isPastMealDay = attendanceDate < todayStr;
+
+  function rejectUneditableMeal(): boolean {
+    if (canEditMeals) return false;
+    setToast({
+      message:
+        userRole === "monitor" && isPastMealDay
+          ? "Solo lectura: los días pasados solo los rectifica la administración"
+          : "No se puede editar la valoración de este día",
+      type: "error",
+    });
+    return true;
+  }
 
   function rejectUnrecordable(child: Child): boolean {
     // El registro filtra a los presentes de la lista confirmada: sin
@@ -710,10 +728,13 @@ export default function BusinessApp() {
     child: Child,
     payload: { status: MealStatus; notes: string | null },
   ) {
-    // Edición por modal por alumno (valor + notas): solo ajusta el borrador
-    // virtual de esa fila. Guardar aunque deje Todo pero con notas cuenta
-    // como modificado; revertir a Todo sin notas limpia la marca.
-    // Salir sin guardar no escribe en el servidor.
+    // Edición por modal por alumno (valor + notas en el mismo modal): solo
+    // ajusta el borrador virtual de esa fila. Guardar aunque deje Todo pero
+    // con notas cuenta como modificado; revertir a Todo sin notas limpia la
+    // marca. Salir sin guardar no escribe en el servidor.
+    // Ventana (#35): días pasados el monitor es solo lectura y el admin
+    // rectifica valor/notas libremente.
+    if (rejectUneditableMeal()) return;
     if (rejectUnrecordable(child)) return;
     const nextStatus = payload.status;
     const nextNotes = payload.notes ?? "";
@@ -741,7 +762,10 @@ export default function BusinessApp() {
     // La lista confirmada vacía no crea ningún meal_record.
     // La subida solo ocurre con la pulsación explícita de este botón: sin
     // conexión queda bloqueado con aviso y el borrador se conserva.
+    // Ventana (#35): mismo día monitor|admin guardan libremente; días
+    // pasados solo el admin rectifica y el monitor es solo lectura.
     if (savingMealList) return;
+    if (rejectUneditableMeal()) return;
     if (isOffline) {
       setToast({
         message:
@@ -1069,6 +1093,16 @@ export default function BusinessApp() {
                     La subida es manual con Guardar lista de comida.
                   </p>
                 )}
+                {isPastMealDay && (
+                  <p
+                    role="status"
+                    className="mt-2 rounded-xl bg-slate-100 px-3 py-2 text-sm text-slate-700"
+                  >
+                    {canEditMeals
+                      ? "Rectificación de un día pasado: la administración puede cambiar valor/notas libremente."
+                      : "Solo lectura: los días pasados solo los rectifica la administración."}
+                  </p>
+                )}
                 <ul
                   aria-label="Lista de comida"
                   className="mt-3 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3"
@@ -1077,9 +1111,8 @@ export default function BusinessApp() {
                     const entry = virtualMealList.find(
                       (item) => item.childId === child.id,
                     );
-                    const label = mealStatusLabelByValue.get(
-                      entry?.status ?? "todo",
-                    );
+                    const visual = mealStatusVisual(entry?.status ?? "todo");
+                    const label = visual.label;
                     const savedForChild = records.find(
                       (record) =>
                         record.child_id === child.id &&
@@ -1112,11 +1145,16 @@ export default function BusinessApp() {
                               (incident) => incident.child_id === child.id,
                             ),
                           )}
-                          onClick={() => setSelectedChild(child)}
+                          onClick={() => {
+                            if (!canEditMeals) return;
+                            setSelectedChild(child);
+                          }}
                         />
-                        <p
-                          className={`flex items-center gap-2 px-1 text-sm ${modified ? "text-slate-700" : "text-slate-400 opacity-70"}`}
-                        >
+                        <p className="flex items-center gap-2 px-1 text-sm text-slate-700">
+                          <span
+                            aria-hidden="true"
+                            className={`h-2.5 w-2.5 shrink-0 rounded-full ${visual.dotClass}`}
+                          />
                           {modified && (
                             <span
                               aria-label="Modificado"
@@ -1130,7 +1168,7 @@ export default function BusinessApp() {
                             </span>
                           )}
                           Valor elegido:{" "}
-                          <span className="font-bold text-slate-900">
+                          <span className={`font-bold ${visual.textClass}`}>
                             {label}
                           </span>
                           {entry?.notes ? ` · ${entry.notes}` : ""}
@@ -1138,10 +1176,17 @@ export default function BusinessApp() {
                         <button
                           type="button"
                           aria-label={`Ajustar comida de ${child.first_name} ${child.last_name}`}
-                          onClick={() => setSelectedChild(child)}
-                          className="rounded-xl bg-slate-100 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200"
+                          onClick={() => {
+                            if (!canEditMeals) {
+                              rejectUneditableMeal();
+                              return;
+                            }
+                            setSelectedChild(child);
+                          }}
+                          disabled={!canEditMeals}
+                          className="rounded-xl bg-slate-100 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200 disabled:opacity-50"
                         >
-                          Ajustar
+                          {canEditMeals ? "Ajustar" : "Solo lectura"}
                         </button>
                       </li>
                     );
@@ -1150,7 +1195,12 @@ export default function BusinessApp() {
                 <button
                   type="button"
                   onClick={() => void saveMealList()}
-                  disabled={savingMealList || !defaultMealTypeId || isOffline}
+                  disabled={
+                    savingMealList ||
+                    !defaultMealTypeId ||
+                    isOffline ||
+                    !canEditMeals
+                  }
                   className="mt-3 w-full rounded-xl bg-emerald-600 px-5 py-3 font-medium text-white disabled:opacity-50"
                 >
                   {savingMealList ? "Guardando…" : "Guardar lista de comida"}
