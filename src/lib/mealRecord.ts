@@ -32,7 +32,7 @@ export function buildMealRecordPayload(
     childId: values.childId,
     mealTypeId: values.mealTypeId,
     status: values.status,
-    notes: values.notes.trim() || null,
+    notes: values.notes.trim().slice(0, MEAL_NOTES_MAX_LENGTH) || null,
   };
 
   const hasIncident =
