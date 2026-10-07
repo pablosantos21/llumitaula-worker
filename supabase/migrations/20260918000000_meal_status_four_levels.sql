@@ -4,6 +4,8 @@
 
 -- Drop the RPC that depends on the enum; recreated below with the same
 -- logic against the new type.
+-- NOTE: meal_history view depends on meal_records.status, drop/recreate around swap.
+DROP VIEW IF EXISTS public.meal_history;
 drop function if exists public.record_meal_incident(uuid, uuid, public.meal_status, text, date, timestamptz, uuid, text);
 
 -- New enum with the 4 values ordered from highest to lowest intake.
@@ -114,3 +116,15 @@ revoke execute on function public.record_meal_incident(
 grant execute on function public.record_meal_incident(
   uuid, uuid, public.meal_status, text, date, timestamptz, uuid, text
 ) to authenticated;
+
+CREATE VIEW public.meal_history AS
+SELECT mr.id, mr.recorded_date AS meal_date, mt.name AS meal_type, mr.status AS rating,
+  cl.id AS class_id, cl.name AS class_name, cl.school_id, mr.child_id,
+  c.first_name AS child_first_name, c.last_name AS child_last_name,
+  mr.recorded_by AS worker_id, mon.id AS monitor_id,
+  mon.first_name AS monitor_first_name, mon.last_name AS monitor_last_name, mr.recorded_at
+FROM public.meal_records mr
+JOIN public.children c ON mr.child_id = c.id
+JOIN public.classes cl ON c.class_id = cl.id
+LEFT JOIN public.meal_types mt ON mr.meal_type_id = mt.id
+LEFT JOIN public.monitors mon ON mr.recorded_by = mon.id;
