@@ -163,27 +163,24 @@ test("PWA artwork and asset generation contract is present", async () => {
   assert.match(landscapeSplash, /viewBox="0 0 2732 2048"/);
 });
 
-test("MainLayout declares iOS metadata and registers the root service worker", async () => {
-  const layout = await source("src/layouts/MainLayout.astro");
+test("Vite shell declares iOS metadata and registers the root service worker", async () => {
+  const [index, layout] = await Promise.all([
+    source("index.html"),
+    source("src/app/RootLayout.tsx"),
+  ]);
 
+  assert.match(index, /<link rel="manifest" href="\/manifest\.webmanifest"/);
+  assert.match(index, /<meta name="theme-color" content="#[0-9a-fA-F]{6}"/);
   assert.match(
-    layout,
-    /<link rel="manifest" href="\/manifest\.webmanifest"\s*\/>/,
+    index,
+    /<meta name="apple-mobile-web-app-capable" content="yes"/,
   );
   assert.match(
-    layout,
-    /<meta name="theme-color" content="#[0-9a-fA-F]{6}"\s*\/>/,
+    index,
+    /<meta name="apple-mobile-web-app-status-bar-style" content="(?:default|black|black-translucent)"/,
   );
   assert.match(
-    layout,
-    /<meta name="apple-mobile-web-app-capable" content="yes"\s*\/>/,
-  );
-  assert.match(
-    layout,
-    /<meta name="apple-mobile-web-app-status-bar-style" content="(?:default|black|black-translucent)"\s*\/>/,
-  );
-  assert.match(
-    layout,
+    index,
     /<link rel="apple-touch-icon"[^>]+href="\/icons\/apple-touch-icon\.png"/,
   );
   assert.match(
@@ -191,15 +188,15 @@ test("MainLayout declares iOS metadata and registers the root service worker", a
     /navigator\s*\.\s*serviceWorker\s*\.\s*register\s*\(\s*["']\/sw\.js["']\s*,\s*\{\s*scope:\s*["']\/["']\s*\}\s*\)/,
   );
   assert.match(
-    layout,
+    index,
     /href="\/splash\/ipad-portrait\.png"\s+media="\(orientation: portrait\) and \(min-device-width: 768px\)"/,
   );
   assert.match(
-    layout,
+    index,
     /href="\/splash\/ipad-landscape\.png"\s+media="\(orientation: landscape\) and \(min-device-width: 768px\)"/,
   );
   assert.equal(
-    (layout.match(/rel="apple-touch-startup-image"/g) || []).length,
+    (index.match(/rel="apple-touch-startup-image"/g) || []).length,
     2,
   );
 });
@@ -258,7 +255,7 @@ async function createPublicBuildCheckerFixture(setup = populateFixture) {
 
 async function populateFixture(fixture) {
   await mkdir(join(fixture, "scripts"));
-  await mkdir(join(fixture, "src", "pages"), { recursive: true });
+  await mkdir(join(fixture, "src", "routes"), { recursive: true });
   await mkdir(join(fixture, "dist", "icons"), { recursive: true });
   await mkdir(join(fixture, "dist", "splash"), { recursive: true });
   await copyFile(
@@ -284,7 +281,7 @@ async function populateFixture(fixture) {
   for (const path of ["ipad-portrait.png", "ipad-landscape.png"]) {
     await writeFile(join(fixture, "dist", "splash", path), "png");
   }
-  await writeFile(join(fixture, "src", "pages", "index.astro"), "");
+  await writeFile(join(fixture, "src", "routes", "ClassesPage.tsx"), "");
 }
 
 async function runPublicBuildChecker(fixture) {
@@ -480,7 +477,7 @@ test("service worker serves a cached navigation before falling back to the shell
   assert.equal(await response.text(), "setup");
 });
 
-test("service worker resolves Astro static route variants offline", async () => {
+test("service worker resolves cached route variants offline", async () => {
   const cache = {
     async match(path) {
       const key = typeof path === "string" ? path : path.url;

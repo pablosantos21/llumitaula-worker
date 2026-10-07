@@ -9,13 +9,10 @@ const envSchema = z.object({
 
 const viteEnv = import.meta.env as Record<string, string | undefined>;
 
-// Transición #42→#48: Astro expone el prefijo PUBLIC_* mientras Vite expone
-// VITE_*. El esquema valida bajo prefijo Vite y nunca acepta service_role
-// en cliente; el fallback legacy se elimina en #48.
+// Corte #48: solo prefijo Vite, sin fallback legacy ni service_role en cliente.
 const raw = {
-  VITE_SUPABASE_URL: viteEnv.VITE_SUPABASE_URL ?? viteEnv.PUBLIC_SUPABASE_URL,
-  VITE_SUPABASE_ANON_KEY:
-    viteEnv.VITE_SUPABASE_ANON_KEY ?? viteEnv.PUBLIC_SUPABASE_ANON_KEY,
+  VITE_SUPABASE_URL: viteEnv.VITE_SUPABASE_URL,
+  VITE_SUPABASE_ANON_KEY: viteEnv.VITE_SUPABASE_ANON_KEY,
 };
 
 export const env = envSchema.parse(raw);

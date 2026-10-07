@@ -1,8 +1,5 @@
 # build output
 dist/
-dist-vite/
-# generated types
-.astro/
 
 # dependencies
 node_modules/

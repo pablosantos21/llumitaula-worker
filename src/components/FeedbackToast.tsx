@@ -1,5 +1,3 @@
-"use client";
-
 import { useState, useCallback } from "react";
 
 export interface Toast {
@@ -27,7 +25,7 @@ export function useToast() {
 
 interface Props {
   toasts?: Toast[];
-  // API legacy usada por BusinessApp: un único toast.
+  // Un único toast para confirmaciones inmediatas en las rutas.
   message?: string | null;
   type?: "success" | "warning" | "error";
 }

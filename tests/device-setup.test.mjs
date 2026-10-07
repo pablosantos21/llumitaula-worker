@@ -17,7 +17,10 @@ test("setup route is public in the React router and renders the temporary-code f
 
   assert.match(router, /path:\s*["']\/setup["']/);
   assert.match(router, /SetupPage/);
-  assert.match(router, /path:\s*["']\/setup["']\s*,\s*element:\s*<SetupPage\s*\/>/);
+  assert.match(
+    router,
+    /path:\s*["']\/setup["']\s*,\s*element:\s*<SetupPage\s*\/>/,
+  );
   const guardedRoutes = router.match(/<RequireSession>/g) || [];
   assert.equal(guardedRoutes.length, 2);
   assert.match(page, /aria-label=["']Configurar dispositivo["']/);
@@ -115,16 +118,13 @@ test("setup redirects to workers through the router when the device is already l
 });
 
 test("workers page shows the linked monitors and refreshes them on load", async () => {
-  const [page, legacyPage, workers] = await Promise.all([
-    source("src/pages/workers.astro"),
-    source("src/pages/app/workers.astro"),
-    source("src/components/WorkersApp.tsx"),
+  const [router, workers] = await Promise.all([
+    source("src/app/router.tsx"),
+    source("src/routes/WorkersPage.tsx"),
   ]);
 
-  for (const candidate of [page, legacyPage]) {
-    assert.match(candidate, /MainLayout[\s\S]*requiresAuth=\{false\}/);
-    assert.match(candidate, /WorkersApp[\s\S]*client:load/);
-  }
+  assert.match(router, /path:\s*["']\/workers["']/);
+  assert.match(router, /WorkersPage/);
   assert.match(
     workers,
     /\.rpc\(\s*["']get_device_monitors["'][\s\S]*p_device_identifier/s,
@@ -132,17 +132,18 @@ test("workers page shows the linked monitors and refreshes them on load", async 
   assert.doesNotMatch(workers, /p_code/);
   assert.match(workers, /MonitorSelectScreen/);
   assert.match(workers, /MonitorPinInput/);
-  assert.match(workers, /window\.location\.assign\(["']\/setup["']\)/);
+  assert.match(workers, /Navigate[\s\S]*to=["']\/setup["']/);
+  assert.doesNotMatch(workers, /window\.location\.assign/);
   assert.doesNotMatch(workers, /BusinessApp|MOCK_STUDENTS|data-student/);
 });
 
 test("workers page explains when the linked device was decommissioned", async () => {
-  const workers = await source("src/components/WorkersApp.tsx");
+  const workers = await source("src/routes/WorkersPage.tsx");
 
   assert.match(workers, /DEVICE_INACTIVE/);
   assert.match(workers, /DEVICE_REVOKED/);
   assert.match(workers, /dado de baja/i);
-  assert.match(workers, /Contacta con la administraci[oó]n/i);
+  assert.match(workers, /Contacta con la\s+administraci[oó]n/i);
   assert.match(workers, /status === ["']decommissioned["']/);
 });
 
@@ -182,10 +183,8 @@ test("device setup files are part of the application surface", async () => {
   await Promise.all([
     access(new URL("src/routes/SetupPage.tsx", root)),
     access(new URL("src/app/router.tsx", root)),
-    access(new URL("src/pages/setup.astro", root)),
-    access(new URL("src/pages/workers.astro", root)),
-    access(new URL("src/pages/app/workers.astro", root)),
-    access(new URL("src/components/DeviceSetupForm.tsx", root)),
-    access(new URL("src/components/WorkersApp.tsx", root)),
+    access(new URL("src/routes/WorkersPage.tsx", root)),
+    access(new URL("src/components/MonitorPinInput.tsx", root)),
+    access(new URL("src/components/MonitorSelectScreen.tsx", root)),
   ]);
 });

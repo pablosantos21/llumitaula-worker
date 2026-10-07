@@ -321,10 +321,10 @@ test("re-confirmar sin cambios no toca nada", () => {
   assert.deepEqual(result.purgeChildIds, []);
 });
 
-// --- UI: BusinessApp ---
+// --- UI: ClassesPage ---
 
 test("el borrador vive en localStorage por escuela:clase:fecha:tipo y se precarga", async () => {
-  const app = await source("src/components/BusinessApp.tsx");
+  const app = await source("src/routes/ClassesPage.tsx");
   assert.match(app, /localStorage/);
   assert.match(app, /buildMealDraftKey/);
   assert.match(app, /loadMealDrafts/);
@@ -333,13 +333,13 @@ test("el borrador vive en localStorage por escuela:clase:fecha:tipo y se precarg
 });
 
 test("la fila muestra marca Modificado y el Todo intacto va atenuado", async () => {
-  const app = await source("src/components/BusinessApp.tsx");
+  const app = await source("src/routes/ClassesPage.tsx");
   assert.match(app, /Modificado/);
   assert.match(app, /isMealRowModified|mealDrafts\[child\.id\]/);
 });
 
 test("re-confirmar ajusta borrador sin perder ediciones y purga solo todo puro", async () => {
-  const app = await source("src/components/BusinessApp.tsx");
+  const app = await source("src/routes/ClassesPage.tsx");
   assert.match(app, /reconcileMealDraftsOnReconfirm/);
   assert.match(app, /purgeChildIds/);
   assert.match(app, /purgeAbsentPureTodoMeals/);
@@ -349,7 +349,7 @@ test("re-confirmar ajusta borrador sin perder ediciones y purga solo todo puro",
 });
 
 test("sin conexión guardar queda bloqueado con aviso y el borrador se conserva", async () => {
-  const app = await source("src/components/BusinessApp.tsx");
+  const app = await source("src/routes/ClassesPage.tsx");
   const saveFn = app.match(
     /async function saveMealList\(\) \{[\s\S]*?\n {2}\}/,
   );
@@ -360,7 +360,7 @@ test("sin conexión guardar queda bloqueado con aviso y el borrador se conserva"
 });
 
 test("la subida solo ocurre con pulsación explícita", async () => {
-  const app = await source("src/components/BusinessApp.tsx");
+  const app = await source("src/routes/ClassesPage.tsx");
   assert.match(app, /Guardar lista de comida/);
   assert.doesNotMatch(app, /useEffect\(\(\) => \{\s*\n?.*saveMealList\(\)/);
 });

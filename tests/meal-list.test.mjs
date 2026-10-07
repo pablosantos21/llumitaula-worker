@@ -220,10 +220,10 @@ test("lista vacía o sin tipo no produce ninguna fila", () => {
   );
 });
 
-// --- UI: BusinessApp ---
+// --- UI: ClassesPage ---
 
 test("confirmar solo escribe daily_attendance y muestra Todo virtual", async () => {
-  const app = await source("src/components/BusinessApp.tsx");
+  const app = await source("src/routes/ClassesPage.tsx");
 
   const confirmFn = app.match(
     /async function confirmAttendance\(\) \{[\s\S]*?\n {2}\}/,
@@ -235,7 +235,7 @@ test("confirmar solo escribe daily_attendance y muestra Todo virtual", async () 
 });
 
 test("la edición es por modal por alumno y la lista muestra los platos", async () => {
-  const app = await source("src/components/BusinessApp.tsx");
+  const app = await source("src/routes/ClassesPage.tsx");
 
   assert.match(app, /handleMealModalSave/);
   assert.match(app, /Primero/);
@@ -263,7 +263,7 @@ test("el modal ya no pide tipo de comida ni incidencias", async () => {
 });
 
 test("guardar la lista hace upsert conjunto con attendance_date y tipo implícito", async () => {
-  const app = await source("src/components/BusinessApp.tsx");
+  const app = await source("src/routes/ClassesPage.tsx");
 
   assert.match(app, /Guardar lista de comida/);
   assert.match(app, /async function saveMealList\(/);
@@ -280,7 +280,7 @@ test("guardar la lista hace upsert conjunto con attendance_date y tipo implícit
 });
 
 test("sin tipo activo o lista vacía no hay escrituras", async () => {
-  const app = await source("src/components/BusinessApp.tsx");
+  const app = await source("src/routes/ClassesPage.tsx");
   const saveFn = app.match(
     /async function saveMealList\(\) \{[\s\S]*?\n {2}\}/,
   );
@@ -291,7 +291,7 @@ test("sin tipo activo o lista vacía no hay escrituras", async () => {
 });
 
 test("salir sin guardar no escribe en el servidor", async () => {
-  const app = await source("src/components/BusinessApp.tsx");
+  const app = await source("src/routes/ClassesPage.tsx");
 
   const modalSave = app.match(/function handleMealModalSave\([\s\S]*?\n {2}\}/);
   assert.ok(modalSave, "expected a handleMealModalSave function");

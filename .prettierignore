@@ -1,6 +1,6 @@
 dist
-.astro
 node_modules
+pnpm-lock.yaml
 src/types/database.ts
 supabase/.branches
 supabase/.temp

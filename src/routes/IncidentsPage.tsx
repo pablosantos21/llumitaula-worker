@@ -449,7 +449,10 @@ export default function IncidentsPage() {
 
   if (state === "loading")
     return (
-      <section aria-label="Incidencias" className="flex flex-1 flex-col px-4 py-6">
+      <section
+        aria-label="Incidencias"
+        className="flex flex-1 flex-col px-4 py-6"
+      >
         <p className="p-6 text-sm text-slate-500">
           Cargando datos autorizados...
         </p>
@@ -476,7 +479,10 @@ export default function IncidentsPage() {
     );
   if (state === "error")
     return (
-      <section aria-label="Incidencias" className="flex flex-1 flex-col px-4 py-6">
+      <section
+        aria-label="Incidencias"
+        className="flex flex-1 flex-col px-4 py-6"
+      >
         <p className="p-6 text-sm text-slate-500">
           No se han podido cargar los datos autorizados.
         </p>

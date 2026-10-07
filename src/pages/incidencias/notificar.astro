@@ -1,9 +1,0 @@
----
-export const prerender = true;
-import IncidentsApp from "../../components/IncidentsApp";
-import MainLayout from "../../layouts/MainLayout.astro";
----
-
-<MainLayout title="Notificar incidencias" requiresAuth={true}>
-  <IncidentsApp client:only="react" />
-</MainLayout>

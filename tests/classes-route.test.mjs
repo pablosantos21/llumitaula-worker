@@ -15,7 +15,10 @@ test("classes route is protected as the root path in the React router", async ()
   assert.match(router, /path:\s*["']\/["']/);
   assert.match(router, /ClassesPage/);
   assert.match(router, /<RequireSession>/);
-  assert.match(router, /path:\s*["']\/["']\s*,\s*element:\s*\(\s*<RequireSession>/s);
+  assert.match(
+    router,
+    /path:\s*["']\/["']\s*,\s*element:\s*\(\s*<RequireSession>/s,
+  );
 });
 
 test("classes route lists classes with counts and children with day incidence mark", async () => {
@@ -28,7 +31,10 @@ test("classes route lists classes with counts and children with day incidence ma
   assert.match(page, /from\("classes"\)/);
   assert.match(page, /from\("children"\)/);
   assert.match(page, /1 alumno|alumnos/);
-  assert.match(page, /function statusFor\(records: MealRecord\[\], incidents: Incident\[\]\)/);
+  assert.match(
+    page,
+    /function statusFor\(records: MealRecord\[\], incidents: Incident\[\]\)/,
+  );
   assert.match(page, /overallMealStatus\(courses\) !== "todo"/);
   assert.match(page, /from\("incidents"\)/);
 });
@@ -61,7 +67,10 @@ test("local draft by school, class, date and type stays separate from joint pers
   assert.match(page, /schoolId.*classId.*date.*mealTypeId|school_id.*classId/s);
   assert.match(page, /async function saveMealList\(/);
   assert.match(page, /buildMealListRows\(/);
-  assert.match(page, /onConflict:\s*["']child_id,meal_type_id,recorded_date["']/);
+  assert.match(
+    page,
+    /onConflict:\s*["']child_id,meal_type_id,recorded_date["']/,
+  );
   assert.match(page, /Guardar lista de comida/);
 });
 

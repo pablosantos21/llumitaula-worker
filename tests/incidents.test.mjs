@@ -91,59 +91,47 @@ test("la lectura por centro y rol se conserva tras la columna nueva", async () =
 // --- UI: crear exige categoría y el historial la muestra (otro por defecto) ---
 
 test("crear exige elegir una de las 6 categorías, sin texto libre solo", async () => {
-  const nova = await source("src/pages/incidencias/nova.astro");
+  const page = await source("src/routes/IncidentsPage.tsx");
 
-  assert.match(nova, /name="category"/);
-  assert.match(nova, /required/);
-  assert.match(nova, /INCIDENT_CATEGORIES/);
-  assert.match(nova, /isIncidentCategory/);
-  assert.match(nova, /formError|role="alert"/);
-  assert.match(nova, /categoria/i);
+  assert.match(page, /name="category"/);
+  assert.match(page, /required/);
+  assert.match(page, /INCIDENT_CATEGORIES/);
+  assert.match(page, /isIncidentCategory/);
+  assert.match(page, /role="status"|FeedbackToast|toast/i);
+  assert.match(page, /categoria/i);
 });
 
 test("la página Incidencias muestra la categoría del día por alumno", async () => {
-  const index = await source("src/pages/incidencias/index.astro");
+  const page = await source("src/routes/IncidentsPage.tsx");
 
   assert.match(
-    index,
+    page,
     /resolveIncidentCategory|incidentCategoryLabel|INCIDENT_CATEGORY_LABELS/,
   );
-  assert.match(index, /description/);
-  assert.match(index, /todayStr|date/);
+  assert.match(page, /description/);
+  assert.match(page, /todayStr|date/);
 });
 
 test("las incidencias antiguas sin categoría se ven como otro sin romper", async () => {
-  const [index, anteriors] = await Promise.all([
-    source("src/pages/incidencias/index.astro"),
-    source("src/pages/incidencias/anteriors.astro"),
-  ]);
+  const page = await source("src/routes/IncidentsPage.tsx");
 
-  for (const page of [index, anteriors]) {
-    assert.match(page, /resolveIncidentCategory|incidentCategoryLabel/);
-  }
+  assert.match(page, /resolveIncidentCategory|incidentCategoryLabel/);
 });
 
 test("escritura y lectura respetan centro y rol desde la página Incidencias", async () => {
-  const [nova, index] = await Promise.all([
-    source("src/pages/incidencias/nova.astro"),
-    source("src/pages/incidencias/index.astro"),
-  ]);
+  const page = await source("src/routes/IncidentsPage.tsx");
 
-  assert.match(nova, /getClassesWithChildren/);
-  assert.match(nova, /createIncident/);
-  assert.match(nova, /monitor_id/);
-  assert.match(index, /getIncidentsByMonitor/);
+  assert.match(page, /from\("incidents"\)/);
+  assert.match(page, /from\("classes"\)/);
+  assert.match(page, /from\("children"\)/);
+  assert.match(page, /supabase\.auth\.getSession\(\)/);
 });
 
 test("la vista Clases no crea incidencias con categoría", async () => {
-  const [businessApp, classesIndex] = await Promise.all([
-    source("src/components/BusinessApp.tsx"),
-    source("src/pages/classes/index.astro"),
-  ]);
+  const classesPage = await source("src/routes/ClassesPage.tsx");
 
-  assert.doesNotMatch(businessApp, /INCIDENT_CATEGORIES|isIncidentCategory/);
-  assert.doesNotMatch(businessApp, /Notificar/);
-  assert.doesNotMatch(classesIndex, /INCIDENT_CATEGORIES|name="category"/);
+  assert.doesNotMatch(classesPage, /INCIDENT_CATEGORIES|isIncidentCategory/);
+  assert.doesNotMatch(classesPage, /Notificar/);
 });
 
 // --- #39: página Incidencias clavada a Clases con audiencia ---
@@ -204,19 +192,20 @@ test("el monitor puede crear incidencias con sesión moderna (RLS)", async () =>
 });
 
 test("existe página Incidencias aparte con lista de clases con conteo", async () => {
-  const [page, app] = await Promise.all([
-    source("src/pages/incidencias/notificar.astro"),
-    source("src/components/IncidentsApp.tsx"),
+  const [router, app] = await Promise.all([
+    source("src/app/router.tsx"),
+    source("src/routes/IncidentsPage.tsx"),
   ]);
 
-  assert.match(page, /IncidentsApp[\s\S]*client:only="react"/);
+  assert.match(router, /path:\s*["']\/incidencias["']/);
+  assert.match(router, /IncidentsPage/);
   assert.match(app, /buildClassList/);
   assert.match(app, /childrenInClass/);
   assert.match(app, /alumno/);
 });
 
 test("en la clase se ven sus niños con acción Notificar propia", async () => {
-  const app = await source("src/components/IncidentsApp.tsx");
+  const app = await source("src/routes/IncidentsPage.tsx");
 
   assert.match(app, /Notificar/);
   assert.match(app, /selectedClassId/);
@@ -224,7 +213,7 @@ test("en la clase se ven sus niños con acción Notificar propia", async () => {
 });
 
 test("el formulario pide categoría obligatoria, descripción y audiencia con ambos por defecto", async () => {
-  const app = await source("src/components/IncidentsApp.tsx");
+  const app = await source("src/routes/IncidentsPage.tsx");
 
   assert.match(app, /INCIDENT_CATEGORIES|isIncidentCategory/);
   assert.match(app, /description|Descripci/);
@@ -234,14 +223,14 @@ test("el formulario pide categoría obligatoria, descripción y audiencia con am
 });
 
 test("familia o ambos permiten confirmación apagada por defecto; colegio la oculta", async () => {
-  const app = await source("src/components/IncidentsApp.tsx");
+  const app = await source("src/routes/IncidentsPage.tsx");
 
   assert.match(app, /audienceIncludesFamily|requiresConfirmation|confirmaci/i);
   assert.match(app, /mapAudienceToIndicators/);
 });
 
 test("al guardar hay confirmación temporal y marca del día sin recargar", async () => {
-  const app = await source("src/components/IncidentsApp.tsx");
+  const app = await source("src/routes/IncidentsPage.tsx");
 
   assert.match(app, /role="status"|FeedbackToast|toast/i);
   assert.match(app, /localDateString/);
@@ -252,22 +241,20 @@ test("al guardar hay confirmación temporal y marca del día sin recargar", asyn
 });
 
 test("la vista Clases sigue sin botón de incidencia en la tarjeta", async () => {
-  const [businessApp, studentCard] = await Promise.all([
-    source("src/components/BusinessApp.tsx"),
+  const [classesPage, studentCard] = await Promise.all([
+    source("src/routes/ClassesPage.tsx"),
     source("src/components/StudentCard.tsx"),
   ]);
 
-  assert.doesNotMatch(businessApp, /Notificar/);
+  assert.doesNotMatch(classesPage, /Notificar/);
   assert.doesNotMatch(studentCard, /Notificar/);
 });
 
 // --- #40: historial del día con estado visto en página Incidencias ---
 
 test("la familia solo ve avisos dirigidos a familia (firma o sin envío a colegio)", async () => {
-  const {
-    incidentTargetsFamily,
-    filterIncidentsForFamily,
-  } = await import("../src/lib/incidentReadStatus.ts");
+  const { incidentTargetsFamily, filterIncidentsForFamily } =
+    await import("../src/lib/incidentReadStatus.ts");
 
   assert.equal(
     incidentTargetsFamily({
@@ -325,9 +312,8 @@ test("la familia solo ve avisos dirigidos a familia (firma o sin envío a colegi
 });
 
 test("el estado es pendiente sin visto y visto con hora cuando hay marca familiar", async () => {
-  const { incidentReadState } = await import(
-    "../src/lib/incidentReadStatus.ts"
-  );
+  const { incidentReadState } =
+    await import("../src/lib/incidentReadStatus.ts");
 
   assert.deepEqual(incidentReadState({ family_seen: false }), {
     status: "pendiente",
@@ -347,9 +333,8 @@ test("el estado es pendiente sin visto y visto con hora cuando hay marca familia
 });
 
 test("marcar como visto registra el momento sin respuesta obligatoria", async () => {
-  const { buildMarkSeenUpdate, applyMarkSeen } = await import(
-    "../src/lib/incidentReadStatus.ts"
-  );
+  const { buildMarkSeenUpdate, applyMarkSeen } =
+    await import("../src/lib/incidentReadStatus.ts");
 
   const nowIso = "2026-10-07T10:20:00.000Z";
   const update = buildMarkSeenUpdate(nowIso);
@@ -368,9 +353,8 @@ test("marcar como visto registra el momento sin respuesta obligatoria", async ()
 });
 
 test("la visibilidad por rol filtra familia a sus hijos con audiencia familia", async () => {
-  const { visibleIncidentsForRole } = await import(
-    "../src/lib/incidentReadStatus.ts"
-  );
+  const { visibleIncidentsForRole } =
+    await import("../src/lib/incidentReadStatus.ts");
 
   const rows = [
     {
@@ -424,7 +408,7 @@ test("la familia marca visto sin respuesta obligatoria (RLS update propio)", asy
 });
 
 test("la página nueva muestra por alumno historial del día con audiencia y estado", async () => {
-  const app = await source("src/components/IncidentsApp.tsx");
+  const app = await source("src/routes/IncidentsPage.tsx");
 
   assert.match(app, /incidentCategoryLabel/);
   assert.match(app, /description/);
@@ -438,7 +422,7 @@ test("la página nueva muestra por alumno historial del día con audiencia y est
 });
 
 test("la familia tiene botón único Marcar como visto sin respuesta obligatoria", async () => {
-  const app = await source("src/components/IncidentsApp.tsx");
+  const app = await source("src/routes/IncidentsPage.tsx");
 
   assert.match(app, /Marcar como visto/);
   assert.match(app, /buildMarkSeenUpdate|family_seen/);
@@ -448,9 +432,12 @@ test("la familia tiene botón único Marcar como visto sin respuesta obligatoria
 });
 
 test("el cambio a visto llega sin recargar ni bloqueo operativo", async () => {
-  const app = await source("src/components/IncidentsApp.tsx");
+  const app = await source("src/routes/IncidentsPage.tsx");
 
-  assert.match(app, /channel\(|postgres_changes|on\(\s*["']postgres_changes["']/);
+  assert.match(
+    app,
+    /channel\(|postgres_changes|on\(\s*["']postgres_changes["']/,
+  );
   assert.match(app, /incidentReadState|family_seen/);
   assert.doesNotMatch(app, /window\.location\.reload|location\.reload/);
 });
