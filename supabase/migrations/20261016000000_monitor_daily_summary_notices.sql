@@ -13,6 +13,12 @@
 -- la lectura. Sin permiso de publicación no hay escritura del monitor en
 -- este ticket (sin interfaz de redacción ni publicación).
 --
+-- Adaptado al modelo de tenant vigente: `public.current_school_id()` se
+-- eliminó en remoto (`eliminate_current_school_id_simplified`); el alcance
+-- de administración usa `private.user_is_valid_in_school`. La lectura del
+-- monitor sigue limitada a sus colegios vía
+-- `private.current_user_monitor_school_ids`.
+--
 -- Idempotente en remoto (tabla y políticas recreadas) y aplicable en local.
 
 create table if not exists public.school_notices (
@@ -46,7 +52,7 @@ create policy school_notices_select_tenant on public.school_notices
   using (
     public.current_user_active()
     and public.current_user_role() = 'admin'
-    and school_id = public.current_school_id()
+    and private.user_is_valid_in_school(public.current_user_id(), school_id)
   );
 
 -- Lectura del monitor: solo avisos publicados de sus colegios. Sin gate por
@@ -69,7 +75,7 @@ create policy school_notices_admin_insert on public.school_notices
   with check (
     public.current_user_active()
     and public.current_user_role() = 'admin'
-    and school_id = public.current_school_id()
+    and private.user_is_valid_in_school(public.current_user_id(), school_id)
   );
 
 drop policy if exists school_notices_admin_update on public.school_notices;
@@ -78,12 +84,12 @@ create policy school_notices_admin_update on public.school_notices
   using (
     public.current_user_active()
     and public.current_user_role() = 'admin'
-    and school_id = public.current_school_id()
+    and private.user_is_valid_in_school(public.current_user_id(), school_id)
   )
   with check (
     public.current_user_active()
     and public.current_user_role() = 'admin'
-    and school_id = public.current_school_id()
+    and private.user_is_valid_in_school(public.current_user_id(), school_id)
   );
 
 drop policy if exists school_notices_admin_delete on public.school_notices;
@@ -92,5 +98,5 @@ create policy school_notices_admin_delete on public.school_notices
   using (
     public.current_user_active()
     and public.current_user_role() = 'admin'
-    and school_id = public.current_school_id()
+    and private.user_is_valid_in_school(public.current_user_id(), school_id)
   );
