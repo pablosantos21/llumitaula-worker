@@ -9,16 +9,28 @@ async function source(path) {
   return readFile(new URL(path, root), "utf8");
 }
 
-test("setup page is public and renders the temporary-code form", async () => {
-  const page = await source("src/pages/setup.astro");
+test("setup route is public in the React router and renders the temporary-code form", async () => {
+  const [router, page] = await Promise.all([
+    source("src/app/router.tsx"),
+    source("src/routes/SetupPage.tsx"),
+  ]);
 
-  assert.match(page, /MainLayout[\s\S]*requiresAuth=\{false\}/);
-  assert.match(page, /DeviceSetupForm[\s\S]*client:load/);
+  assert.match(router, /path:\s*["']\/setup["']/);
+  assert.match(router, /SetupPage/);
+  assert.match(
+    router,
+    /path:\s*["']\/setup["']\s*,\s*element:\s*<SetupPage\s*\/>/,
+  );
+  const guardedRoutes = router.match(/<RequireSession>/g) || [];
+  assert.equal(guardedRoutes.length, 2);
+  assert.match(page, /aria-label=["']Configurar dispositivo["']/);
+  assert.match(page, /<form[\s\S]*onSubmit/);
+  assert.match(page, /name=["']code["']/);
   assert.match(page, /setup|configuraci[oó]n/i);
 });
 
 test("device setup form submits the code through the secure RPC", async () => {
-  const form = await source("src/components/DeviceSetupForm.tsx");
+  const form = await source("src/routes/SetupPage.tsx");
 
   assert.match(form, /<form[\s\S]*onSubmit/);
   assert.match(form, /name=["']code["']/);
@@ -34,10 +46,9 @@ test("device setup form submits the code through the secure RPC", async () => {
 });
 
 test("setup creates or reuses a random device identifier and persists only safe context", async () => {
-  const [form, lib, page] = await Promise.all([
-    source("src/components/DeviceSetupForm.tsx"),
+  const [form, lib] = await Promise.all([
+    source("src/routes/SetupPage.tsx"),
     source("src/lib/deviceSetup.ts"),
-    source("src/pages/setup.astro"),
   ]);
 
   assert.match(lib, /crypto\.randomUUID\(\)/);
@@ -45,6 +56,8 @@ test("setup creates or reuses a random device identifier and persists only safe 
   assert.match(lib, /localStorage\.getItem\(deviceIdentifierKey\)/);
   assert.match(lib, /localStorage\.setItem\(deviceIdentifierKey/);
   assert.match(lib, /localStorage\.setItem\(["']device_context["']/);
+  assert.match(form, /getDeviceIdentifier\(\)/);
+  assert.match(form, /saveDeviceContext\(context\)/);
   assert.doesNotMatch(
     lib,
     /localStorage\.setItem\(["'](?:code|password|access_token|anon_key|service_role|PUBLIC_SUPABASE_SERVICE)/i,
@@ -53,10 +66,6 @@ test("setup creates or reuses a random device identifier and persists only safe 
   assert.doesNotMatch(
     lib,
     /localStorage\.setItem\(["']device_context["'][^;]*?(?:password|access_token|anon_key|service_role)/i,
-  );
-  assert.doesNotMatch(
-    page,
-    /PUBLIC_SUPABASE_(?:SERVICE|SECRET)|service_role|password/i,
   );
 });
 
@@ -78,7 +87,7 @@ test("setup replaces a missing or manipulated persisted identifier", async () =>
 test("setup preflights storage and persists the handoff context atomically", async () => {
   const [lib, form] = await Promise.all([
     source("src/lib/deviceSetup.ts"),
-    source("src/components/DeviceSetupForm.tsx"),
+    source("src/routes/SetupPage.tsx"),
   ]);
 
   assert.match(lib, /export function assertDeviceStorageAvailable\(\)/);
@@ -98,17 +107,24 @@ test("setup preflights storage and persists the handoff context atomically", asy
   );
 });
 
+test("setup redirects to workers through the router when the device is already linked", async () => {
+  const page = await source("src/routes/SetupPage.tsx");
+
+  assert.match(page, /hasLinkedDevice|getDeviceContext/);
+  assert.match(page, /ya vinculado/i);
+  assert.match(page, /Navigate[\s\S]*to=["']\/workers["']/);
+  assert.match(page, /useNavigate|Navigate/);
+  assert.doesNotMatch(page, /window\.location\.assign/);
+});
+
 test("workers page shows the linked monitors and refreshes them on load", async () => {
-  const [page, legacyPage, workers] = await Promise.all([
-    source("src/pages/workers.astro"),
-    source("src/pages/app/workers.astro"),
-    source("src/components/WorkersApp.tsx"),
+  const [router, workers] = await Promise.all([
+    source("src/app/router.tsx"),
+    source("src/routes/WorkersPage.tsx"),
   ]);
 
-  for (const candidate of [page, legacyPage]) {
-    assert.match(candidate, /MainLayout[\s\S]*requiresAuth=\{false\}/);
-    assert.match(candidate, /WorkersApp[\s\S]*client:load/);
-  }
+  assert.match(router, /path:\s*["']\/workers["']/);
+  assert.match(router, /WorkersPage/);
   assert.match(
     workers,
     /\.rpc\(\s*["']get_device_monitors["'][\s\S]*p_device_identifier/s,
@@ -116,22 +132,23 @@ test("workers page shows the linked monitors and refreshes them on load", async 
   assert.doesNotMatch(workers, /p_code/);
   assert.match(workers, /MonitorSelectScreen/);
   assert.match(workers, /MonitorPinInput/);
-  assert.match(workers, /window\.location\.assign\(["']\/setup["']\)/);
+  assert.match(workers, /Navigate[\s\S]*to=["']\/setup["']/);
+  assert.doesNotMatch(workers, /window\.location\.assign/);
   assert.doesNotMatch(workers, /BusinessApp|MOCK_STUDENTS|data-student/);
 });
 
 test("workers page explains when the linked device was decommissioned", async () => {
-  const workers = await source("src/components/WorkersApp.tsx");
+  const workers = await source("src/routes/WorkersPage.tsx");
 
   assert.match(workers, /DEVICE_INACTIVE/);
   assert.match(workers, /DEVICE_REVOKED/);
   assert.match(workers, /dado de baja/i);
-  assert.match(workers, /Contacta con la administraci[oó]n/i);
+  assert.match(workers, /Contacta con la\s+administraci[oó]n/i);
   assert.match(workers, /status === ["']decommissioned["']/);
 });
 
 test("setup keeps retry available and confirms the linked school before continuing", async () => {
-  const form = await source("src/components/DeviceSetupForm.tsx");
+  const form = await source("src/routes/SetupPage.tsx");
 
   assert.match(form, /role=["']alert["']/);
   assert.match(
@@ -141,10 +158,10 @@ test("setup keeps retry available and confirms the linked school before continui
   assert.match(form, /Vinculado a/);
   assert.match(form, /context\.school_name/);
   assert.match(form, /Continuar/);
-  assert.match(form, /window\.location\.assign\(["']\/workers["']\)/);
+  assert.match(form, /navigate\(["']\/workers["']\)/);
   assert.doesNotMatch(
     form,
-    /saveDeviceContext\(context\);[\s\S]{0,120}window\.location\.assign\(["']\/workers["']\)/,
+    /saveDeviceContext\(context\);[\s\S]{0,120}navigate\(["']\/workers["']\)/,
   );
   assert.doesNotMatch(form, /console\.(?:error|log|warn)/);
   assert.doesNotMatch(form, /const\s*\{\s*error\s*\}\s*=/);
@@ -153,7 +170,7 @@ test("setup keeps retry available and confirms the linked school before continui
 
 test("setup never persists or reads the configuration code", async () => {
   const [form, lib] = await Promise.all([
-    source("src/components/DeviceSetupForm.tsx"),
+    source("src/routes/SetupPage.tsx"),
     source("src/lib/deviceSetup.ts"),
   ]);
 
@@ -164,10 +181,10 @@ test("setup never persists or reads the configuration code", async () => {
 
 test("device setup files are part of the application surface", async () => {
   await Promise.all([
-    access(new URL("src/pages/setup.astro", root)),
-    access(new URL("src/pages/workers.astro", root)),
-    access(new URL("src/pages/app/workers.astro", root)),
-    access(new URL("src/components/DeviceSetupForm.tsx", root)),
-    access(new URL("src/components/WorkersApp.tsx", root)),
+    access(new URL("src/routes/SetupPage.tsx", root)),
+    access(new URL("src/app/router.tsx", root)),
+    access(new URL("src/routes/WorkersPage.tsx", root)),
+    access(new URL("src/components/MonitorPinInput.tsx", root)),
+    access(new URL("src/components/MonitorSelectScreen.tsx", root)),
   ]);
 });

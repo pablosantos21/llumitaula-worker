@@ -44,14 +44,6 @@ async function assertRequiredFile(path, baseDirectory = distDirectory) {
   }
 }
 
-async function isFile(url) {
-  try {
-    return (await stat(url)).isFile();
-  } catch {
-    return false;
-  }
-}
-
 let distDetails;
 try {
   distDetails = await stat(distDirectory);
@@ -64,12 +56,7 @@ if (!distDetails.isDirectory()) {
   throw new Error("dist path is not a directory; run pnpm run build first");
 }
 
-// Astro with `output: "server"` serves static assets from `dist/client/`.
-const clientDirectory = new URL("client/", distDirectory);
-const publicDirectory = (await isFile(new URL("index.html", clientDirectory)))
-  ? clientDirectory
-  : distDirectory;
-
+// Corte #48: la SPA Vite publica el shell estático en `dist/`.
 await collectHtml(distDirectory);
 
 const sensitiveMockValues = [
@@ -88,13 +75,13 @@ for (const html of publicHtml) {
 }
 
 await Promise.all(
-  requiredPwaAssets.map((path) => assertRequiredFile(path, publicDirectory)),
+  requiredPwaAssets.map((path) => assertRequiredFile(path, distDirectory)),
 );
 
 let manifest;
 try {
   manifest = JSON.parse(
-    await readFile(new URL("manifest.webmanifest", publicDirectory), "utf8"),
+    await readFile(new URL("manifest.webmanifest", distDirectory), "utf8"),
   );
 } catch (error) {
   throw new Error(
@@ -109,22 +96,21 @@ if (manifest.display !== "standalone") {
 }
 
 const generatedServiceWorker = await readFile(
-  new URL("sw.js", publicDirectory),
+  new URL("sw.js", distDirectory),
   "utf8",
 );
 if (/supabase|service_role/i.test(generatedServiceWorker)) {
   throw new Error("Generated service worker must not contain Supabase secrets");
 }
 
-const indexPage = await readFile(
-  new URL("../src/pages/index.astro", import.meta.url),
+// Las rutas React no exponen datos mockeados de niños.
+const classesPage = await readFile(
+  new URL("../src/routes/ClassesPage.tsx", import.meta.url),
   "utf8",
 );
 
-if (/MOCK_STUDENTS|CURRENT_MONITOR|data-student-name/.test(indexPage)) {
-  throw new Error(
-    "Business pages must not expose child mock data in Astro HTML",
-  );
+if (/MOCK_STUDENTS|CURRENT_MONITOR|data-student-name/.test(classesPage)) {
+  throw new Error("Business routes must not expose child mock data");
 }
 
 stdout.write(`Public data check passed for ${publicHtml.length} HTML files\n`);

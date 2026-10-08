@@ -57,18 +57,19 @@ test("mismo día monitor y admin editan; días pasados solo admin", () => {
   assert.equal(canEditMealForDate(null, today, today), false);
 });
 
-// --- contrato de datos: policy SELECT para padre ---
+// --- contrato de datos: policy SELECT para familia (rol remoto 'parent') ---
 
-test("existe policy SELECT para padre sobre meal_records vía parents_children", async () => {
+test("existe policy SELECT para familia sobre meal_records con gate de capability", async () => {
   const migrations = await migrationSources();
   const match = migrations.find(({ sql }) =>
-    /meal_records_select_parent/i.test(sql),
+    /CREATE POLICY meal_records_select_parent/i.test(sql),
   );
-  assert.ok(match, "expected a migration covering padre meal_records access");
+  assert.ok(match, "expected a migration covering parent meal_records access");
   assert.match(match.sql, /CREATE POLICY meal_records_select_parent/);
   assert.match(match.sql, /FOR SELECT/);
-  assert.match(match.sql, /'padre'/);
-  assert.match(match.sql, /parents_children|current_user_can_access_child/);
+  assert.match(match.sql, /'parent'/);
+  assert.match(match.sql, /current_user_can_access_child/);
+  assert.match(match.sql, /family_meal_records_enabled_for_child/);
 });
 
 // --- contrato de datos: ventana en RLS para monitor ---
@@ -85,7 +86,7 @@ test("el monitor solo escribe el día en curso (RLS con recorded_date = CURRENT_
 // --- UI: tarjeta/lista con texto literal y color final ---
 
 test("la lista muestra el literal final con color y el todo por defecto igual que el explícito", async () => {
-  const app = await source("src/components/BusinessApp.tsx");
+  const app = await source("src/routes/ClassesPage.tsx");
 
   assert.match(app, /MEAL_STATUS_VISUAL|mealStatusVisual/);
   assert.match(app, /visual\.dotClass|dotClass/);
@@ -97,7 +98,7 @@ test("la lista muestra el literal final con color y el todo por defecto igual qu
 // --- UI: ventana de edición monitor solo lectura, admin rectifica ---
 
 test("días pasados el monitor ve solo lectura y el admin rectifica", async () => {
-  const app = await source("src/components/BusinessApp.tsx");
+  const app = await source("src/routes/ClassesPage.tsx");
 
   assert.match(app, /canEditMealForDate/);
   assert.match(app, /Solo lectura|solo lectura/i);
@@ -107,7 +108,7 @@ test("días pasados el monitor ve solo lectura y el admin rectifica", async () =
 // --- UI: notas editables en el mismo modal ---
 
 test("las notas se editan en el mismo modal de comida", async () => {
-  const app = await source("src/components/BusinessApp.tsx");
+  const app = await source("src/routes/ClassesPage.tsx");
   const modal = await source("src/components/MealRecordModal.tsx");
 
   assert.match(app, /initialNotes/);

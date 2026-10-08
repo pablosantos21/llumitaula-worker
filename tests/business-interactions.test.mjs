@@ -10,24 +10,26 @@ async function source(path) {
 }
 
 test("business pages keep protected React-only rendering", async () => {
-  const [home, app] = await Promise.all([
-    source("src/pages/index.astro"),
-    source("src/components/BusinessApp.tsx"),
+  const [router, app] = await Promise.all([
+    source("src/app/router.tsx"),
+    source("src/routes/ClassesPage.tsx"),
   ]);
 
-  assert.match(home, /BusinessApp[\s\S]*client:only="react"/);
+  assert.match(router, /path:\s*["']\/["']/);
+  assert.match(router, /ClassesPage/);
+  assert.match(router, /<RequireSession>/);
   assert.match(app, /supabase\.auth\.getSession\(\)/);
   assert.match(app, /from\("classes"\)/);
   assert.match(app, /from\("children"\)/);
   assert.match(app, /from\("meal_records"\)/);
   assert.match(app, /from\("incidents"\)/);
   assert.match(app, /from\("meal_types"\)/);
-  assert.doesNotMatch(home, /MOCK_STUDENTS|Ana Martínez|Biel Roca/);
+  assert.doesNotMatch(router, /MOCK_STUDENTS|Ana Martínez|Biel Roca/);
   assert.doesNotMatch(app, /MOCK_STUDENTS|Ana Martínez|Biel Roca/);
 });
 
 test("monitor entry screen is the class list and never shows all children at once", async () => {
-  const app = await source("src/components/BusinessApp.tsx");
+  const app = await source("src/routes/ClassesPage.tsx");
 
   assert.match(app, /buildClassList/);
   assert.match(app, /childrenInClass/);
@@ -43,7 +45,7 @@ test("monitor entry screen is the class list and never shows all children at onc
 });
 
 test("gaps by class filter children in memory and render clear empty states", async () => {
-  const app = await source("src/components/BusinessApp.tsx");
+  const app = await source("src/routes/ClassesPage.tsx");
 
   assert.match(app, /childrenInClass\(children, selectedClassId\)/);
   assert.match(app, /Esta clase todavía no tiene alumnos\./);
@@ -67,7 +69,7 @@ test("React business UI restores card, meal status and toast components", async 
     source(paths[1]),
     source(paths[2]),
     source(paths[3]),
-    source("src/components/BusinessApp.tsx"),
+    source("src/routes/ClassesPage.tsx"),
     source("src/lib/mealRecord.ts"),
   ]);
 
@@ -98,7 +100,7 @@ test("worker meal types stay implicit and meal writes never use incidents", asyn
   const migration = await source(
     "supabase/migrations/20260824100000_scope_worker_meal_types.sql",
   );
-  const app = await source("src/components/BusinessApp.tsx");
+  const app = await source("src/routes/ClassesPage.tsx");
   const modal = await source("src/components/MealRecordModal.tsx");
 
   assert.match(migration, /meal_types_select_worker/);
@@ -124,7 +126,7 @@ test("worker meal types stay implicit and meal writes never use incidents", asyn
 });
 
 test("the meal modal no longer manages incidents", async () => {
-  const app = await source("src/components/BusinessApp.tsx");
+  const app = await source("src/routes/ClassesPage.tsx");
   const modal = await source("src/components/MealRecordModal.tsx");
 
   assert.doesNotMatch(app, /canManageIncidents/);
@@ -134,7 +136,7 @@ test("the meal modal no longer manages incidents", async () => {
 });
 
 test("meal records never call the incident RPC from the UI", async () => {
-  const app = await source("src/components/BusinessApp.tsx");
+  const app = await source("src/routes/ClassesPage.tsx");
 
   assert.doesNotMatch(app, /saveIncident/);
   assert.doesNotMatch(app, /\.rpc\("record_meal_incident"/);
@@ -142,7 +144,7 @@ test("meal records never call the incident RPC from the UI", async () => {
 
 test("local meal dates use the browser date and timestamps use ISO UTC", async () => {
   const helper = await source("src/lib/local-date.ts");
-  const app = await source("src/components/BusinessApp.tsx");
+  const app = await source("src/routes/ClassesPage.tsx");
 
   assert.match(helper, /localDateString/);
   assert.match(helper, /getFullYear\(\)/);
@@ -153,7 +155,7 @@ test("local meal dates use the browser date and timestamps use ISO UTC", async (
 });
 
 test("the meal upsert writes one row per course with the derived status", async () => {
-  const app = await source("src/components/BusinessApp.tsx");
+  const app = await source("src/routes/ClassesPage.tsx");
 
   assert.match(app, /async function saveMealList\(/);
   assert.match(app, /first_course/);
@@ -168,7 +170,7 @@ test("the meal upsert writes one row per course with the derived status", async 
 });
 
 test("a bad course overrides a good meal in the visual card status", async () => {
-  const app = await source("src/components/BusinessApp.tsx");
+  const app = await source("src/routes/ClassesPage.tsx");
 
   assert.match(
     app,
@@ -182,7 +184,7 @@ test("a bad course overrides a good meal in the visual card status", async () =>
 });
 
 test("course descriptions show primero, segundo y postre", async () => {
-  const app = await source("src/components/BusinessApp.tsx");
+  const app = await source("src/routes/ClassesPage.tsx");
 
   assert.match(app, /Primero/);
   assert.match(app, /Segundo/);
@@ -194,7 +196,7 @@ test("course descriptions show primero, segundo y postre", async () => {
 });
 
 test("modal edits keep courses and notes in the virtual draft", async () => {
-  const app = await source("src/components/BusinessApp.tsx");
+  const app = await source("src/routes/ClassesPage.tsx");
 
   // #33: la edición por modal solo ajusta el borrador virtual de la fila
   // (platos + notas, sin escribir en servidor); el guardado conjunto persiste.
@@ -207,7 +209,7 @@ test("modal edits keep courses and notes in the virtual draft", async () => {
 test("a plain todo stays on the ordinary meal upsert path", async () => {
   const [mealRecord, app] = await Promise.all([
     source("src/lib/mealRecord.ts"),
-    source("src/components/BusinessApp.tsx"),
+    source("src/routes/ClassesPage.tsx"),
   ]);
 
   assert.match(mealRecord, /overallMealStatus/);
@@ -225,7 +227,7 @@ test("a plain todo stays on the ordinary meal upsert path", async () => {
 test("no incident path remains in the meal flow", async () => {
   const [mealRecord, app] = await Promise.all([
     source("src/lib/mealRecord.ts"),
-    source("src/components/BusinessApp.tsx"),
+    source("src/routes/ClassesPage.tsx"),
   ]);
 
   assert.doesNotMatch(mealRecord, /incident: \{/);

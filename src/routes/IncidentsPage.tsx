@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router";
 
 import { supabase } from "../lib/supabase/client";
 import { localDateString } from "../lib/local-date";
@@ -27,8 +28,7 @@ import {
   type IncidentViewerRole,
 } from "../lib/incidentReadStatus";
 import type { Database } from "../types/database";
-import FeedbackToast from "./FeedbackToast";
-import TopNav from "./TopNav";
+import FeedbackToast from "../components/FeedbackToast";
 
 type Child = Database["public"]["Tables"]["children"]["Row"];
 type SchoolClass = Database["public"]["Tables"]["classes"]["Row"];
@@ -43,7 +43,16 @@ const AUDIENCE_LABELS: Record<IncidentAudience, string> = {
 const INCIDENT_SELECT =
   "id, child_id, category, created_at, date, description, family_responded_at, family_response, family_seen, monitor_id, monitor_validated, requires_family_signature, reviewed, send_notification";
 
-export default function IncidentsApp() {
+// Ruta protegida #47: incidencias con audiencia clavada al patrón de clases.
+// Lista de clases con conteo, niños con acción Notificar propia, formulario
+// con categoría obligatoria y audiencia por defecto ambos (confirmación solo
+// si incluye familia), e historial del día por alumno con categoría,
+// audiencia y pendiente o visto con hora. La familia solo ve las de sus hijos
+// donde la audiencia incluye familia, con botón único de visto. Navegación
+// superior única compartida con la raíz en RootLayout, sin duplicados server
+// ni recargas: todo navega por el router.
+export default function IncidentsPage() {
+  const navigate = useNavigate();
   const [children, setChildren] = useState<Child[]>([]);
   const [classes, setClasses] = useState<SchoolClass[]>([]);
   const [incidents, setIncidents] = useState<Incident[]>([]);
@@ -91,8 +100,6 @@ export default function IncidentsApp() {
 
       const role = (userResult.data?.role ?? null) as IncidentViewerRole | null;
       if (userResult.error || !role) {
-        // Compatibilidad con sesión de monitor sin perfil en users:
-        // intenta resolver como monitor por monitors.user_id.
         const monitorFallback = await supabase
           .from("monitors")
           .select("id")
@@ -167,7 +174,6 @@ export default function IncidentsApp() {
           setState("error");
           return;
         }
-        // Defensa en profundidad: RLS ya filtra a familia, aquí también.
         const familyOnly = visibleIncidentsForRole(
           (incidentsResult.data ?? []) as Incident[],
           "padre",
@@ -220,40 +226,44 @@ export default function IncidentsApp() {
     if (state !== "ready") return;
     const channel = supabase
       .channel("incidents-day")
-      .on("postgres_changes", { event: "*", schema: "public", table: "incidents" }, (payload) => {
-        if (payload.eventType === "DELETE" && payload.old) {
-          const oldRow = payload.old as { id?: string };
-          if (!oldRow.id) return;
-          setIncidents((current) =>
-            current.filter((incident) => incident.id !== oldRow.id),
-          );
-          return;
-        }
-        const row = (payload.new ?? null) as Incident | null;
-        if (!row || !row.id) return;
-        if (row.date !== todayStr) return;
-        if (userRole === "padre") {
-          if (!parentChildIds.includes(row.child_id ?? "")) return;
-          if (!incidentTargetsFamily(row)) return;
-        }
-        setIncidents((current) => {
-          const exists = current.some((incident) => incident.id === row.id);
-          if (!exists) {
-            if (userRole === "padre") {
-              const merged = visibleIncidentsForRole(
-                [...current, row],
-                "padre",
-                parentChildIds,
-              );
-              return merged;
-            }
-            return [row, ...current];
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "incidents" },
+        (payload) => {
+          if (payload.eventType === "DELETE" && payload.old) {
+            const oldRow = payload.old as { id?: string };
+            if (!oldRow.id) return;
+            setIncidents((current) =>
+              current.filter((incident) => incident.id !== oldRow.id),
+            );
+            return;
           }
-          return current.map((incident) =>
-            incident.id === row.id ? row : incident,
-          );
-        });
-      })
+          const row = (payload.new ?? null) as Incident | null;
+          if (!row || !row.id) return;
+          if (row.date !== todayStr) return;
+          if (userRole === "padre") {
+            if (!parentChildIds.includes(row.child_id ?? "")) return;
+            if (!incidentTargetsFamily(row)) return;
+          }
+          setIncidents((current) => {
+            const exists = current.some((incident) => incident.id === row.id);
+            if (!exists) {
+              if (userRole === "padre") {
+                const merged = visibleIncidentsForRole(
+                  [...current, row],
+                  "padre",
+                  parentChildIds,
+                );
+                return merged;
+              }
+              return [row, ...current];
+            }
+            return current.map((incident) =>
+              incident.id === row.id ? row : incident,
+            );
+          });
+        },
+      )
       .subscribe();
     return () => {
       void supabase.removeChannel(channel);
@@ -316,6 +326,15 @@ export default function IncidentsApp() {
     }
     setSaving(true);
     const indicators = mapAudienceToIndicators(audience, requiresConfirmation);
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (!sessionData.session) {
+      setSaving(false);
+      setToast({
+        message: "No se ha podido guardar la incidencia",
+        type: "error",
+      });
+      return;
+    }
     const result = await supabase
       .from("incidents")
       .insert({
@@ -430,30 +449,44 @@ export default function IncidentsApp() {
 
   if (state === "loading")
     return (
-      <p className="p-6 text-sm text-slate-500">
-        Cargando datos autorizados...
-      </p>
+      <section
+        aria-label="Incidencias"
+        className="flex flex-1 flex-col px-4 py-6"
+      >
+        <p className="p-6 text-sm text-slate-500">
+          Cargando datos autorizados...
+        </p>
+      </section>
     );
   if (state === "signed-out")
     return (
-      <section className="m-4 rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm">
+      <section
+        aria-label="Incidencias"
+        className="m-4 rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm"
+      >
         <h1 className="text-lg font-bold text-slate-900">Sesión no iniciada</h1>
         <p className="mt-2 text-sm text-slate-500">
           Inicia sesión para notificar incidencias.
         </p>
-        <a
+        <button
+          type="button"
+          onClick={() => navigate("/setup")}
           className="mt-4 inline-flex rounded-xl bg-emerald-600 px-5 py-3 font-medium text-white"
-          href="/setup"
         >
           Configurar dispositivo
-        </a>
+        </button>
       </section>
     );
   if (state === "error")
     return (
-      <p className="p-6 text-sm text-slate-500">
-        No se han podido cargar los datos autorizados.
-      </p>
+      <section
+        aria-label="Incidencias"
+        className="flex flex-1 flex-col px-4 py-6"
+      >
+        <p className="p-6 text-sm text-slate-500">
+          No se han podido cargar los datos autorizados.
+        </p>
+      </section>
     );
 
   const isFamily = userRole === "padre";
@@ -470,7 +503,7 @@ export default function IncidentsApp() {
     );
     const familyByChild = groupIncidentsByChild(familyIncidents);
     return (
-      <>
+      <section aria-label="Incidencias" className="flex flex-1 flex-col">
         <header className="sticky top-0 z-40 flex items-center justify-between border-b border-slate-200 bg-white/90 px-4 py-3 shadow-sm backdrop-blur-md">
           <div>
             <h1 className="text-lg font-bold leading-none text-slate-900">
@@ -517,12 +550,12 @@ export default function IncidentsApp() {
           </ul>
         )}
         <FeedbackToast message={toast?.message ?? null} type={toast?.type} />
-      </>
+      </section>
     );
   }
 
   return (
-    <>
+    <section aria-label="Incidencias" className="flex flex-1 flex-col">
       <header className="sticky top-0 z-40 flex flex-col gap-3 border-b border-slate-200 bg-white/90 px-4 py-3 shadow-sm backdrop-blur-md">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -549,14 +582,7 @@ export default function IncidentsApp() {
               </p>
             </div>
           </div>
-          <a
-            href="/incidencias"
-            className="rounded-full bg-slate-100 px-3 py-2 text-sm text-slate-600 hover:bg-slate-200"
-          >
-            Historial
-          </a>
         </div>
-        <TopNav active="incidencias" />
       </header>
 
       {!selectedClass ? (
@@ -774,6 +800,6 @@ export default function IncidentsApp() {
       )}
 
       <FeedbackToast message={toast?.message ?? null} type={toast?.type} />
-    </>
+    </section>
   );
 }

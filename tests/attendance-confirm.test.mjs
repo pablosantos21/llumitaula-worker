@@ -10,7 +10,7 @@ async function source(path) {
 }
 
 test("confirming persists the whole day list with authorship", async () => {
-  const app = await source("src/components/BusinessApp.tsx");
+  const app = await source("src/routes/ClassesPage.tsx");
 
   assert.match(app, /from\("daily_attendance"\)/);
   assert.match(app, /attendance_date/);
@@ -21,7 +21,7 @@ test("confirming persists the whole day list with authorship", async () => {
 });
 
 test("reloading the class shows the list already confirmed today", async () => {
-  const app = await source("src/components/BusinessApp.tsx");
+  const app = await source("src/routes/ClassesPage.tsx");
 
   assert.match(app, /applyConfirmedAttendance|attendanceRows/);
   assert.match(app, /summarizeAttendance|confirmed-empty|never-passed/);
@@ -29,13 +29,13 @@ test("reloading the class shows the list already confirmed today", async () => {
 });
 
 test("empty confirmation needs an explicit gesture", async () => {
-  const app = await source("src/components/BusinessApp.tsx");
+  const app = await source("src/routes/ClassesPage.tsx");
 
   assert.match(app, /confirmEmpty|lista vacía|Confirmar.*vacío/i);
 });
 
 test("only monitors and admins of the centre can confirm", async () => {
-  const app = await source("src/components/BusinessApp.tsx");
+  const app = await source("src/routes/ClassesPage.tsx");
   const lib = await source("src/lib/attendance.ts");
 
   assert.match(lib, /canConfirmAttendance/);
@@ -46,7 +46,7 @@ test("only monitors and admins of the centre can confirm", async () => {
 });
 
 test("confirming never writes the weekly pattern nor meal records", async () => {
-  const app = await source("src/components/BusinessApp.tsx");
+  const app = await source("src/routes/ClassesPage.tsx");
 
   assert.doesNotMatch(
     app,

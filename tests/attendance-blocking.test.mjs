@@ -10,7 +10,7 @@ async function source(path) {
 }
 
 test("without a confirmed list today the meal register is blocked", async () => {
-  const app = await source("src/components/BusinessApp.tsx");
+  const app = await source("src/routes/ClassesPage.tsx");
 
   assert.match(app, /isAttendanceConfirmed|attendanceConfirmed/);
   assert.match(
@@ -20,7 +20,7 @@ test("without a confirmed list today the meal register is blocked", async () => 
 });
 
 test("after confirming, only present pupils admit valuation", async () => {
-  const app = await source("src/components/BusinessApp.tsx");
+  const app = await source("src/routes/ClassesPage.tsx");
   const lib = await source("src/lib/attendance.ts");
 
   assert.match(lib, /canRecordMeal|confirmedPresentChildIds/);
@@ -29,7 +29,7 @@ test("after confirming, only present pupils admit valuation", async () => {
 });
 
 test("meal saves refuse unconfirmed or absent pupils", async () => {
-  const app = await source("src/components/BusinessApp.tsx");
+  const app = await source("src/routes/ClassesPage.tsx");
 
   const modalSave = app.match(/function handleMealModalSave\([\s\S]*?\n {2}\}/);
   assert.ok(modalSave, "expected a handleMealModalSave function");
@@ -47,14 +47,14 @@ test("meal saves refuse unconfirmed or absent pupils", async () => {
 });
 
 test("confirmed authorship (who and when) stays visible for later consult", async () => {
-  const app = await source("src/components/BusinessApp.tsx");
+  const app = await source("src/routes/ClassesPage.tsx");
 
   assert.match(app, /confirmedBy|confirmed_by/);
   assert.match(app, /confirmedAt|confirmed_at/);
 });
 
 test("weekend shows no-service notice and offline blocks roll call", async () => {
-  const app = await source("src/components/BusinessApp.tsx");
+  const app = await source("src/routes/ClassesPage.tsx");
 
   assert.match(app, /Hoy no hay servicio de comedor/);
   assert.match(app, /Sin conexión: pasar lista y confirmar requieren conexión/);

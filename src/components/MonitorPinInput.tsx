@@ -5,15 +5,16 @@ import { supabase } from "../lib/supabase/client";
 interface Props {
   monitor: PublicMonitor;
   onBack: () => void;
+  onSuccess: () => void;
 }
 
-const MAX_ATTEMPTS = 5;
-const COOLDOWN_MS = 5 * 60 * 1000;
+export const MAX_ATTEMPTS = 5;
+export const COOLDOWN_MS = 5 * 60 * 1000;
 
 const inputClassName =
   "h-14 w-full rounded-xl border border-slate-200 bg-white px-4 text-center text-2xl tracking-[0.35em] text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20";
 
-export default function MonitorPinInput({ monitor, onBack }: Props) {
+export default function MonitorPinInput({ monitor, onBack, onSuccess }: Props) {
   const [pin, setPin] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -21,13 +22,20 @@ export default function MonitorPinInput({ monitor, onBack }: Props) {
   const [locked, setLocked] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Aislamiento por monitor: el contenedor renderiza con key={monitor.id},
+  // así cada monitor monta un estado propio de intentos y cooldown y un
+  // bloqueo nunca afecta a otros monitores del mismo dispositivo.
+
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
 
   useEffect(() => {
     if (!locked) return;
-    const timer = window.setTimeout(() => setLocked(false), COOLDOWN_MS);
+    const timer = window.setTimeout(() => {
+      setLocked(false);
+      setAttempts(0);
+    }, COOLDOWN_MS);
     return () => clearTimeout(timer);
   }, [locked]);
 
@@ -72,11 +80,17 @@ export default function MonitorPinInput({ monitor, onBack }: Props) {
       return;
     }
 
-    window.location.assign("/");
+    setLoading(false);
+    // La sesión Supabase queda mantenida por signInWithPassword; el destino
+    // (raíz protegida) lo decide el contenedor vía onSuccess, sin recargas.
+    onSuccess();
   }
 
   return (
-    <div className="flex flex-1 flex-col bg-white px-6 py-12">
+    <div
+      className="flex flex-1 flex-col bg-white px-6 py-12"
+      data-monitor-id={monitor.id}
+    >
       <div className="mx-auto w-full max-w-sm space-y-8">
         <div className="space-y-2 text-center">
           <button

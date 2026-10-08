@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useNavigate } from "react-router";
 
-import MealRecordModal from "./MealRecordModal";
+import MealRecordModal from "../components/MealRecordModal";
 import { supabase } from "../lib/supabase/client";
 import { localDateString } from "../lib/local-date";
 import { buildClassList, childrenInClass, classById } from "../lib/classes";
@@ -45,9 +46,8 @@ import {
   type MealCourses,
 } from "../lib/mealRecord";
 import type { Database } from "../types/database";
-import FeedbackToast from "./FeedbackToast";
-import StudentCard from "./StudentCard";
-import TopNav from "./TopNav";
+import FeedbackToast from "../components/FeedbackToast";
+import StudentCard from "../components/StudentCard";
 
 type Child = Database["public"]["Tables"]["children"]["Row"];
 type SchoolClass = Database["public"]["Tables"]["classes"]["Row"];
@@ -81,7 +81,14 @@ function EmptyState({ title, message }: { title: string; message: string }) {
   );
 }
 
-export default function BusinessApp() {
+// Ruta raíz protegida #46: lista de clases y comedor diario con asistencia
+// confirmada, borrador local y registro de valoración. Reutiliza sin
+// reescribir los módulos de dominio (clases, pauta diaria, asistencia con
+// confirmación, lista virtual de comedor, borrador local, valoración).
+// Carga paralela de datos autorizados por RLS, sin mocks ni datos
+// fabricados offline. Navegación 100% del router, sin recargas.
+export default function ClassesPage() {
+  const navigate = useNavigate();
   const [children, setChildren] = useState<Child[]>([]);
   const [classes, setClasses] = useState<SchoolClass[]>([]);
   const [records, setRecords] = useState<MealRecord[]>([]);
@@ -709,23 +716,29 @@ export default function BusinessApp() {
 
   if (state === "loading")
     return (
-      <p className="p-6 text-sm text-slate-500">
-        Cargando datos autorizados...
-      </p>
+      <section aria-label="Clases" className="flex flex-1 flex-col px-4 py-6">
+        <p className="p-6 text-sm text-slate-500">
+          Cargando datos autorizados...
+        </p>
+      </section>
     );
   if (state === "signed-out")
     return (
-      <section className="m-4 rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm">
+      <section
+        aria-label="Clases"
+        className="m-4 rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm"
+      >
         <h1 className="text-lg font-bold text-slate-900">Sesión no iniciada</h1>
         <p className="mt-2 text-sm text-slate-500">
           Inicia sesión para consultar los alumnos autorizados.
         </p>
-        <a
+        <button
+          type="button"
+          onClick={() => navigate("/setup")}
           className="mt-4 inline-flex rounded-xl bg-emerald-600 px-5 py-3 font-medium text-white"
-          href="/setup"
         >
           Configurar dispositivo
-        </a>
+        </button>
       </section>
     );
 
@@ -1153,7 +1166,7 @@ export default function BusinessApp() {
   }
 
   return (
-    <>
+    <section aria-label="Clases" className="flex flex-1 flex-col">
       <header className="sticky top-0 z-40 flex flex-col gap-3 border-b border-slate-200 bg-white/90 px-4 py-3 shadow-sm backdrop-blur-md">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -1181,14 +1194,13 @@ export default function BusinessApp() {
             type="button"
             onClick={async () => {
               await supabase.auth.signOut();
-              window.location.assign("/setup");
+              navigate("/setup");
             }}
             className="rounded-full bg-slate-100 px-3 py-2 text-sm text-slate-600 hover:bg-slate-200"
           >
             Salir
           </button>
         </div>
-        <TopNav active="clases" />
       </header>
       {content}
       {isOffline && !selectedClass && (
@@ -1248,6 +1260,6 @@ export default function BusinessApp() {
         message={toast?.message ?? null}
         type={toast?.type ?? "success"}
       />
-    </>
+    </section>
   );
 }

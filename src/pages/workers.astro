@@ -1,9 +1,0 @@
----
-export const prerender = true;
-import WorkersApp from "../components/WorkersApp";
-import MainLayout from "../layouts/MainLayout.astro";
----
-
-<MainLayout title="Monitores" requiresAuth={false}>
-  <WorkersApp client:load />
-</MainLayout>
