@@ -12,6 +12,11 @@ import {
   type DailyListItem,
 } from "../lib/daily-list";
 import {
+  buildSchoolForecast,
+  DAILY_SUMMARY_CAPABILITY,
+  permittedClassIds as permittedSummaryClassIds,
+} from "../lib/daily-summary";
+import {
   applyConfirmedAttendance,
   buildAttendanceRows,
   canConfirmAttendance,
@@ -115,6 +120,22 @@ export default function ClassesPage() {
   >(null);
   const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
   const [selectedChild, setSelectedChild] = useState<Child | null>(null);
+  // Permiso efectivo del resumen diario (#52): override de clase, escuela,
+  // defecto del catálogo. Sin clases permitidas el resumen no se muestra.
+  const [classSummaryOverrides, setClassSummaryOverrides] = useState<
+    Record<string, boolean>
+  >({});
+  const [schoolSummaryEnabled, setSchoolSummaryEnabled] = useState<
+    Record<string, boolean>
+  >({});
+  const [summaryDefaultEnabled, setSummaryDefaultEnabled] = useState<
+    boolean | null
+  >(null);
+  // Si las capabilities no se pudieron leer, la presentación no finge un
+  // permiso conocido: oculta el resumen en vez de suponerlo habilitado.
+  const [summaryCapabilitiesFailed, setSummaryCapabilitiesFailed] =
+    useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
   const [toast, setToast] = useState<{
     message: string;
     type: "success" | "warning" | "error";
@@ -158,6 +179,9 @@ export default function ClassesPage() {
         mealTypesResult,
         lunchDaysResult,
         userResult,
+        catalogResult,
+        schoolCapabilitiesResult,
+        classOverridesResult,
       ] = await Promise.all([
         supabase
           .from("children")
@@ -187,6 +211,19 @@ export default function ClassesPage() {
           .select("role")
           .eq("id", session.user.id)
           .single(),
+        supabase
+          .from("capability_catalog")
+          .select("capability, default_enabled")
+          .eq("capability", DAILY_SUMMARY_CAPABILITY)
+          .maybeSingle(),
+        supabase
+          .from("school_capabilities")
+          .select("school_id, capability, enabled")
+          .eq("capability", DAILY_SUMMARY_CAPABILITY),
+        supabase
+          .from("class_capability_overrides")
+          .select("class_id, capability, enabled")
+          .eq("capability", DAILY_SUMMARY_CAPABILITY),
       ]);
       if (!active) return;
       if (
@@ -201,6 +238,17 @@ export default function ClassesPage() {
         if (typeof navigator !== "undefined" && !navigator.onLine) {
           setIsOffline(true);
         }
+        // No mostrar datos antiguos como actuales: limpiar al fallar.
+        setChildren([]);
+        setClasses([]);
+        setRecords([]);
+        setIncidents([]);
+        setMealTypes([]);
+        setLunchByChild({});
+        setClassSummaryOverrides({});
+        setSchoolSummaryEnabled({});
+        setSummaryDefaultEnabled(null);
+        setSummaryCapabilitiesFailed(false);
         setState("error");
         return;
       }
@@ -215,6 +263,34 @@ export default function ClassesPage() {
       }
       setLunchByChild(lunchMap);
       setUserRole(userResult.data.role);
+      // Capacidades: lo ausente conserva el defecto (habilitado). Si la
+      // lectura de capabilities falla, la presentación no supone el
+      // permiso: oculta el resumen (RLS ya filtra lo deshabilitado en
+      // directo para el monitor).
+      const capabilitiesFailed =
+        catalogResult.error != null ||
+        schoolCapabilitiesResult.error != null ||
+        classOverridesResult.error != null;
+      setSummaryCapabilitiesFailed(capabilitiesFailed);
+      const catalogDefault =
+        catalogResult.error || !catalogResult.data
+          ? null
+          : (catalogResult.data.default_enabled ?? null);
+      setSummaryDefaultEnabled(catalogDefault);
+      const schoolMap: Record<string, boolean> = {};
+      if (!schoolCapabilitiesResult.error) {
+        for (const row of schoolCapabilitiesResult.data ?? []) {
+          if (row.school_id) schoolMap[row.school_id] = row.enabled;
+        }
+      }
+      setSchoolSummaryEnabled(schoolMap);
+      const overrideMap: Record<string, boolean> = {};
+      if (!classOverridesResult.error) {
+        for (const row of classOverridesResult.data ?? []) {
+          if (row.class_id) overrideMap[row.class_id] = row.enabled;
+        }
+      }
+      setClassSummaryOverrides(overrideMap);
 
       setState("ready");
     }
@@ -223,7 +299,7 @@ export default function ClassesPage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [reloadKey]);
 
   useEffect(() => {
     if (!toast) return;
@@ -232,6 +308,33 @@ export default function ClassesPage() {
   }, [toast]);
 
   const classList = buildClassList(classes, children);
+  // Clases con resumen permitido (#52): override de clase, luego escuela,
+  // luego defecto del catálogo. RLS ya rechaza lo deshabilitado en directo;
+  // aquí se filtra la presentación con el mismo orden.
+  const permittedClassIds = useMemo(
+    () =>
+      permittedSummaryClassIds(classes, {
+        classOverrides: classSummaryOverrides,
+        schoolEnabledBySchool: schoolSummaryEnabled,
+        defaultEnabled: summaryDefaultEnabled,
+      }),
+    [
+      classes,
+      classSummaryOverrides,
+      schoolSummaryEnabled,
+      summaryDefaultEnabled,
+    ],
+  );
+  const schoolForecast = useMemo(
+    () =>
+      buildSchoolForecast({
+        children,
+        lunchByChild,
+        permittedClassIds,
+        date: new Date(),
+      }),
+    [children, lunchByChild, permittedClassIds],
+  );
   const selectedClass = selectedClassId
     ? classById(classes, selectedClassId)
     : null;
@@ -1142,8 +1245,71 @@ export default function ClassesPage() {
       />
     );
   } else {
+    // Resumen del colegio antes de elegir clase (#52): previsión derivada
+    // del horario en clases permitidas. Sin permitidas no se muestra, pero
+    // la selección sigue disponible. Sin conexión no se presenta como
+    // actualizado; el error ofrece reintento sin datos antiguos.
+    const showSummary =
+      state === "ready" &&
+      !isOffline &&
+      !summaryCapabilitiesFailed &&
+      permittedClassIds.size > 0;
     content = (
       <div className="flex flex-1 flex-col gap-3 p-4 pb-24">
+        {showSummary ? (
+          <section
+            aria-label="Resumen del día"
+            className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+          >
+            <h2 className="text-base font-bold text-slate-900">
+              Previsión de hoy
+            </h2>
+            {schoolForecast.isNoServiceDay ? (
+              <p
+                role="status"
+                className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800"
+              >
+                Hoy no hay servicio de comedor. La previsión queda en pausa
+                hasta el próximo día de servicio.
+              </p>
+            ) : (
+              <>
+                <p className="mt-2 text-sm text-slate-700">
+                  {schoolForecast.expectedCount === 1
+                    ? "1 previsto"
+                    : `${schoolForecast.expectedCount} previstos`}
+                  <span>
+                    {" "}
+                    Previsión según el horario, no asistencia confirmada.
+                  </span>
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  Previsión del colegio: cuenta a los niños cuyo horario de
+                  comedor incluye hoy en las clases permitidas. No es una lista
+                  confirmada ni asistencia marcada.
+                </p>
+                {schoolForecast.isIncomplete && (
+                  <p className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                    <span>Previsión incompleta: </span>
+                    {schoolForecast.incompleteCount === 1
+                      ? "1 niño sin horario configurado"
+                      : `${schoolForecast.incompleteCount} niños sin horario configurado`}
+                    <span> Podría faltar parte de la previsión.</span>
+                  </p>
+                )}
+              </>
+            )}
+          </section>
+        ) : null}
+        {state === "ready" && isOffline && (
+          <p
+            role="alert"
+            className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800"
+          >
+            Sin conexión: el resumen no está actualizado. Vuelve a intentarlo
+            con conexión para ver la previsión actual.
+          </p>
+        )}
         {classList.map((classItem) => (
           <button
             key={classItem.id}
@@ -1203,7 +1369,7 @@ export default function ClassesPage() {
         </div>
       </header>
       {content}
-      {isOffline && !selectedClass && (
+      {isOffline && !selectedClass && state !== "error" && (
         <p
           role="alert"
           className="mx-4 mb-6 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800"
@@ -1212,11 +1378,24 @@ export default function ClassesPage() {
         </p>
       )}
       {state === "error" && (
-        <p className="px-4 pb-6 text-sm text-slate-500">
-          {isOffline
-            ? "Sin conexión: pasar lista y confirmar requieren conexión."
-            : "No se han podido cargar los datos autorizados."}
-        </p>
+        <div className="px-4 pb-6">
+          <p role="alert" className="text-sm text-slate-500">
+            {isOffline ||
+            (typeof navigator !== "undefined" && !navigator.onLine)
+              ? "Sin conexión: el resumen no está actualizado y pasar lista requiere conexión."
+              : "No se han podido cargar los datos autorizados. No se muestra ninguna previsión antigua como actual."}
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              setState("loading");
+              setReloadKey((current) => current + 1);
+            }}
+            className="mt-3 w-full rounded-xl bg-emerald-600 px-5 py-3 font-medium text-white"
+          >
+            Reintentar
+          </button>
+        </div>
       )}
       <MealRecordModal
         key={selectedChild?.id ?? "closed"}

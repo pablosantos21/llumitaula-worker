@@ -79,6 +79,54 @@ export type Database = {
           },
         ]
       }
+      capability_catalog: {
+        Row: {
+          capability: string
+          default_enabled: boolean
+        }
+        Insert: {
+          capability: string
+          default_enabled?: boolean
+        }
+        Update: {
+          capability?: string
+          default_enabled?: boolean
+        }
+        Relationships: []
+      }
+      class_capability_overrides: {
+        Row: {
+          capability: string
+          class_id: string
+          enabled: boolean
+        }
+        Insert: {
+          capability: string
+          class_id: string
+          enabled: boolean
+        }
+        Update: {
+          capability?: string
+          class_id?: string
+          enabled?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "class_capability_overrides_capability_fkey"
+            columns: ["capability"]
+            isOneToOne: false
+            referencedRelation: "capability_catalog"
+            referencedColumns: ["capability"]
+          },
+          {
+            foreignKeyName: "class_capability_overrides_class_id_fkey"
+            columns: ["class_id"]
+            isOneToOne: false
+            referencedRelation: "classes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       child_lunch_days: {
         Row: {
           child_id: string
@@ -694,6 +742,39 @@ export type Database = {
           name?: string
         }
         Relationships: []
+      }
+      school_capabilities: {
+        Row: {
+          capability: string
+          enabled: boolean
+          school_id: string
+        }
+        Insert: {
+          capability: string
+          enabled: boolean
+          school_id: string
+        }
+        Update: {
+          capability?: string
+          enabled?: boolean
+          school_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "school_capabilities_capability_fkey"
+            columns: ["capability"]
+            isOneToOne: false
+            referencedRelation: "capability_catalog"
+            referencedColumns: ["capability"]
+          },
+          {
+            foreignKeyName: "school_capabilities_school_id_fkey"
+            columns: ["school_id"]
+            isOneToOne: false
+            referencedRelation: "schools"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       users: {
         Row: {
