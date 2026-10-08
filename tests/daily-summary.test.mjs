@@ -6,6 +6,7 @@ import { URL } from "node:url";
 import {
   buildExpectedDinerAllergies,
   buildSchoolForecast,
+  buildSchoolSummaryIncidents,
   DAILY_SUMMARY_CAPABILITY,
   permittedClassIds,
   resolveDailySummaryEnabled,
@@ -441,4 +442,255 @@ test("la sección de alergias no infiere datos clínicos", async () => {
 
   assert.match(page, /Alergias de los comensales previstos/);
   assert.doesNotMatch(page, /gravedad|severidad|reacci.n|tratamiento/i);
+});
+
+// --- #54: incidencias del colegio en el resumen ---
+
+function summaryIncidentChildren() {
+  return [
+    { id: "k1", class_id: "c1", first_name: "Anna", last_name: "Puig" },
+    { id: "k2", class_id: "c1", first_name: "Biel", last_name: "Vila" },
+    { id: "k3", class_id: "c2", first_name: "Clara", last_name: "Roca" },
+  ];
+}
+
+function summaryIncidentRows() {
+  // i1 colegio (send_notification true, sin firma), i2 ambos (con firma),
+  // i3 solo-familia (sin envío al colegio).
+  return [
+    {
+      id: "i1",
+      child_id: "k1",
+      date: "2026-10-05",
+      category: "salud",
+      description: "Se ha mareado",
+      send_notification: true,
+      requires_family_signature: false,
+      reviewed: false,
+      monitor_validated: false,
+    },
+    {
+      id: "i2",
+      child_id: "k2",
+      date: "2026-10-05",
+      category: "comedor",
+      description: "No ha comido",
+      send_notification: true,
+      requires_family_signature: true,
+      reviewed: true,
+      monitor_validated: true,
+    },
+    {
+      id: "i3",
+      child_id: "k1",
+      date: "2026-10-05",
+      category: "descanso",
+      description: "Solo familia",
+      send_notification: false,
+      requires_family_signature: false,
+      reviewed: false,
+      monitor_validated: false,
+    },
+  ];
+}
+
+test("colegio y ambos aparecen; solo-familia queda fuera", () => {
+  const rows = buildSchoolSummaryIncidents({
+    incidents: summaryIncidentRows(),
+    children: summaryIncidentChildren(),
+    permittedClassIds: new Set(["c1", "c2"]),
+    date: monday(),
+  });
+
+  assert.deepEqual(
+    rows.map((row) => row.incidentId),
+    ["i1", "i2"],
+  );
+});
+
+test("fechas distintas quedan fuera; solo la fecha local actual", () => {
+  const rows = buildSchoolSummaryIncidents({
+    incidents: [
+      {
+        id: "i-yesterday",
+        child_id: "k1",
+        date: "2026-10-04",
+        category: "salud",
+        description: "Ayer",
+        send_notification: true,
+        requires_family_signature: false,
+      },
+      {
+        id: "i-tomorrow",
+        child_id: "k1",
+        date: "2026-10-06",
+        category: "salud",
+        description: "Mañana",
+        send_notification: true,
+        requires_family_signature: true,
+      },
+      {
+        id: "i-today",
+        child_id: "k1",
+        date: "2026-10-05",
+        category: "salud",
+        description: "Hoy",
+        send_notification: true,
+        requires_family_signature: false,
+      },
+    ],
+    children: summaryIncidentChildren(),
+    permittedClassIds: new Set(["c1"]),
+    date: monday(),
+  });
+
+  assert.deepEqual(
+    rows.map((row) => row.incidentId),
+    ["i-today"],
+  );
+});
+
+test("no se filtra por reviewed ni por validación del monitor", () => {
+  const rows = buildSchoolSummaryIncidents({
+    incidents: [
+      {
+        id: "i-pending",
+        child_id: "k1",
+        date: "2026-10-05",
+        category: "salud",
+        description: "Pendiente",
+        send_notification: true,
+        reviewed: false,
+        monitor_validated: false,
+      },
+      {
+        id: "i-reviewed",
+        child_id: "k1",
+        date: "2026-10-05",
+        category: "comedor",
+        description: "Revisada",
+        send_notification: true,
+        reviewed: true,
+        monitor_validated: true,
+      },
+      {
+        id: "i-mixed",
+        child_id: "k2",
+        date: "2026-10-05",
+        category: "otro",
+        description: "Mixta",
+        send_notification: true,
+        reviewed: true,
+        monitor_validated: false,
+      },
+    ],
+    children: summaryIncidentChildren(),
+    permittedClassIds: new Set(["c1"]),
+    date: monday(),
+  });
+
+  assert.deepEqual(
+    rows.map((row) => row.incidentId).sort(),
+    ["i-mixed", "i-pending", "i-reviewed"],
+  );
+});
+
+test("el ámbito del resumen excluye clases no permitidas y conserva identidad", () => {
+  const rows = buildSchoolSummaryIncidents({
+    incidents: summaryIncidentRows().concat([
+      {
+        id: "i4",
+        child_id: "k3",
+        date: "2026-10-05",
+        category: "recogida",
+        description: "Otra clase",
+        send_notification: true,
+        requires_family_signature: false,
+      },
+    ]),
+    children: summaryIncidentChildren(),
+    permittedClassIds: new Set(["c1"]),
+    date: monday(),
+  });
+
+  assert.deepEqual(
+    rows.map((row) => row.incidentId),
+    ["i1", "i2"],
+  );
+  const first = rows.find((row) => row.incidentId === "i1");
+  assert.equal(first?.childName, "Anna Puig");
+  assert.equal(first?.category, "salud");
+  assert.equal(first?.description, "Se ha mareado");
+});
+
+test("cada resultado muestra solo identidad, categoría, descripción y fecha", () => {
+  const rows = buildSchoolSummaryIncidents({
+    incidents: summaryIncidentRows(),
+    children: summaryIncidentChildren(),
+    permittedClassIds: new Set(["c1", "c2"]),
+    date: monday(),
+  });
+
+  for (const row of rows) {
+    assert.deepEqual(Object.keys(row).sort(), [
+      "category",
+      "childId",
+      "childName",
+      "date",
+      "description",
+      "incidentId",
+    ]);
+  }
+});
+
+// --- seam acceso a datos (#54): incidencias del monitor con permiso efectivo ---
+
+async function summaryIncidentsMigration() {
+  const migrations = await migrationSources();
+  const migration = migrations.find((m) =>
+    m.file.includes("daily_summary_incidents"),
+  );
+  assert.ok(
+    migration,
+    "existe una migración para las incidencias del resumen",
+  );
+  return migration.sql;
+}
+
+test("el acceso directo del monitor a incidencias de clases deshabilitadas se rechaza", async () => {
+  const sql = await summaryIncidentsMigration();
+
+  assert.match(sql, /create policy incidents_select_monitor/);
+  assert.match(sql, /current_user_can_access_child\(/);
+  assert.match(sql, /monitor_daily_summary_enabled_for_child\(/);
+});
+
+test("el tenant y rol existentes de incidencias se conservan", async () => {
+  const migrations = await migrationSources();
+  const combined = migrations.map((m) => m.sql).join("\n");
+
+  assert.match(combined, /create policy incidents_select_tenant/);
+  assert.match(combined, /create policy incidents_select_parent/);
+  assert.match(combined, /create policy incidents_select_monitor/);
+});
+
+// --- seam ruta protegida (#54): incidencias visibles antes de elegir clase ---
+
+test("la raíz protegida muestra las incidencias de hoy para el colegio", async () => {
+  const page = await source("src/routes/ClassesPage.tsx");
+
+  assert.match(page, /buildSchoolSummaryIncidents/);
+  assert.match(page, /from\("incidents"\)/);
+  assert.match(page, /Incidencias de hoy para el colegio/);
+  assert.match(page, /incidentCategoryLabel/);
+  assert.match(page, /incidentAudienceLabelFromIndicators/);
+  assert.match(page, /description/);
+});
+
+test("el resumen no filtra incidencias por revisión ni validación", async () => {
+  const page = await source("src/routes/ClassesPage.tsx");
+
+  assert.match(page, /buildSchoolSummaryIncidents/);
+  assert.doesNotMatch(page, /\.eq\("reviewed"/);
+  assert.doesNotMatch(page, /\.eq\("monitor_validated"/);
 });

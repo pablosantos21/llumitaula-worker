@@ -14,9 +14,12 @@ import {
 import {
   buildExpectedDinerAllergies,
   buildSchoolForecast,
+  buildSchoolSummaryIncidents,
   DAILY_SUMMARY_CAPABILITY,
   permittedClassIds as permittedSummaryClassIds,
 } from "../lib/daily-summary";
+import { incidentCategoryLabel } from "../lib/incidentCategories";
+import { incidentAudienceLabelFromIndicators } from "../lib/incidentReadStatus";
 import {
   applyConfirmedAttendance,
   buildAttendanceRows,
@@ -386,6 +389,19 @@ export default function ClassesPage() {
     childAllergens,
     today,
   ]);
+  // Incidencias del colegio (#54): las de hoy con audiencia al colegio
+  // (send_notification = true: colegio y ambos; excluye solo-familia),
+  // en clases permitidas, sin filtrar por reviewed ni validación.
+  const summarySchoolIncidents = useMemo(
+    () =>
+      buildSchoolSummaryIncidents({
+        incidents,
+        children,
+        permittedClassIds,
+        date: today,
+      }),
+    [incidents, children, permittedClassIds, today],
+  );
   const selectedClass = selectedClassId
     ? classById(classes, selectedClassId)
     : null;
@@ -1380,6 +1396,48 @@ export default function ClassesPage() {
                 )}
               </div>
             )}
+            <div className="mt-3 border-t border-slate-100 pt-3">
+              <h3 className="text-sm font-bold text-slate-900">
+                Incidencias de hoy para el colegio
+              </h3>
+              {summarySchoolIncidents.length === 0 ? (
+                <p className="mt-1 text-sm text-slate-500">
+                  Sin incidencias para el colegio hoy.
+                </p>
+              ) : (
+                <ul
+                  aria-label="Incidencias de hoy para el colegio"
+                  className="mt-2 flex flex-col gap-2"
+                >
+                  {summarySchoolIncidents.map((row) => {
+                    const raw = incidents.find(
+                      (incident) => incident.id === row.incidentId,
+                    );
+                    return (
+                      <li
+                        key={row.incidentId}
+                        className="rounded-xl bg-slate-50 px-3 py-2"
+                      >
+                        <p className="text-sm font-bold text-slate-900">
+                          {row.childName}
+                        </p>
+                        <p className="text-sm text-slate-700">
+                          {incidentCategoryLabel(row.category)}
+                          {raw
+                            ? ` · ${incidentAudienceLabelFromIndicators(raw.requires_family_signature, raw.send_notification)}`
+                            : null}
+                        </p>
+                        {row.description ? (
+                          <p className="text-sm text-slate-700">
+                            {row.description}
+                          </p>
+                        ) : null}
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
           </section>
         ) : null}
         {state === "ready" && isOffline && (

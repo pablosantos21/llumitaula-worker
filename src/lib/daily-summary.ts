@@ -1,4 +1,5 @@
 import { getLunchWeekday, isWeekend } from "./daily-list.ts";
+import { localDateString } from "./local-date.ts";
 
 export const DAILY_SUMMARY_CAPABILITY = "monitor_daily_summary";
 
@@ -244,5 +245,90 @@ export function buildExpectedDinerAllergies(
   }
 
   rows.sort((a, b) => a.childName.localeCompare(b.childName, "es"));
+  return rows;
+}
+
+interface SummaryIncidentChildRef {
+  id: string;
+  class_id: string | null;
+  first_name: string;
+  last_name: string;
+}
+
+interface SummaryIncidentRef {
+  id: string;
+  child_id: string | null;
+  date: string | null;
+  category?: string | null;
+  description?: string | null;
+  send_notification?: boolean | null;
+  requires_family_signature?: boolean | null;
+  reviewed?: boolean | null;
+  monitor_validated?: boolean | null;
+}
+
+export interface SchoolSummaryIncident {
+  incidentId: string;
+  childId: string;
+  childName: string;
+  category: string | null;
+  description: string | null;
+  date: string | null;
+}
+
+interface SchoolSummaryIncidentsInput {
+  incidents: readonly SummaryIncidentRef[];
+  children: readonly SummaryIncidentChildRef[];
+  permittedClassIds: Set<string> | readonly string[];
+  date?: Date;
+}
+
+/**
+ * Incidencias del resumen: las de la fecha local actual cuya audiencia
+ * incluye al colegio (`send_notification = true`), tanto las dirigidas
+ * solo al colegio como las dirigidas a ambas audiencias. Excluye las
+ * dirigidas solo a la familia. No filtra por `reviewed` ni por validación
+ * del monitor. Solo clases con el resumen permitido; la identidad,
+ * categoría y descripción respetan las políticas de colegio, rol y clase
+ * aplicables a través del permiso efectivo y RLS.
+ */
+export function buildSchoolSummaryIncidents(
+  input: SchoolSummaryIncidentsInput,
+): SchoolSummaryIncident[] {
+  const date = input.date ?? new Date();
+  const todayStr = localDateString(date);
+  const permitted =
+    input.permittedClassIds instanceof Set
+      ? input.permittedClassIds
+      : new Set(input.permittedClassIds);
+
+  const childById = new Map<string, SummaryIncidentChildRef>();
+  for (const child of input.children) {
+    childById.set(child.id, child);
+  }
+
+  const rows: SchoolSummaryIncident[] = [];
+  for (const incident of input.incidents) {
+    if (incident.date !== todayStr) continue;
+    // Audiencia de colegio: send_notification = true cubre colegio y
+    // ambos; solo-familia (false/null) queda fuera.
+    if (incident.send_notification !== true) continue;
+    if (!incident.child_id) continue;
+    const child = childById.get(incident.child_id);
+    if (!child) continue;
+    if (!child.class_id || !permitted.has(child.class_id)) continue;
+    rows.push({
+      incidentId: incident.id,
+      childId: child.id,
+      childName: `${child.first_name} ${child.last_name}`.trim(),
+      category: incident.category ?? null,
+      description: incident.description ?? null,
+      date: incident.date,
+    });
+  }
+
+  rows.sort((a, b) =>
+    a.childName.localeCompare(b.childName, "es"),
+  );
   return rows;
 }
