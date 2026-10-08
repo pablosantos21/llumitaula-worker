@@ -15,6 +15,7 @@ import {
   buildExpectedDinerAllergies,
   buildSchoolForecast,
   buildSchoolSummaryIncidents,
+  buildSchoolSummaryNotices,
   DAILY_SUMMARY_CAPABILITY,
   permittedClassIds as permittedSummaryClassIds,
 } from "../lib/daily-summary";
@@ -65,6 +66,7 @@ type MealType = Database["public"]["Tables"]["meal_types"]["Row"];
 type Incident = Database["public"]["Tables"]["incidents"]["Row"];
 type Allergen = Database["public"]["Tables"]["allergens"]["Row"];
 type ChildAllergen = Database["public"]["Tables"]["child_allergens"]["Row"];
+type SchoolNotice = Database["public"]["Tables"]["school_notices"]["Row"];
 type CardStatus = "all_good" | "incident";
 
 const ATTENDANCE_SELECT =
@@ -112,6 +114,10 @@ export default function ClassesPage() {
   // monitor a niños accesibles con el resumen permitido.
   const [allergens, setAllergens] = useState<Allergen[]>([]);
   const [childAllergens, setChildAllergens] = useState<ChildAllergen[]>([]);
+  // Avisos del resumen (#55): generales publicados y vigentes del colegio;
+  // RLS ya limita al monitor a publicados de sus colegios, sin gate por el
+  // permiso de publicar. Sin interfaz de redacción ni publicación.
+  const [schoolNotices, setSchoolNotices] = useState<SchoolNotice[]>([]);
   const [presenceOverride, setPresenceOverride] = useState<
     Record<string, boolean>
   >({});
@@ -194,6 +200,7 @@ export default function ClassesPage() {
         classOverridesResult,
         allergensResult,
         childAllergensResult,
+        schoolNoticesResult,
       ] = await Promise.all([
         supabase
           .from("children")
@@ -238,6 +245,11 @@ export default function ClassesPage() {
           .eq("capability", DAILY_SUMMARY_CAPABILITY),
         supabase.from("allergens").select("id, name"),
         supabase.from("child_allergens").select("child_id, allergen_id"),
+        supabase
+          .from("school_notices")
+          .select("id, school_id, title, body, status, created_at")
+          .eq("status", "published")
+          .order("created_at", { ascending: false }),
       ]);
       if (!active) return;
       if (
@@ -249,7 +261,8 @@ export default function ClassesPage() {
         lunchDaysResult.error ||
         userResult.error ||
         allergensResult.error ||
-        childAllergensResult.error
+        childAllergensResult.error ||
+        schoolNoticesResult.error
       ) {
         if (typeof navigator !== "undefined" && !navigator.onLine) {
           setIsOffline(true);
@@ -263,6 +276,7 @@ export default function ClassesPage() {
         setLunchByChild({});
         setAllergens([]);
         setChildAllergens([]);
+        setSchoolNotices([]);
         setClassSummaryOverrides({});
         setSchoolSummaryEnabled({});
         setSummaryDefaultEnabled(null);
@@ -282,6 +296,7 @@ export default function ClassesPage() {
       setLunchByChild(lunchMap);
       setAllergens(allergensResult.data ?? []);
       setChildAllergens(childAllergensResult.data ?? []);
+      setSchoolNotices(schoolNoticesResult.data ?? []);
       setUserRole(userResult.data.role);
       // Capacidades: lo ausente conserva el defecto (habilitado). Si la
       // lectura de capabilities falla, la presentación no supone el
@@ -402,6 +417,19 @@ export default function ClassesPage() {
       }),
     [incidents, children, permittedClassIds, today],
   );
+  // Avisos del colegio (#55): generales publicados y vigentes del colegio
+  // del monitor hasta archivar o retirar. Solo lectura: sin redacción ni
+  // publicación en este ticket y sin gate por el permiso de publicar.
+  const summarySchoolNotices = useMemo(() => {
+    const schoolIds = new Set<string>();
+    for (const classItem of classes) {
+      if (classItem.school_id) schoolIds.add(classItem.school_id);
+    }
+    return buildSchoolSummaryNotices({
+      notices: schoolNotices,
+      schoolIds,
+    });
+  }, [schoolNotices, classes]);
   const selectedClass = selectedClassId
     ? classById(classes, selectedClassId)
     : null;
@@ -1435,6 +1463,35 @@ export default function ClassesPage() {
                       </li>
                     );
                   })}
+                </ul>
+              )}
+            </div>
+            <div className="mt-3 border-t border-slate-100 pt-3">
+              <h3 className="text-sm font-bold text-slate-900">
+                Avisos del colegio
+              </h3>
+              {summarySchoolNotices.length === 0 ? (
+                <p className="mt-1 text-sm text-slate-500">
+                  Sin avisos para el colegio hoy.
+                </p>
+              ) : (
+                <ul
+                  aria-label="Avisos del colegio"
+                  className="mt-2 flex flex-col gap-2"
+                >
+                  {summarySchoolNotices.map((row) => (
+                    <li
+                      key={row.noticeId}
+                      className="rounded-xl bg-slate-50 px-3 py-2"
+                    >
+                      <p className="text-sm font-bold text-slate-900">
+                        {row.title}
+                      </p>
+                      {row.body ? (
+                        <p className="text-sm text-slate-700">{row.body}</p>
+                      ) : null}
+                    </li>
+                  ))}
                 </ul>
               )}
             </div>

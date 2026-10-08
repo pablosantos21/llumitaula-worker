@@ -7,6 +7,7 @@ import {
   buildExpectedDinerAllergies,
   buildSchoolForecast,
   buildSchoolSummaryIncidents,
+  buildSchoolSummaryNotices,
   DAILY_SUMMARY_CAPABILITY,
   permittedClassIds,
   resolveDailySummaryEnabled,
@@ -693,4 +694,186 @@ test("el resumen no filtra incidencias por revisión ni validación", async () =
   assert.match(page, /buildSchoolSummaryIncidents/);
   assert.doesNotMatch(page, /\.eq\("reviewed"/);
   assert.doesNotMatch(page, /\.eq\("monitor_validated"/);
+});
+
+// --- #55: avisos internos publicados en el resumen ---
+
+function summaryNoticeRows() {
+  // n1 publicado vigente, n2 borrador, n3 archivado, n4 retirado,
+  // n5 publicado de otro colegio.
+  return [
+    {
+      id: "n1",
+      school_id: "s1",
+      title: "Reunión de comedor",
+      body: "Viernes a las 15h",
+      status: "published",
+    },
+    {
+      id: "n2",
+      school_id: "s1",
+      title: "Borrador interno",
+      body: "Aún no visible",
+      status: "draft",
+    },
+    {
+      id: "n3",
+      school_id: "s1",
+      title: "Aviso antiguo",
+      body: "Ya archivado",
+      status: "archived",
+    },
+    {
+      id: "n4",
+      school_id: "s1",
+      title: "Aviso retirado",
+      body: "Ya retirado",
+      status: "withdrawn",
+    },
+    {
+      id: "n5",
+      school_id: "s2",
+      title: "Otro colegio",
+      body: "No es de este colegio",
+      status: "published",
+    },
+  ];
+}
+
+test("solo los publicados vigentes del colegio aparecen en el resumen", () => {
+  const rows = buildSchoolSummaryNotices({
+    notices: summaryNoticeRows(),
+    schoolIds: new Set(["s1"]),
+  });
+
+  assert.deepEqual(
+    rows.map((row) => row.noticeId),
+    ["n1"],
+  );
+});
+
+test("borradores, archivados y retirados quedan fuera aunque sean del colegio", () => {
+  const rows = buildSchoolSummaryNotices({
+    notices: summaryNoticeRows().filter((notice) => notice.school_id === "s1"),
+    schoolIds: new Set(["s1"]),
+  });
+
+  assert.deepEqual(
+    rows.map((row) => row.noticeId),
+    ["n1"],
+  );
+  assert.ok(!rows.some((row) => row.noticeId === "n2"));
+  assert.ok(!rows.some((row) => row.noticeId === "n3"));
+  assert.ok(!rows.some((row) => row.noticeId === "n4"));
+});
+
+test("el ámbito del resumen excluye avisos de otros colegios", () => {
+  const rows = buildSchoolSummaryNotices({
+    notices: summaryNoticeRows(),
+    schoolIds: new Set(["s1"]),
+  });
+
+  assert.ok(!rows.some((row) => row.noticeId === "n5"));
+});
+
+test("cada aviso muestra solo identidad del aviso, colegio, título y cuerpo", () => {
+  const rows = buildSchoolSummaryNotices({
+    notices: summaryNoticeRows(),
+    schoolIds: new Set(["s1"]),
+  });
+
+  assert.equal(rows.length, 1);
+  for (const row of rows) {
+    assert.deepEqual(Object.keys(row).sort(), [
+      "body",
+      "noticeId",
+      "schoolId",
+      "title",
+    ]);
+  }
+  assert.equal(rows[0]?.title, "Reunión de comedor");
+  assert.equal(rows[0]?.body, "Viernes a las 15h");
+});
+
+test("la lectura no depende del permiso de publicación: sin flag de publicación", () => {
+  // El contrato de lectura solo pide avisos + colegios; no hay parámetro
+  // de capacidad de publicación que condicione la visibilidad.
+  const rows = buildSchoolSummaryNotices({
+    notices: summaryNoticeRows(),
+    schoolIds: new Set(["s1"]),
+  });
+
+  assert.deepEqual(
+    rows.map((row) => row.noticeId),
+    ["n1"],
+  );
+});
+
+// --- seam acceso a datos (#55): avisos del monitor con colegio y rol ---
+
+async function summaryNoticesMigration() {
+  const migrations = await migrationSources();
+  const migration = migrations.find(
+    (m) =>
+      m.file.includes("daily_summary_notices") ||
+      m.file.includes("school_notices"),
+  );
+  assert.ok(
+    migration,
+    "existe una migración para los avisos del resumen",
+  );
+  return migration.sql;
+}
+
+test("el contrato persistente distingue publicados de borradores y archivados o retirados", async () => {
+  const sql = await summaryNoticesMigration();
+
+  assert.match(sql, /school_notices/);
+  assert.match(sql, /status/);
+  assert.match(sql, /draft/);
+  assert.match(sql, /published/);
+  assert.match(sql, /archived/);
+  assert.match(sql, /withdrawn/);
+});
+
+test("el acceso directo del monitor a avisos respeta colegio y rol, solo publicados", async () => {
+  const sql = await summaryNoticesMigration();
+
+  assert.match(sql, /create policy school_notices_select_monitor/);
+  assert.match(sql, /current_user_role\(\) = 'monitor'/);
+  assert.match(sql, /current_user_monitor_school_ids\(\)/);
+  assert.match(sql, /status = 'published'/);
+});
+
+test("la lectura no se condiciona al permiso de publicar avisos", async () => {
+  const sql = await summaryNoticesMigration();
+
+  // La política de lectura del monitor no menciona la capacidad de
+  // publicación: leer publicados no exige poder publicar.
+  const monitorSelect = sql.match(
+    /create policy school_notices_select_monitor[\s\S]*?;/,
+  );
+  assert.ok(monitorSelect, "existe la política de lectura del monitor");
+  assert.doesNotMatch(monitorSelect[0], /notices_publish/);
+  assert.doesNotMatch(monitorSelect[0], /capability/);
+});
+
+test("sin permiso de publicación no hay escritura del monitor; el tenant se conserva", async () => {
+  const migrations = await migrationSources();
+  const combined = migrations.map((m) => m.sql).join("\n");
+
+  assert.match(combined, /create policy school_notices_select_tenant/);
+  assert.doesNotMatch(combined, /create policy school_notices_.*insert.*monitor/i);
+  assert.doesNotMatch(combined, /create policy school_notices_monitor_insert/i);
+});
+
+// --- seam ruta protegida (#55): avisos visibles antes de elegir clase ---
+
+test("la raíz protegida muestra los avisos del colegio sin redactar ni publicar", async () => {
+  const page = await source("src/routes/ClassesPage.tsx");
+
+  assert.match(page, /buildSchoolSummaryNotices/);
+  assert.match(page, /from\("school_notices"\)/);
+  assert.match(page, /Avisos del colegio/);
+  assert.doesNotMatch(page, /Redactar aviso|Publicar aviso|Nuevo aviso/);
 });

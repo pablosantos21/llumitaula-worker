@@ -248,6 +248,57 @@ export function buildExpectedDinerAllergies(
   return rows;
 }
 
+interface SummaryNoticeRef {
+  id: string;
+  school_id: string | null;
+  title: string;
+  body?: string | null;
+  status?: string | null;
+}
+
+export interface SchoolSummaryNotice {
+  noticeId: string;
+  schoolId: string;
+  title: string;
+  body: string | null;
+}
+
+interface SchoolSummaryNoticesInput {
+  notices: readonly SummaryNoticeRef[];
+  schoolIds: Set<string> | readonly string[];
+}
+
+/**
+ * Avisos del resumen: solo generales publicados y vigentes para el colegio
+ * del monitor. Borradores, archivados y retirados quedan fuera, de acuerdo
+ * con el dominio de worker #23. La lectura no depende del permiso de
+ * publicar avisos: solo filtra por colegio y estado publicado.
+ */
+export function buildSchoolSummaryNotices(
+  input: SchoolSummaryNoticesInput,
+): SchoolSummaryNotice[] {
+  const permitted =
+    input.schoolIds instanceof Set
+      ? input.schoolIds
+      : new Set(input.schoolIds);
+
+  const rows: SchoolSummaryNotice[] = [];
+  for (const notice of input.notices) {
+    if (notice.status !== "published") continue;
+    if (!notice.school_id) continue;
+    if (!permitted.has(notice.school_id)) continue;
+    rows.push({
+      noticeId: notice.id,
+      schoolId: notice.school_id,
+      title: notice.title,
+      body: notice.body ?? null,
+    });
+  }
+
+  rows.sort((a, b) => a.title.localeCompare(b.title, "es"));
+  return rows;
+}
+
 interface SummaryIncidentChildRef {
   id: string;
   class_id: string | null;
