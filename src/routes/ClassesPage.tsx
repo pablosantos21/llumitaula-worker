@@ -12,6 +12,7 @@ import {
   type DailyListItem,
 } from "../lib/daily-list";
 import {
+  buildExpectedDinerAllergies,
   buildSchoolForecast,
   DAILY_SUMMARY_CAPABILITY,
   permittedClassIds as permittedSummaryClassIds,
@@ -59,6 +60,8 @@ type SchoolClass = Database["public"]["Tables"]["classes"]["Row"];
 type MealRecord = Database["public"]["Tables"]["meal_records"]["Row"];
 type MealType = Database["public"]["Tables"]["meal_types"]["Row"];
 type Incident = Database["public"]["Tables"]["incidents"]["Row"];
+type Allergen = Database["public"]["Tables"]["allergens"]["Row"];
+type ChildAllergen = Database["public"]["Tables"]["child_allergens"]["Row"];
 type CardStatus = "all_good" | "incident";
 
 const ATTENDANCE_SELECT =
@@ -102,6 +105,10 @@ export default function ClassesPage() {
   const [lunchByChild, setLunchByChild] = useState<Record<string, number[]>>(
     {},
   );
+  // Alergias del resumen (#53): nombres y asociaciones; RLS ya limita al
+  // monitor a niños accesibles con el resumen permitido.
+  const [allergens, setAllergens] = useState<Allergen[]>([]);
+  const [childAllergens, setChildAllergens] = useState<ChildAllergen[]>([]);
   const [presenceOverride, setPresenceOverride] = useState<
     Record<string, boolean>
   >({});
@@ -182,6 +189,8 @@ export default function ClassesPage() {
         catalogResult,
         schoolCapabilitiesResult,
         classOverridesResult,
+        allergensResult,
+        childAllergensResult,
       ] = await Promise.all([
         supabase
           .from("children")
@@ -224,6 +233,8 @@ export default function ClassesPage() {
           .from("class_capability_overrides")
           .select("class_id, capability, enabled")
           .eq("capability", DAILY_SUMMARY_CAPABILITY),
+        supabase.from("allergens").select("id, name"),
+        supabase.from("child_allergens").select("child_id, allergen_id"),
       ]);
       if (!active) return;
       if (
@@ -233,7 +244,9 @@ export default function ClassesPage() {
         incidentsResult.error ||
         mealTypesResult.error ||
         lunchDaysResult.error ||
-        userResult.error
+        userResult.error ||
+        allergensResult.error ||
+        childAllergensResult.error
       ) {
         if (typeof navigator !== "undefined" && !navigator.onLine) {
           setIsOffline(true);
@@ -245,6 +258,8 @@ export default function ClassesPage() {
         setIncidents([]);
         setMealTypes([]);
         setLunchByChild({});
+        setAllergens([]);
+        setChildAllergens([]);
         setClassSummaryOverrides({});
         setSchoolSummaryEnabled({});
         setSummaryDefaultEnabled(null);
@@ -262,6 +277,8 @@ export default function ClassesPage() {
         lunchMap[row.child_id] = [...(row.weekdays ?? [])];
       }
       setLunchByChild(lunchMap);
+      setAllergens(allergensResult.data ?? []);
+      setChildAllergens(childAllergensResult.data ?? []);
       setUserRole(userResult.data.role);
       // Capacidades: lo ausente conserva el defecto (habilitado). Si la
       // lectura de capabilities falla, la presentación no supone el
@@ -325,16 +342,50 @@ export default function ClassesPage() {
       summaryDefaultEnabled,
     ],
   );
+  // Un solo "hoy" por render (#53): previsión y alergias comparten el día
+  // para no incoherencias en el límite de medianoche.
+  const today = useMemo(() => new Date(), []);
   const schoolForecast = useMemo(
     () =>
       buildSchoolForecast({
         children,
         lunchByChild,
         permittedClassIds,
-        date: new Date(),
+        date: today,
       }),
-    [children, lunchByChild, permittedClassIds],
+    [children, lunchByChild, permittedClassIds, today],
   );
+  // Alergias de los comensales previstos (#53): solo previstos de hoy en
+  // clases permitidas y con alérgenos asociados; nombre y alérgenos, sin
+  // datos clínicos (el modelo no los tiene).
+  const expectedDinerAllergies = useMemo(() => {
+    const allergenNames: Record<string, string> = {};
+    for (const allergen of allergens) {
+      allergenNames[allergen.id] = allergen.name;
+    }
+    const childAllergenIds: Record<string, string[]> = {};
+    for (const link of childAllergens) {
+      if (!childAllergenIds[link.child_id]) {
+        childAllergenIds[link.child_id] = [];
+      }
+      childAllergenIds[link.child_id].push(link.allergen_id);
+    }
+    return buildExpectedDinerAllergies({
+      children,
+      lunchByChild,
+      permittedClassIds,
+      childAllergenIds,
+      allergenNames,
+      date: today,
+    });
+  }, [
+    children,
+    lunchByChild,
+    permittedClassIds,
+    allergens,
+    childAllergens,
+    today,
+  ]);
   const selectedClass = selectedClassId
     ? classById(classes, selectedClassId)
     : null;
@@ -342,7 +393,6 @@ export default function ClassesPage() {
     () => (selectedClassId ? childrenInClass(children, selectedClassId) : []),
     [children, selectedClassId],
   );
-  const today = useMemo(() => new Date(), []);
   const weekend = isWeekend(today);
   const initialDailyList: DailyListItem[] = useMemo(
     () => buildInitialDailyList(visibleChildren, lunchByChild, today),
@@ -1298,6 +1348,37 @@ export default function ClassesPage() {
                   </p>
                 )}
               </>
+            )}
+            {!schoolForecast.isNoServiceDay && (
+              <div className="mt-3 border-t border-slate-100 pt-3">
+                <h3 className="text-sm font-bold text-slate-900">
+                  Alergias de los comensales previstos
+                </h3>
+                {expectedDinerAllergies.length === 0 ? (
+                  <p className="mt-1 text-sm text-slate-500">
+                    Sin alergias entre los comensales previstos.
+                  </p>
+                ) : (
+                  <ul
+                    aria-label="Alergias de los comensales previstos"
+                    className="mt-2 flex flex-col gap-2"
+                  >
+                    {expectedDinerAllergies.map((row) => (
+                      <li
+                        key={row.childId}
+                        className="rounded-xl bg-slate-50 px-3 py-2"
+                      >
+                        <p className="text-sm font-bold text-slate-900">
+                          {row.childName}
+                        </p>
+                        <p className="text-sm text-slate-700">
+                          {row.allergenNames.join(", ")}
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             )}
           </section>
         ) : null}

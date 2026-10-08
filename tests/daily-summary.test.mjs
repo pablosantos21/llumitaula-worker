@@ -4,6 +4,7 @@ import test from "node:test";
 import { URL } from "node:url";
 
 import {
+  buildExpectedDinerAllergies,
   buildSchoolForecast,
   DAILY_SUMMARY_CAPABILITY,
   permittedClassIds,
@@ -248,4 +249,196 @@ test("ninguna clase permitida oculta el resumen pero conserva la selección", as
   assert.match(page, /permittedClassIds\.size > 0/);
   assert.match(page, /summaryCapabilitiesFailed/);
   assert.match(page, /Selecciona una clase|buildClassList/);
+});
+
+// --- #53: alergias de los comensales previstos ---
+
+function allergyChildren() {
+  return [
+    { id: "k1", class_id: "c1", first_name: "Anna", last_name: "Puig" },
+    { id: "k2", class_id: "c1", first_name: "Biel", last_name: "Vila" },
+    { id: "k3", class_id: "c2", first_name: "Clara", last_name: "Roca" },
+  ];
+}
+
+function allergyFixtures() {
+  return {
+    // k1 previsto el lunes con dos alérgenos, k2 previsto sin alergias,
+    // k3 previsto el lunes pero en otra clase.
+    lunchByChild: { k1: [1], k2: [1], k3: [1] },
+    childAllergenIds: { k1: ["a1", "a2"], k3: ["a1"] },
+    allergenNames: { a1: "Gluten", a2: "Huevo" },
+  };
+}
+
+test("solo los previstos con alergias en clases permitidas aparecen con nombre y alérgenos", () => {
+  const fixtures = allergyFixtures();
+
+  const rows = buildExpectedDinerAllergies({
+    children: allergyChildren(),
+    lunchByChild: fixtures.lunchByChild,
+    permittedClassIds: new Set(["c1", "c2"]),
+    childAllergenIds: fixtures.childAllergenIds,
+    allergenNames: fixtures.allergenNames,
+    date: monday(),
+  });
+
+  assert.deepEqual(rows, [
+    {
+      childId: "k1",
+      childName: "Anna Puig",
+      allergenNames: ["Gluten", "Huevo"],
+    },
+    { childId: "k3", childName: "Clara Roca", allergenNames: ["Gluten"] },
+  ]);
+});
+
+test("el ámbito del resumen excluye a los comensales de clases no permitidas", () => {
+  const fixtures = allergyFixtures();
+
+  const rows = buildExpectedDinerAllergies({
+    children: allergyChildren(),
+    lunchByChild: fixtures.lunchByChild,
+    permittedClassIds: new Set(["c1"]),
+    childAllergenIds: fixtures.childAllergenIds,
+    allergenNames: fixtures.allergenNames,
+    date: monday(),
+  });
+
+  assert.deepEqual(
+    rows.map((row) => row.childId),
+    ["k1"],
+  );
+});
+
+test("el horario filtra: no previstos y sin horario no aparecen aunque tengan alergias", () => {
+  const fixtures = allergyFixtures();
+
+  const rows = buildExpectedDinerAllergies({
+    children: [
+      ...allergyChildren(),
+      { id: "k4", class_id: "c1", first_name: "Dani", last_name: "Sol" },
+    ],
+    lunchByChild: { ...fixtures.lunchByChild, k4: undefined },
+    permittedClassIds: new Set(["c1", "c2"]),
+    childAllergenIds: { ...fixtures.childAllergenIds, k4: ["a1"] },
+    allergenNames: fixtures.allergenNames,
+    date: monday(),
+  });
+
+  assert.deepEqual(
+    rows.map((row) => row.childId),
+    ["k1", "k3"],
+  );
+
+  const tuesdayNoOne = buildExpectedDinerAllergies({
+    children: allergyChildren(),
+    lunchByChild: { k1: [3], k2: [1], k3: [1] },
+    permittedClassIds: new Set(["c1", "c2"]),
+    childAllergenIds: { k1: ["a1"], k2: ["a1"], k3: ["a1"] },
+    allergenNames: fixtures.allergenNames,
+    date: monday(),
+  });
+  assert.deepEqual(
+    tuesdayNoOne.map((row) => row.childId),
+    ["k2", "k3"],
+  );
+});
+
+test("un día sin servicio no lista alergias; horarios vacíos no infieren cierre", () => {
+  const fixtures = allergyFixtures();
+
+  const weekend = buildExpectedDinerAllergies({
+    children: allergyChildren(),
+    lunchByChild: fixtures.lunchByChild,
+    permittedClassIds: new Set(["c1", "c2"]),
+    childAllergenIds: fixtures.childAllergenIds,
+    allergenNames: fixtures.allergenNames,
+    date: saturday(),
+  });
+  assert.deepEqual(weekend, []);
+});
+
+test("cada resultado muestra solo identidad y nombres de alérgenos", () => {
+  const fixtures = allergyFixtures();
+
+  const rows = buildExpectedDinerAllergies({
+    children: allergyChildren(),
+    lunchByChild: fixtures.lunchByChild,
+    permittedClassIds: new Set(["c1", "c2"]),
+    childAllergenIds: fixtures.childAllergenIds,
+    allergenNames: fixtures.allergenNames,
+    date: monday(),
+  });
+
+  for (const row of rows) {
+    assert.deepEqual(Object.keys(row).sort(), [
+      "allergenNames",
+      "childId",
+      "childName",
+    ]);
+  }
+});
+
+// --- seam acceso a datos (#53): alérgenos del resumen con permiso efectivo ---
+
+async function summaryAllergyMigration() {
+  const migrations = await migrationSources();
+  const migration = migrations.find((m) =>
+    m.file.includes("daily_summary_allergies"),
+  );
+  assert.ok(migration, "existe una migración para las alergias del resumen");
+  return migration.sql;
+}
+
+test("el acceso directo del monitor a alérgenos de clases deshabilitadas se rechaza", async () => {
+  const sql = await summaryAllergyMigration();
+
+  // El monitor lee nombres de alérgenos vinculados a niños accesibles…
+  assert.match(sql, /create policy allergens_select_tenant/);
+  assert.match(sql, /current_user_role\(\) = 'monitor'/);
+  // …pero solo cuando el resumen está permitido para ese niño.
+  assert.match(sql, /monitor_daily_summary_enabled_for_child\(ch\.id\)/);
+  // La asociación directa también se filtra por el permiso efectivo.
+  assert.match(sql, /create policy child_allergens_select_tenant/);
+  assert.match(
+    sql,
+    /create policy child_allergens_select_tenant[\s\S]*?monitor_daily_summary_enabled_for_child\(/,
+  );
+});
+
+test("el tenant y rol existentes de alérgenos se conservan", async () => {
+  const migrations = await migrationSources();
+  const combined = migrations.map((m) => m.sql).join("\n");
+
+  assert.match(
+    combined,
+    /create policy allergens_select_tenant[\s\S]*?current_user_role\(\) = 'admin'/,
+  );
+  assert.match(
+    combined,
+    /create policy allergens_select_tenant[\s\S]*?current_user_role\(\) = 'padre'/,
+  );
+  assert.match(
+    combined,
+    /create policy child_allergens_select_tenant[\s\S]*?current_user_can_access_child/,
+  );
+});
+
+// --- seam ruta protegida (#53): alergias visibles antes de elegir clase ---
+
+test("la raíz protegida muestra las alergias de los comensales previstos", async () => {
+  const page = await source("src/routes/ClassesPage.tsx");
+
+  assert.match(page, /buildExpectedDinerAllergies/);
+  assert.match(page, /from\("allergens"\)/);
+  assert.match(page, /from\("child_allergens"\)/);
+  assert.match(page, /Alergias de los comensales previstos/);
+});
+
+test("la sección de alergias no infiere datos clínicos", async () => {
+  const page = await source("src/routes/ClassesPage.tsx");
+
+  assert.match(page, /Alergias de los comensales previstos/);
+  assert.doesNotMatch(page, /gravedad|severidad|reacci.n|tratamiento/i);
 });

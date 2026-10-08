@@ -159,3 +159,90 @@ export function buildSchoolForecast(
     isNoServiceDay: false,
   };
 }
+
+interface AllergyChildRef {
+  id: string;
+  class_id: string | null;
+  first_name: string;
+  last_name: string;
+}
+
+export interface ExpectedDinerAllergy {
+  childId: string;
+  childName: string;
+  allergenNames: string[];
+}
+
+type AllergenIdsByChild =
+  | Map<string, readonly string[]>
+  | Record<string, readonly string[] | undefined>;
+
+type AllergenNamesById =
+  Map<string, string> | Record<string, string | undefined>;
+
+function allergenIdsFor(
+  childAllergenIds: AllergenIdsByChild,
+  childId: string,
+): readonly string[] | undefined {
+  if (childAllergenIds instanceof Map) return childAllergenIds.get(childId);
+  return childAllergenIds[childId];
+}
+
+function allergenNameFor(
+  allergenNames: AllergenNamesById,
+  allergenId: string,
+): string | undefined {
+  if (allergenNames instanceof Map) return allergenNames.get(allergenId);
+  return allergenNames[allergenId];
+}
+
+interface ExpectedDinerAllergiesInput {
+  children: readonly AllergyChildRef[];
+  lunchByChild: LunchByChild;
+  permittedClassIds: Set<string> | readonly string[];
+  childAllergenIds: AllergenIdsByChild;
+  allergenNames: AllergenNamesById;
+  date?: Date;
+}
+
+/**
+ * Alergias de los comensales previstos: solo niños cuyo horario de comedor
+ * incluye hoy y cuya clase está permitida, y solo cuando tienen alérgenos
+ * asociados. Cada resultado muestra la identidad del niño y los nombres de
+ * sus alérgenos; el modelo no dispone de gravedad, reacciones, tratamientos
+ * ni indicaciones clínicas y no se infieren. Un día sin servicio devuelve una
+ * lista vacía sin inferir cierres.
+ */
+export function buildExpectedDinerAllergies(
+  input: ExpectedDinerAllergiesInput,
+): ExpectedDinerAllergy[] {
+  const date = input.date ?? new Date();
+  const weekday = getLunchWeekday(date);
+  if (weekday === null) return [];
+  const permitted =
+    input.permittedClassIds instanceof Set
+      ? input.permittedClassIds
+      : new Set(input.permittedClassIds);
+
+  const rows: ExpectedDinerAllergy[] = [];
+  for (const child of input.children) {
+    if (!child.class_id || !permitted.has(child.class_id)) continue;
+    const weekdays = weekdaysFor(input.lunchByChild, child.id);
+    if (weekdays === undefined || !weekdays.includes(weekday)) continue;
+    const names = new Set<string>();
+    for (const allergenId of allergenIdsFor(input.childAllergenIds, child.id) ??
+      []) {
+      const name = allergenNameFor(input.allergenNames, allergenId)?.trim();
+      if (name) names.add(name);
+    }
+    if (names.size === 0) continue;
+    rows.push({
+      childId: child.id,
+      childName: `${child.first_name} ${child.last_name}`.trim(),
+      allergenNames: [...names].sort((a, b) => a.localeCompare(b, "es")),
+    });
+  }
+
+  rows.sort((a, b) => a.childName.localeCompare(b.childName, "es"));
+  return rows;
+}
