@@ -22,7 +22,7 @@ test("workers route is public in the React router with a single path", async () 
   assert.equal(workersRoutes.length, 1);
   assert.doesNotMatch(router, /app\/workers/);
   const guardedRoutes = router.match(/<RequireSession>/g) || [];
-  assert.equal(guardedRoutes.length, 2);
+  assert.equal(guardedRoutes.length, 3);
 });
 
 test("workers route lists device monitors with carga, lista, vacia, error y fuera de servicio", async () => {

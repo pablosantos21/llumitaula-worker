@@ -16,6 +16,8 @@ test("business pages keep protected React-only rendering", async () => {
   ]);
 
   assert.match(router, /path:\s*["']\/["']/);
+  assert.match(router, /TodayPage/);
+  assert.match(router, /path:\s*["']\/clases["']/);
   assert.match(router, /ClassesPage/);
   assert.match(router, /<RequireSession>/);
   assert.match(app, /supabase\.auth\.getSession\(\)/);

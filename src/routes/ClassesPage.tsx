@@ -12,16 +12,6 @@ import {
   type DailyListItem,
 } from "../lib/daily-list";
 import {
-  buildExpectedDinerAllergies,
-  buildSchoolForecast,
-  buildSchoolSummaryIncidents,
-  buildSchoolSummaryNotices,
-  DAILY_SUMMARY_CAPABILITY,
-  permittedClassIds as permittedSummaryClassIds,
-} from "../lib/daily-summary";
-import { incidentCategoryLabel } from "../lib/incidentCategories";
-import { incidentAudienceLabelFromIndicators } from "../lib/incidentReadStatus";
-import {
   applyConfirmedAttendance,
   buildAttendanceRows,
   canConfirmAttendance,
@@ -64,9 +54,6 @@ type SchoolClass = Database["public"]["Tables"]["classes"]["Row"];
 type MealRecord = Database["public"]["Tables"]["meal_records"]["Row"];
 type MealType = Database["public"]["Tables"]["meal_types"]["Row"];
 type Incident = Database["public"]["Tables"]["incidents"]["Row"];
-type Allergen = Database["public"]["Tables"]["allergens"]["Row"];
-type ChildAllergen = Database["public"]["Tables"]["child_allergens"]["Row"];
-type SchoolNotice = Database["public"]["Tables"]["school_notices"]["Row"];
 type CardStatus = "all_good" | "incident";
 
 const ATTENDANCE_SELECT =
@@ -94,8 +81,9 @@ function EmptyState({ title, message }: { title: string; message: string }) {
   );
 }
 
-// Ruta raíz protegida #46: lista de clases y comedor diario con asistencia
-// confirmada, borrador local y registro de valoración. Reutiliza sin
+// Ruta protegida /clases: lista de clases y comedor diario con asistencia
+// confirmada, borrador local y registro de valoración. La previsión de hoy
+// vive en la página Hoy (/). Reutiliza sin
 // reescribir los módulos de dominio (clases, pauta diaria, asistencia con
 // confirmación, lista virtual de comedor, borrador local, valoración).
 // Carga paralela de datos autorizados por RLS, sin mocks ni datos
@@ -110,14 +98,6 @@ export default function ClassesPage() {
   const [lunchByChild, setLunchByChild] = useState<Record<string, number[]>>(
     {},
   );
-  // Alergias del resumen (#53): nombres y asociaciones; RLS ya limita al
-  // monitor a niños accesibles con el resumen permitido.
-  const [allergens, setAllergens] = useState<Allergen[]>([]);
-  const [childAllergens, setChildAllergens] = useState<ChildAllergen[]>([]);
-  // Avisos del resumen (#55): generales publicados y vigentes del colegio;
-  // RLS ya limita al monitor a publicados de sus colegios, sin gate por el
-  // permiso de publicar. Sin interfaz de redacción ni publicación.
-  const [schoolNotices, setSchoolNotices] = useState<SchoolNotice[]>([]);
   const [presenceOverride, setPresenceOverride] = useState<
     Record<string, boolean>
   >({});
@@ -136,21 +116,6 @@ export default function ClassesPage() {
   >(null);
   const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
   const [selectedChild, setSelectedChild] = useState<Child | null>(null);
-  // Permiso efectivo del resumen diario (#52): override de clase, escuela,
-  // defecto del catálogo. Sin clases permitidas el resumen no se muestra.
-  const [classSummaryOverrides, setClassSummaryOverrides] = useState<
-    Record<string, boolean>
-  >({});
-  const [schoolSummaryEnabled, setSchoolSummaryEnabled] = useState<
-    Record<string, boolean>
-  >({});
-  const [summaryDefaultEnabled, setSummaryDefaultEnabled] = useState<
-    boolean | null
-  >(null);
-  // Si las capabilities no se pudieron leer, la presentación no finge un
-  // permiso conocido: oculta el resumen en vez de suponerlo habilitado.
-  const [summaryCapabilitiesFailed, setSummaryCapabilitiesFailed] =
-    useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [toast, setToast] = useState<{
     message: string;
@@ -195,12 +160,6 @@ export default function ClassesPage() {
         mealTypesResult,
         lunchDaysResult,
         userResult,
-        catalogResult,
-        schoolCapabilitiesResult,
-        classOverridesResult,
-        allergensResult,
-        childAllergensResult,
-        schoolNoticesResult,
       ] = await Promise.all([
         supabase
           .from("children")
@@ -230,26 +189,6 @@ export default function ClassesPage() {
           .select("role")
           .eq("id", session.user.id)
           .single(),
-        supabase
-          .from("capability_catalog")
-          .select("capability, default_enabled")
-          .eq("capability", DAILY_SUMMARY_CAPABILITY)
-          .maybeSingle(),
-        supabase
-          .from("school_capabilities")
-          .select("school_id, capability, enabled")
-          .eq("capability", DAILY_SUMMARY_CAPABILITY),
-        supabase
-          .from("class_capability_overrides")
-          .select("class_id, capability, enabled")
-          .eq("capability", DAILY_SUMMARY_CAPABILITY),
-        supabase.from("allergens").select("id, name"),
-        supabase.from("child_allergens").select("child_id, allergen_id"),
-        supabase
-          .from("school_notices")
-          .select("id, school_id, title, body, status, created_at")
-          .eq("status", "published")
-          .order("created_at", { ascending: false }),
       ]);
       if (!active) return;
       if (
@@ -259,10 +198,7 @@ export default function ClassesPage() {
         incidentsResult.error ||
         mealTypesResult.error ||
         lunchDaysResult.error ||
-        userResult.error ||
-        allergensResult.error ||
-        childAllergensResult.error ||
-        schoolNoticesResult.error
+        userResult.error
       ) {
         if (typeof navigator !== "undefined" && !navigator.onLine) {
           setIsOffline(true);
@@ -274,13 +210,6 @@ export default function ClassesPage() {
         setIncidents([]);
         setMealTypes([]);
         setLunchByChild({});
-        setAllergens([]);
-        setChildAllergens([]);
-        setSchoolNotices([]);
-        setClassSummaryOverrides({});
-        setSchoolSummaryEnabled({});
-        setSummaryDefaultEnabled(null);
-        setSummaryCapabilitiesFailed(false);
         setState("error");
         return;
       }
@@ -294,38 +223,7 @@ export default function ClassesPage() {
         lunchMap[row.child_id] = [...(row.weekdays ?? [])];
       }
       setLunchByChild(lunchMap);
-      setAllergens(allergensResult.data ?? []);
-      setChildAllergens(childAllergensResult.data ?? []);
-      setSchoolNotices(schoolNoticesResult.data ?? []);
       setUserRole(userResult.data.role);
-      // Capacidades: lo ausente conserva el defecto (habilitado). Si la
-      // lectura de capabilities falla, la presentación no supone el
-      // permiso: oculta el resumen (RLS ya filtra lo deshabilitado en
-      // directo para el monitor).
-      const capabilitiesFailed =
-        catalogResult.error != null ||
-        schoolCapabilitiesResult.error != null ||
-        classOverridesResult.error != null;
-      setSummaryCapabilitiesFailed(capabilitiesFailed);
-      const catalogDefault =
-        catalogResult.error || !catalogResult.data
-          ? null
-          : (catalogResult.data.default_enabled ?? null);
-      setSummaryDefaultEnabled(catalogDefault);
-      const schoolMap: Record<string, boolean> = {};
-      if (!schoolCapabilitiesResult.error) {
-        for (const row of schoolCapabilitiesResult.data ?? []) {
-          if (row.school_id) schoolMap[row.school_id] = row.enabled;
-        }
-      }
-      setSchoolSummaryEnabled(schoolMap);
-      const overrideMap: Record<string, boolean> = {};
-      if (!classOverridesResult.error) {
-        for (const row of classOverridesResult.data ?? []) {
-          if (row.class_id) overrideMap[row.class_id] = row.enabled;
-        }
-      }
-      setClassSummaryOverrides(overrideMap);
 
       setState("ready");
     }
@@ -343,93 +241,9 @@ export default function ClassesPage() {
   }, [toast]);
 
   const classList = buildClassList(classes, children);
-  // Clases con resumen permitido (#52): override de clase, luego escuela,
-  // luego defecto del catálogo. RLS ya rechaza lo deshabilitado en directo;
-  // aquí se filtra la presentación con el mismo orden.
-  const permittedClassIds = useMemo(
-    () =>
-      permittedSummaryClassIds(classes, {
-        classOverrides: classSummaryOverrides,
-        schoolEnabledBySchool: schoolSummaryEnabled,
-        defaultEnabled: summaryDefaultEnabled,
-      }),
-    [
-      classes,
-      classSummaryOverrides,
-      schoolSummaryEnabled,
-      summaryDefaultEnabled,
-    ],
-  );
-  // Un solo "hoy" por render (#53): previsión y alergias comparten el día
+  // Un solo "hoy" por render: pauta diaria y asistencia comparten el día
   // para no incoherencias en el límite de medianoche.
   const today = useMemo(() => new Date(), []);
-  const schoolForecast = useMemo(
-    () =>
-      buildSchoolForecast({
-        children,
-        lunchByChild,
-        permittedClassIds,
-        date: today,
-      }),
-    [children, lunchByChild, permittedClassIds, today],
-  );
-  // Alergias de los comensales previstos (#53): solo previstos de hoy en
-  // clases permitidas y con alérgenos asociados; nombre y alérgenos, sin
-  // datos clínicos (el modelo no los tiene).
-  const expectedDinerAllergies = useMemo(() => {
-    const allergenNames: Record<string, string> = {};
-    for (const allergen of allergens) {
-      allergenNames[allergen.id] = allergen.name;
-    }
-    const childAllergenIds: Record<string, string[]> = {};
-    for (const link of childAllergens) {
-      if (!childAllergenIds[link.child_id]) {
-        childAllergenIds[link.child_id] = [];
-      }
-      childAllergenIds[link.child_id].push(link.allergen_id);
-    }
-    return buildExpectedDinerAllergies({
-      children,
-      lunchByChild,
-      permittedClassIds,
-      childAllergenIds,
-      allergenNames,
-      date: today,
-    });
-  }, [
-    children,
-    lunchByChild,
-    permittedClassIds,
-    allergens,
-    childAllergens,
-    today,
-  ]);
-  // Incidencias del colegio (#54): las de hoy con audiencia al colegio
-  // (send_notification = true: colegio y ambos; excluye solo-familia),
-  // en clases permitidas, sin filtrar por reviewed ni validación.
-  const summarySchoolIncidents = useMemo(
-    () =>
-      buildSchoolSummaryIncidents({
-        incidents,
-        children,
-        permittedClassIds,
-        date: today,
-      }),
-    [incidents, children, permittedClassIds, today],
-  );
-  // Avisos del colegio (#55): generales publicados y vigentes del colegio
-  // del monitor hasta archivar o retirar. Solo lectura: sin redacción ni
-  // publicación en este ticket y sin gate por el permiso de publicar.
-  const summarySchoolNotices = useMemo(() => {
-    const schoolIds = new Set<string>();
-    for (const classItem of classes) {
-      if (classItem.school_id) schoolIds.add(classItem.school_id);
-    }
-    return buildSchoolSummaryNotices({
-      notices: schoolNotices,
-      schoolIds,
-    });
-  }, [schoolNotices, classes]);
   const selectedClass = selectedClassId
     ? classById(classes, selectedClassId)
     : null;
@@ -1339,171 +1153,15 @@ export default function ClassesPage() {
       />
     );
   } else {
-    // Resumen del colegio antes de elegir clase (#52): previsión derivada
-    // del horario en clases permitidas. Sin permitidas no se muestra, pero
-    // la selección sigue disponible. Sin conexión no se presenta como
-    // actualizado; el error ofrece reintento sin datos antiguos.
-    const showSummary =
-      state === "ready" &&
-      !isOffline &&
-      !summaryCapabilitiesFailed &&
-      permittedClassIds.size > 0;
+    // Lista de clases: la previsión de hoy vive en la página Hoy (/).
     content = (
       <div className="flex flex-1 flex-col gap-3 p-4 pb-24">
-        {showSummary ? (
-          <section
-            aria-label="Resumen del día"
-            className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
-          >
-            <h2 className="text-base font-bold text-slate-900">
-              Previsión de hoy
-            </h2>
-            {schoolForecast.isNoServiceDay ? (
-              <p
-                role="status"
-                className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800"
-              >
-                Hoy no hay servicio de comedor. La previsión queda en pausa
-                hasta el próximo día de servicio.
-              </p>
-            ) : (
-              <>
-                <p className="mt-2 text-sm text-slate-700">
-                  {schoolForecast.expectedCount === 1
-                    ? "1 previsto"
-                    : `${schoolForecast.expectedCount} previstos`}
-                  <span>
-                    {" "}
-                    Previsión según el horario, no asistencia confirmada.
-                  </span>
-                </p>
-                <p className="mt-1 text-xs text-slate-500">
-                  Previsión del colegio: cuenta a los niños cuyo horario de
-                  comedor incluye hoy en las clases permitidas. No es una lista
-                  confirmada ni asistencia marcada.
-                </p>
-                {schoolForecast.isIncomplete && (
-                  <p className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                    <span>Previsión incompleta: </span>
-                    {schoolForecast.incompleteCount === 1
-                      ? "1 niño sin horario configurado"
-                      : `${schoolForecast.incompleteCount} niños sin horario configurado`}
-                    <span> Podría faltar parte de la previsión.</span>
-                  </p>
-                )}
-              </>
-            )}
-            {!schoolForecast.isNoServiceDay && (
-              <div className="mt-3 border-t border-slate-100 pt-3">
-                <h3 className="text-sm font-bold text-slate-900">
-                  Alergias de los comensales previstos
-                </h3>
-                {expectedDinerAllergies.length === 0 ? (
-                  <p className="mt-1 text-sm text-slate-500">
-                    Sin alergias entre los comensales previstos.
-                  </p>
-                ) : (
-                  <ul
-                    aria-label="Alergias de los comensales previstos"
-                    className="mt-2 flex flex-col gap-2"
-                  >
-                    {expectedDinerAllergies.map((row) => (
-                      <li
-                        key={row.childId}
-                        className="rounded-xl bg-slate-50 px-3 py-2"
-                      >
-                        <p className="text-sm font-bold text-slate-900">
-                          {row.childName}
-                        </p>
-                        <p className="text-sm text-slate-700">
-                          {row.allergenNames.join(", ")}
-                        </p>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            )}
-            <div className="mt-3 border-t border-slate-100 pt-3">
-              <h3 className="text-sm font-bold text-slate-900">
-                Incidencias de hoy para el colegio
-              </h3>
-              {summarySchoolIncidents.length === 0 ? (
-                <p className="mt-1 text-sm text-slate-500">
-                  Sin incidencias para el colegio hoy.
-                </p>
-              ) : (
-                <ul
-                  aria-label="Incidencias de hoy para el colegio"
-                  className="mt-2 flex flex-col gap-2"
-                >
-                  {summarySchoolIncidents.map((row) => {
-                    const raw = incidents.find(
-                      (incident) => incident.id === row.incidentId,
-                    );
-                    return (
-                      <li
-                        key={row.incidentId}
-                        className="rounded-xl bg-slate-50 px-3 py-2"
-                      >
-                        <p className="text-sm font-bold text-slate-900">
-                          {row.childName}
-                        </p>
-                        <p className="text-sm text-slate-700">
-                          {incidentCategoryLabel(row.category)}
-                          {raw
-                            ? ` · ${incidentAudienceLabelFromIndicators(raw.requires_family_signature, raw.send_notification)}`
-                            : null}
-                        </p>
-                        {row.description ? (
-                          <p className="text-sm text-slate-700">
-                            {row.description}
-                          </p>
-                        ) : null}
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </div>
-            <div className="mt-3 border-t border-slate-100 pt-3">
-              <h3 className="text-sm font-bold text-slate-900">
-                Avisos del colegio
-              </h3>
-              {summarySchoolNotices.length === 0 ? (
-                <p className="mt-1 text-sm text-slate-500">
-                  Sin avisos para el colegio hoy.
-                </p>
-              ) : (
-                <ul
-                  aria-label="Avisos del colegio"
-                  className="mt-2 flex flex-col gap-2"
-                >
-                  {summarySchoolNotices.map((row) => (
-                    <li
-                      key={row.noticeId}
-                      className="rounded-xl bg-slate-50 px-3 py-2"
-                    >
-                      <p className="text-sm font-bold text-slate-900">
-                        {row.title}
-                      </p>
-                      {row.body ? (
-                        <p className="text-sm text-slate-700">{row.body}</p>
-                      ) : null}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </section>
-        ) : null}
         {state === "ready" && isOffline && (
           <p
             role="alert"
             className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800"
           >
-            Sin conexión: el resumen no está actualizado. Vuelve a intentarlo
-            con conexión para ver la previsión actual.
+            Sin conexión: pasar lista y confirmar requieren conexión.
           </p>
         )}
         {classList.map((classItem) => (
@@ -1511,9 +1169,9 @@ export default function ClassesPage() {
             key={classItem.id}
             type="button"
             onClick={() => handleSelectClass(classItem.id)}
-            className="flex w-full items-center justify-between rounded-2xl border border-slate-100 bg-white p-4 text-left shadow-sm transition-transform active:scale-[0.98]"
+            className="flex min-h-[64px] w-full items-center justify-between rounded-2xl border border-slate-100 bg-white px-5 py-4 text-left shadow-sm transition-transform active:scale-[0.98]"
           >
-            <span className="font-bold leading-tight text-slate-900">
+            <span className="text-base font-bold leading-tight text-slate-900">
               {classItem.name}
             </span>
             <span className="text-sm text-slate-500">
@@ -1552,16 +1210,6 @@ export default function ClassesPage() {
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={async () => {
-              await supabase.auth.signOut();
-              navigate("/setup");
-            }}
-            className="rounded-full bg-slate-100 px-3 py-2 text-sm text-slate-600 hover:bg-slate-200"
-          >
-            Salir
-          </button>
         </div>
       </header>
       {content}
@@ -1578,8 +1226,8 @@ export default function ClassesPage() {
           <p role="alert" className="text-sm text-slate-500">
             {isOffline ||
             (typeof navigator !== "undefined" && !navigator.onLine)
-              ? "Sin conexión: el resumen no está actualizado y pasar lista requiere conexión."
-              : "No se han podido cargar los datos autorizados. No se muestra ninguna previsión antigua como actual."}
+              ? "Sin conexión: pasar lista y confirmar requieren conexión."
+              : "No se han podido cargar los datos autorizados."}
           </p>
           <button
             type="button"

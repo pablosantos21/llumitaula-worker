@@ -193,25 +193,28 @@ test("solo las clases con permiso efectivo entran en el resumen", () => {
 
 // --- seam ruta protegida: resumen antes de elegir clase ---
 
-test("la raíz protegida muestra la previsión del colegio antes de elegir clase", async () => {
-  const [router, page] = await Promise.all([
+test("la raíz protegida muestra la previsión del colegio y clases sigue aparte", async () => {
+  const [router, today, classes] = await Promise.all([
     source("src/app/router.tsx"),
+    source("src/routes/TodayPage.tsx"),
     source("src/routes/ClassesPage.tsx"),
   ]);
 
   assert.match(router, /path:\s*["']\/["']/);
+  assert.match(router, /TodayPage/);
+  assert.match(router, /path:\s*["']\/clases["']/);
   assert.match(router, /ClassesPage/);
   assert.match(router, /RequireSession/);
-  assert.match(page, /Previsi/);
-  assert.match(page, /buildSchoolForecast|resolveDailySummaryEnabled/);
-  assert.match(page, /from\("classes"\)/);
-  assert.match(page, /from\("children"\)/);
-  assert.match(page, /from\("child_lunch_days"\)/);
-  assert.match(page, /Selecciona una clase|buildClassList/);
+  assert.match(today, /Previsi/);
+  assert.match(today, /buildSchoolForecast|resolveDailySummaryEnabled/);
+  assert.match(today, /from\("classes"\)/);
+  assert.match(today, /from\("children"\)/);
+  assert.match(today, /from\("child_lunch_days"\)/);
+  assert.match(classes, /Selecciona una clase|buildClassList/);
 });
 
 test("la previsión se presenta como previsión, no como asistencia confirmada", async () => {
-  const page = await source("src/routes/ClassesPage.tsx");
+  const page = await source("src/routes/TodayPage.tsx");
 
   assert.match(page, /Previsi.n/);
   assert.doesNotMatch(
@@ -223,7 +226,7 @@ test("la previsión se presenta como previsión, no como asistencia confirmada",
 });
 
 test("el error de carga ofrece reintento sin datos antiguos; sin conexión no finge actualidad", async () => {
-  const page = await source("src/routes/ClassesPage.tsx");
+  const page = await source("src/routes/TodayPage.tsx");
 
   assert.match(page, /Reintentar|reintento/i);
   assert.match(page, /Sin conexi.n/i);
@@ -244,13 +247,16 @@ test("el acceso directo a clases deshabilitadas se rechaza en RLS", async () => 
   assert.match(combined, /COALESCE/);
 });
 
-test("ninguna clase permitida oculta el resumen pero conserva la selección", async () => {
-  const page = await source("src/routes/ClassesPage.tsx");
+test("ninguna clase permitida oculta el resumen y clases conserva la selección", async () => {
+  const [today, classes] = await Promise.all([
+    source("src/routes/TodayPage.tsx"),
+    source("src/routes/ClassesPage.tsx"),
+  ]);
 
-  assert.match(page, /permittedClassIds|allowedClass|effectiveCapability/i);
-  assert.match(page, /permittedClassIds\.size > 0/);
-  assert.match(page, /summaryCapabilitiesFailed/);
-  assert.match(page, /Selecciona una clase|buildClassList/);
+  assert.match(today, /permittedClassIds|allowedClass|effectiveCapability/i);
+  assert.match(today, /permittedClassIds\.size > 0/);
+  assert.match(today, /summaryCapabilitiesFailed/);
+  assert.match(classes, /Selecciona una clase|buildClassList/);
 });
 
 // --- #53: alergias de los comensales previstos ---
@@ -430,7 +436,7 @@ test("el tenant y rol existentes de alérgenos se conservan", async () => {
 // --- seam ruta protegida (#53): alergias visibles antes de elegir clase ---
 
 test("la raíz protegida muestra las alergias de los comensales previstos", async () => {
-  const page = await source("src/routes/ClassesPage.tsx");
+  const page = await source("src/routes/TodayPage.tsx");
 
   assert.match(page, /buildExpectedDinerAllergies/);
   assert.match(page, /from\("allergens"\)/);
@@ -439,7 +445,7 @@ test("la raíz protegida muestra las alergias de los comensales previstos", asyn
 });
 
 test("la sección de alergias no infiere datos clínicos", async () => {
-  const page = await source("src/routes/ClassesPage.tsx");
+  const page = await source("src/routes/TodayPage.tsx");
 
   assert.match(page, /Alergias de los comensales previstos/);
   assert.doesNotMatch(page, /gravedad|severidad|reacci.n|tratamiento/i);
@@ -590,10 +596,11 @@ test("no se filtra por reviewed ni por validación del monitor", () => {
     date: monday(),
   });
 
-  assert.deepEqual(
-    rows.map((row) => row.incidentId).sort(),
-    ["i-mixed", "i-pending", "i-reviewed"],
-  );
+  assert.deepEqual(rows.map((row) => row.incidentId).sort(), [
+    "i-mixed",
+    "i-pending",
+    "i-reviewed",
+  ]);
 });
 
 test("el ámbito del resumen excluye clases no permitidas y conserva identidad", () => {
@@ -651,10 +658,7 @@ async function summaryIncidentsMigration() {
   const migration = migrations.find((m) =>
     m.file.includes("daily_summary_incidents"),
   );
-  assert.ok(
-    migration,
-    "existe una migración para las incidencias del resumen",
-  );
+  assert.ok(migration, "existe una migración para las incidencias del resumen");
   return migration.sql;
 }
 
@@ -678,7 +682,7 @@ test("el tenant y rol existentes de incidencias se conservan", async () => {
 // --- seam ruta protegida (#54): incidencias visibles antes de elegir clase ---
 
 test("la raíz protegida muestra las incidencias de hoy para el colegio", async () => {
-  const page = await source("src/routes/ClassesPage.tsx");
+  const page = await source("src/routes/TodayPage.tsx");
 
   assert.match(page, /buildSchoolSummaryIncidents/);
   assert.match(page, /from\("incidents"\)/);
@@ -689,7 +693,7 @@ test("la raíz protegida muestra las incidencias de hoy para el colegio", async 
 });
 
 test("el resumen no filtra incidencias por revisión ni validación", async () => {
-  const page = await source("src/routes/ClassesPage.tsx");
+  const page = await source("src/routes/TodayPage.tsx");
 
   assert.match(page, /buildSchoolSummaryIncidents/);
   assert.doesNotMatch(page, /\.eq\("reviewed"/);
@@ -818,10 +822,7 @@ async function summaryNoticesMigration() {
       m.file.includes("daily_summary_notices") ||
       m.file.includes("school_notices"),
   );
-  assert.ok(
-    migration,
-    "existe una migración para los avisos del resumen",
-  );
+  assert.ok(migration, "existe una migración para los avisos del resumen");
   return migration.sql;
 }
 
@@ -863,14 +864,17 @@ test("sin permiso de publicación no hay escritura del monitor; el tenant se con
   const combined = migrations.map((m) => m.sql).join("\n");
 
   assert.match(combined, /create policy school_notices_select_tenant/);
-  assert.doesNotMatch(combined, /create policy school_notices_.*insert.*monitor/i);
+  assert.doesNotMatch(
+    combined,
+    /create policy school_notices_.*insert.*monitor/i,
+  );
   assert.doesNotMatch(combined, /create policy school_notices_monitor_insert/i);
 });
 
 // --- seam ruta protegida (#55): avisos visibles antes de elegir clase ---
 
 test("la raíz protegida muestra los avisos del colegio sin redactar ni publicar", async () => {
-  const page = await source("src/routes/ClassesPage.tsx");
+  const page = await source("src/routes/TodayPage.tsx");
 
   assert.match(page, /buildSchoolSummaryNotices/);
   assert.match(page, /from\("school_notices"\)/);
