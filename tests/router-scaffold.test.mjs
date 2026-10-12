@@ -9,10 +9,13 @@ async function source(path) {
   return readFile(new URL(path, root), "utf8");
 }
 
-test("router exposes protected root and incidencias plus public setup and workers", async () => {
+test("router exposes protected hoy, clases and incidencias plus public setup and workers", async () => {
   const router = await source("src/app/router.tsx");
 
   assert.match(router, /path:\s*["']\/["']/);
+  assert.match(router, /TodayPage/);
+  assert.match(router, /path:\s*["']\/clases["']/);
+  assert.match(router, /ClassesPage/);
   assert.match(router, /path:\s*["']\/incidencias["']/);
   assert.match(router, /path:\s*["']\/setup["']/);
   assert.match(router, /path:\s*["']\/workers["']/);

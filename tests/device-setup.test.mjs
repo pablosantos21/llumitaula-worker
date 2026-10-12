@@ -22,7 +22,7 @@ test("setup route is public in the React router and renders the temporary-code f
     /path:\s*["']\/setup["']\s*,\s*element:\s*<SetupPage\s*\/>/,
   );
   const guardedRoutes = router.match(/<RequireSession>/g) || [];
-  assert.equal(guardedRoutes.length, 2);
+  assert.equal(guardedRoutes.length, 3);
   assert.match(page, /aria-label=["']Configurar dispositivo["']/);
   assert.match(page, /<form[\s\S]*onSubmit/);
   assert.match(page, /name=["']code["']/);

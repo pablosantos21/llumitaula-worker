@@ -81,8 +81,9 @@ function EmptyState({ title, message }: { title: string; message: string }) {
   );
 }
 
-// Ruta raíz protegida #46: lista de clases y comedor diario con asistencia
-// confirmada, borrador local y registro de valoración. Reutiliza sin
+// Ruta protegida /clases: lista de clases y comedor diario con asistencia
+// confirmada, borrador local y registro de valoración. La previsión de hoy
+// vive en la página Hoy (/). Reutiliza sin
 // reescribir los módulos de dominio (clases, pauta diaria, asistencia con
 // confirmación, lista virtual de comedor, borrador local, valoración).
 // Carga paralela de datos autorizados por RLS, sin mocks ni datos
@@ -115,6 +116,7 @@ export default function ClassesPage() {
   >(null);
   const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
   const [selectedChild, setSelectedChild] = useState<Child | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const [toast, setToast] = useState<{
     message: string;
     type: "success" | "warning" | "error";
@@ -201,6 +203,13 @@ export default function ClassesPage() {
         if (typeof navigator !== "undefined" && !navigator.onLine) {
           setIsOffline(true);
         }
+        // No mostrar datos antiguos como actuales: limpiar al fallar.
+        setChildren([]);
+        setClasses([]);
+        setRecords([]);
+        setIncidents([]);
+        setMealTypes([]);
+        setLunchByChild({});
         setState("error");
         return;
       }
@@ -223,7 +232,7 @@ export default function ClassesPage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [reloadKey]);
 
   useEffect(() => {
     if (!toast) return;
@@ -232,6 +241,9 @@ export default function ClassesPage() {
   }, [toast]);
 
   const classList = buildClassList(classes, children);
+  // Un solo "hoy" por render: pauta diaria y asistencia comparten el día
+  // para no incoherencias en el límite de medianoche.
+  const today = useMemo(() => new Date(), []);
   const selectedClass = selectedClassId
     ? classById(classes, selectedClassId)
     : null;
@@ -239,7 +251,6 @@ export default function ClassesPage() {
     () => (selectedClassId ? childrenInClass(children, selectedClassId) : []),
     [children, selectedClassId],
   );
-  const today = useMemo(() => new Date(), []);
   const weekend = isWeekend(today);
   const initialDailyList: DailyListItem[] = useMemo(
     () => buildInitialDailyList(visibleChildren, lunchByChild, today),
@@ -1142,16 +1153,25 @@ export default function ClassesPage() {
       />
     );
   } else {
+    // Lista de clases: la previsión de hoy vive en la página Hoy (/).
     content = (
       <div className="flex flex-1 flex-col gap-3 p-4 pb-24">
+        {state === "ready" && isOffline && (
+          <p
+            role="alert"
+            className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800"
+          >
+            Sin conexión: pasar lista y confirmar requieren conexión.
+          </p>
+        )}
         {classList.map((classItem) => (
           <button
             key={classItem.id}
             type="button"
             onClick={() => handleSelectClass(classItem.id)}
-            className="flex w-full items-center justify-between rounded-2xl border border-slate-100 bg-white p-4 text-left shadow-sm transition-transform active:scale-[0.98]"
+            className="flex min-h-[64px] w-full items-center justify-between rounded-2xl border border-slate-100 bg-white px-5 py-4 text-left shadow-sm transition-transform active:scale-[0.98]"
           >
-            <span className="font-bold leading-tight text-slate-900">
+            <span className="text-base font-bold leading-tight text-slate-900">
               {classItem.name}
             </span>
             <span className="text-sm text-slate-500">
@@ -1190,20 +1210,10 @@ export default function ClassesPage() {
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={async () => {
-              await supabase.auth.signOut();
-              navigate("/setup");
-            }}
-            className="rounded-full bg-slate-100 px-3 py-2 text-sm text-slate-600 hover:bg-slate-200"
-          >
-            Salir
-          </button>
         </div>
       </header>
       {content}
-      {isOffline && !selectedClass && (
+      {isOffline && !selectedClass && state !== "error" && (
         <p
           role="alert"
           className="mx-4 mb-6 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800"
@@ -1212,11 +1222,24 @@ export default function ClassesPage() {
         </p>
       )}
       {state === "error" && (
-        <p className="px-4 pb-6 text-sm text-slate-500">
-          {isOffline
-            ? "Sin conexión: pasar lista y confirmar requieren conexión."
-            : "No se han podido cargar los datos autorizados."}
-        </p>
+        <div className="px-4 pb-6">
+          <p role="alert" className="text-sm text-slate-500">
+            {isOffline ||
+            (typeof navigator !== "undefined" && !navigator.onLine)
+              ? "Sin conexión: pasar lista y confirmar requieren conexión."
+              : "No se han podido cargar los datos autorizados."}
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              setState("loading");
+              setReloadKey((current) => current + 1);
+            }}
+            className="mt-3 w-full rounded-xl bg-emerald-600 px-5 py-3 font-medium text-white"
+          >
+            Reintentar
+          </button>
+        </div>
       )}
       <MealRecordModal
         key={selectedChild?.id ?? "closed"}

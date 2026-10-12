@@ -9,15 +9,21 @@ async function source(path) {
   return readFile(new URL(path, root), "utf8");
 }
 
-test("classes route is protected as the root path in the React router", async () => {
+test("today is the protected landing and clases is its own protected page", async () => {
   const router = await source("src/app/router.tsx");
 
   assert.match(router, /path:\s*["']\/["']/);
+  assert.match(router, /TodayPage/);
+  assert.match(router, /path:\s*["']\/clases["']/);
   assert.match(router, /ClassesPage/);
   assert.match(router, /<RequireSession>/);
   assert.match(
     router,
     /path:\s*["']\/["']\s*,\s*element:\s*\(\s*<RequireSession>/s,
+  );
+  assert.match(
+    router,
+    /path:\s*["']\/clases["']\s*,\s*element:\s*\(\s*<RequireSession>/s,
   );
 });
 
@@ -116,6 +122,7 @@ test("classes route navigates through the router without full reloads", async ()
 
 test("classes route files are part of the application surface", async () => {
   await Promise.all([
+    access(new URL("src/routes/TodayPage.tsx", root)),
     access(new URL("src/routes/ClassesPage.tsx", root)),
     access(new URL("src/app/router.tsx", root)),
   ]);

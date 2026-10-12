@@ -2,19 +2,29 @@ import { createBrowserRouter, Navigate } from "react-router";
 
 import RootLayout from "./RootLayout";
 import RequireSession from "./RequireSession";
+import TodayPage from "../routes/TodayPage";
 import ClassesPage from "../routes/ClassesPage";
 import IncidentsPage from "../routes/IncidentsPage";
 import SetupPage from "../routes/SetupPage";
 import WorkersPage from "../routes/WorkersPage";
 
-// Mapa de rutas #42: raíz de clases y comedor protegida, incidencias
-// protegida, setup y workers públicas, desconocida redirige a la raíz.
+// Mapa de rutas: Hoy (previsión) es la landing protegida tras el login,
+// Clases e Incidencias son páginas protegidas hermanas, setup y workers
+// públicas, desconocida redirige a la raíz.
 export const router = createBrowserRouter([
   {
     element: <RootLayout />,
     children: [
       {
         path: "/",
+        element: (
+          <RequireSession>
+            <TodayPage />
+          </RequireSession>
+        ),
+      },
+      {
+        path: "/clases",
         element: (
           <RequireSession>
             <ClassesPage />
