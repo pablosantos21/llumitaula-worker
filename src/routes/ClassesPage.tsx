@@ -144,66 +144,94 @@ export default function ClassesPage() {
     let active = true;
 
     async function loadData() {
-      const { data: sessionData } = await supabase.auth.getSession();
-      if (!active) return;
-      const session = sessionData.session;
-      if (!session) {
-        setState("signed-out");
-        return;
-      }
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        if (!active) return;
+        const session = sessionData.session;
+        if (!session) {
+          setState("signed-out");
+          return;
+        }
 
-      const [
-        childrenResult,
-        classesResult,
-        recordsResult,
-        incidentsResult,
-        mealTypesResult,
-        lunchDaysResult,
-        userResult,
-      ] = await Promise.all([
-        supabase
-          .from("children")
-          .select("id, first_name, last_name, class_id, created_at")
-          .order("last_name"),
-        supabase.from("classes").select("id, name, school_id"),
-        supabase
-          .from("meal_records")
-          .select(
-            "id, child_id, meal_type_id, notes, recorded_date, recorded_at, recorded_by, status, first_course, second_course, dessert",
-          )
-          .eq("recorded_date", localDateString()),
-        supabase
-          .from("incidents")
-          .select(
-            "id, child_id, category, created_at, date, description, family_responded_at, family_response, family_seen, monitor_id, monitor_validated, requires_family_signature, reviewed, send_notification",
-          )
-          .eq("date", localDateString()),
-        supabase
-          .from("meal_types")
-          .select("id, name, active, school_id, sort_order, created_at")
-          .eq("active", true)
-          .order("sort_order"),
-        supabase.from("child_lunch_days").select("child_id, weekdays"),
-        supabase
-          .from("users")
-          .select("role")
-          .eq("id", session.user.id)
-          .single(),
-      ]);
-      if (!active) return;
-      if (
-        childrenResult.error ||
-        classesResult.error ||
-        recordsResult.error ||
-        incidentsResult.error ||
-        mealTypesResult.error ||
-        lunchDaysResult.error ||
-        userResult.error
-      ) {
+        const [
+          childrenResult,
+          classesResult,
+          recordsResult,
+          incidentsResult,
+          mealTypesResult,
+          lunchDaysResult,
+          userResult,
+        ] = await Promise.all([
+          supabase
+            .from("children")
+            .select("id, first_name, last_name, class_id, created_at")
+            .order("last_name"),
+          supabase.from("classes").select("id, name, school_id"),
+          supabase
+            .from("meal_records")
+            .select(
+              "id, child_id, meal_type_id, notes, recorded_date, recorded_at, recorded_by, status, first_course, second_course, dessert",
+            )
+            .eq("recorded_date", localDateString()),
+          supabase
+            .from("incidents")
+            .select(
+              "id, child_id, category, created_at, date, description, family_responded_at, family_response, family_seen, monitor_id, monitor_validated, requires_family_signature, reviewed, send_notification",
+            )
+            .eq("date", localDateString()),
+          supabase
+            .from("meal_types")
+            .select("id, name, active, school_id, sort_order, created_at")
+            .eq("active", true)
+            .order("sort_order"),
+          supabase.from("child_lunch_days").select("child_id, weekdays"),
+          supabase
+            .from("users")
+            .select("role")
+            .eq("id", session.user.id)
+            .single(),
+        ]);
+        if (!active) return;
+        if (
+          childrenResult.error ||
+          classesResult.error ||
+          recordsResult.error ||
+          incidentsResult.error ||
+          mealTypesResult.error ||
+          lunchDaysResult.error ||
+          userResult.error
+        ) {
+          if (typeof navigator !== "undefined" && !navigator.onLine) {
+            setIsOffline(true);
+          }
+          // No mostrar datos antiguos como actuales: limpiar al fallar.
+          setChildren([]);
+          setClasses([]);
+          setRecords([]);
+          setIncidents([]);
+          setMealTypes([]);
+          setLunchByChild({});
+          setState("error");
+          return;
+        }
+        setChildren(childrenResult.data ?? []);
+        setClasses(classesResult.data ?? []);
+        setRecords(recordsResult.data ?? []);
+        setIncidents(incidentsResult.data ?? []);
+        setMealTypes(mealTypesResult.data ?? []);
+        const lunchMap: Record<string, number[]> = {};
+        for (const row of lunchDaysResult.data ?? []) {
+          lunchMap[row.child_id] = [...(row.weekdays ?? [])];
+        }
+        setLunchByChild(lunchMap);
+        setUserRole(userResult.data.role);
+
+        setState("ready");
+      } catch {
+        if (!active) return;
         if (typeof navigator !== "undefined" && !navigator.onLine) {
           setIsOffline(true);
         }
-        // No mostrar datos antiguos como actuales: limpiar al fallar.
         setChildren([]);
         setClasses([]);
         setRecords([]);
@@ -211,21 +239,7 @@ export default function ClassesPage() {
         setMealTypes([]);
         setLunchByChild({});
         setState("error");
-        return;
       }
-      setChildren(childrenResult.data ?? []);
-      setClasses(classesResult.data ?? []);
-      setRecords(recordsResult.data ?? []);
-      setIncidents(incidentsResult.data ?? []);
-      setMealTypes(mealTypesResult.data ?? []);
-      const lunchMap: Record<string, number[]> = {};
-      for (const row of lunchDaysResult.data ?? []) {
-        lunchMap[row.child_id] = [...(row.weekdays ?? [])];
-      }
-      setLunchByChild(lunchMap);
-      setUserRole(userResult.data.role);
-
-      setState("ready");
     }
 
     void loadData();
@@ -675,54 +689,116 @@ export default function ClassesPage() {
         return;
       }
     }
-    const { data: sessionData } = await supabase.auth.getSession();
-    const session = sessionData.session;
-    if (!session) {
-      setToast({
-        message: "No se ha podido guardar la lista de comida",
-        type: "error",
-      });
-      return;
-    }
-    const rows = buildMealListRows({
-      presentChildIds,
-      drafts: virtualMealList,
-      mealTypeId: defaultMealTypeId,
-      recordedDate: attendanceDate,
-      recordedBy: session.user.id,
-      recordedAt: new Date().toISOString(),
-    });
-    if (rows.length === 0) return;
     setSavingMealList(true);
-    const result = await supabase
-      .from("meal_records")
-      .upsert(rows, { onConflict: "child_id,meal_type_id,recorded_date" })
-      .select(
-        "id, child_id, meal_type_id, notes, recorded_date, recorded_at, recorded_by, status, first_course, second_course, dessert",
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const session = sessionData.session;
+      if (!session) {
+        setToast({
+          message: "No se ha podido guardar la lista de comida",
+          type: "error",
+        });
+        return;
+      }
+      const rows = buildMealListRows({
+        presentChildIds,
+        drafts: virtualMealList,
+        mealTypeId: defaultMealTypeId,
+        recordedDate: attendanceDate,
+        recordedBy: session.user.id,
+      });
+      if (rows.length === 0) return;
+
+      const existingByChild = new Map(
+        records
+          .filter(
+            (record) =>
+              record.meal_type_id === defaultMealTypeId &&
+              record.recorded_date === attendanceDate,
+          )
+          .map((record) => [record.child_id, record] as const),
       );
-    setSavingMealList(false);
-    if (result.error) {
+      const rowsToUpsert = rows.filter((row) => {
+        const existing = existingByChild.get(row.child_id);
+        return !existing || existing.recorded_by === session.user.id;
+      });
+      const rowsToUpdate = rows.filter((row) => {
+        const existing = existingByChild.get(row.child_id);
+        return existing != null && existing.recorded_by !== session.user.id;
+      });
+
+      const saved: MealRecord[] = [];
+      if (rowsToUpsert.length > 0) {
+        const upsertResult = await supabase
+          .from("meal_records")
+          .upsert(rowsToUpsert, {
+            onConflict: "child_id,meal_type_id,recorded_date",
+          })
+          .select(
+            "id, child_id, meal_type_id, notes, recorded_date, recorded_at, recorded_by, status, first_course, second_course, dessert",
+          );
+        if (upsertResult.error?.code === "42501") {
+          rowsToUpdate.push(...rowsToUpsert);
+        } else if (upsertResult.error) {
+          setToast({
+            message: "No se ha podido guardar la lista de comida",
+            type: "error",
+          });
+          return;
+        } else {
+          saved.push(...(upsertResult.data ?? []));
+        }
+      }
+
+      for (const row of rowsToUpdate) {
+        const updateResult = await supabase
+          .from("meal_records")
+          .update({
+            notes: row.notes,
+            status: row.status,
+            first_course: row.first_course,
+            second_course: row.second_course,
+            dessert: row.dessert,
+          })
+          .eq("child_id", row.child_id)
+          .eq("meal_type_id", row.meal_type_id)
+          .eq("recorded_date", row.recorded_date)
+          .select(
+            "id, child_id, meal_type_id, notes, recorded_date, recorded_at, recorded_by, status, first_course, second_course, dessert",
+          )
+          .single();
+        if (updateResult.error || !updateResult.data) {
+          setToast({
+            message: "No se ha podido guardar la lista de comida",
+            type: "error",
+          });
+          return;
+        }
+        saved.push(updateResult.data);
+      }
+
+      setRecords((current) => {
+        const savedIds = new Set(saved.map((row) => row.id));
+        return [
+          ...current.filter((record) => !savedIds.has(record.id)),
+          ...saved,
+        ];
+      });
+      // Re-guardar el mismo día sobrescribe libremente: limpiamos el borrador
+      // para que la lista muestre lo guardado.
+      setMealDrafts({});
+      if (mealDraftKey && typeof localStorage !== "undefined") {
+        clearMealDrafts(localStorage, mealDraftKey);
+      }
+      setToast({ message: "Lista de comida guardada", type: "success" });
+    } catch {
       setToast({
         message: "No se ha podido guardar la lista de comida",
         type: "error",
       });
-      return;
+    } finally {
+      setSavingMealList(false);
     }
-    const saved = result.data ?? [];
-    setRecords((current) => {
-      const savedIds = new Set(saved.map((row) => row.id));
-      return [
-        ...current.filter((record) => !savedIds.has(record.id)),
-        ...saved,
-      ];
-    });
-    // Re-guardar el mismo día sobrescribe libremente: limpiamos el borrador
-    // para que la lista muestre lo guardado.
-    setMealDrafts({});
-    if (mealDraftKey && typeof localStorage !== "undefined") {
-      clearMealDrafts(localStorage, mealDraftKey);
-    }
-    setToast({ message: "Lista de comida guardada", type: "success" });
   }
 
   if (state === "loading")

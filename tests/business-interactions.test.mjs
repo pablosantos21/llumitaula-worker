@@ -144,7 +144,7 @@ test("meal records never call the incident RPC from the UI", async () => {
   assert.doesNotMatch(app, /\.rpc\("record_meal_incident"/);
 });
 
-test("local meal dates use the browser date and timestamps use ISO UTC", async () => {
+test("local meal dates use the browser date and recorded_at is delegated to server now()", async () => {
   const helper = await source("src/lib/local-date.ts");
   const app = await source("src/routes/ClassesPage.tsx");
 
@@ -152,8 +152,7 @@ test("local meal dates use the browser date and timestamps use ISO UTC", async (
   assert.match(helper, /getFullYear\(\)/);
   assert.match(helper, /padStart\(2, "0"\)/);
   assert.match(app, /recordedDate: attendanceDate/);
-  assert.match(app, /recordedAt: new Date\(\)\.toISOString\(\)/);
-  assert.match(new Date().toISOString(), /Z$/);
+  assert.doesNotMatch(app, /recordedAt:\s*new Date\(\)\.toISOString\(\)/);
 });
 
 test("the meal upsert writes one row per course with the derived status", async () => {

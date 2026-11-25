@@ -2,11 +2,6 @@ begin;
 
 select plan(46);
 
--- Deterministic fixtures used by the phase 2 seed.
--- School A: ...0001 (Colegio Demo), School B: ...0002 (Colegio Arcoiris).
--- All transactions below are rolled back at the end of this file,
--- so fixtures are never persisted.
-
 create or replace function pg_temp.count_rows(query text)
 returns bigint
 language plpgsql
@@ -48,7 +43,7 @@ select ok(
   exists (
     select 1
       from pg_class
-       where oid = to_regclass('public.device_claims')
+     where oid = to_regclass('public.device_claims')
        and relrowsecurity
   ),
   'device claims audit table has RLS enabled'
@@ -84,8 +79,8 @@ select is(
   'device setup attempts key off a text device identifier'
 );
 select ok(
-  to_regclass('public.device_setup_global_attempts') is not null,
-  'global setup attempts rate-limit table still exists'
+  to_regclass('public.device_setup_code_attempts') is not null,
+  'per-code-hash rate-limit table exists'
 );
 select ok(
   exists (
@@ -98,12 +93,20 @@ select ok(
   'claim_device is defined SECURITY DEFINER'
 );
 select ok(
-  (select position('search_path=extensions, public'
+  (select position('search_path=pg_catalog, public, extensions, pg_temp'
                    in array_to_string(p.proconfig, ',')) > 0
      from pg_proc p
      join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'public' and p.proname = 'claim_device'),
-  'claim_device pins its search_path to extensions, public'
+  'claim_device pins its search_path to pg_catalog, public, extensions, pg_temp'
+);
+select ok(
+  (select position('search_path=pg_catalog, public, extensions, pg_temp'
+                   in array_to_string(p.proconfig, ',')) > 0
+     from pg_proc p
+     join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname = 'get_device_monitors'),
+  'get_device_monitors pins its search_path to pg_catalog, public, extensions, pg_temp'
 );
 select ok(
   has_function_privilege('anon', 'public.claim_device(text, text)', 'EXECUTE')
@@ -132,12 +135,6 @@ select throws_ok(
 );
 set local role postgres;
 
--- ── Functional claim behavior (as anon, over the JSON API surface) ──
--- Deterministic device fixtures:
---   ...604 Colegio Arcoiris (B), code "bbbbbb", pre-bound to "dev-b2"
---   ...605 Colegio Demo (A), code "cccccc", expired
---   ...606 Colegio Demo (A), code "dddddd", inactive
-set local role postgres;
 insert into public.devices (
   id, school_id, name, identifier, config_code_hash,
   config_code_expires_at, revoked, active, created_at
@@ -156,7 +153,17 @@ insert into public.devices (
    '00000000-0000-4000-8000-000000000001'::uuid,
    'Pantalla inactiva', null,
    encode(digest('dddddd', 'sha256'), 'hex'),
-   now() + interval '1 year', false, false, now());
+   now() + interval '1 year', false, false, now()),
+  ('00000000-0000-4000-8000-000000000609'::uuid,
+   '00000000-0000-4000-8000-000000000001'::uuid,
+   'Pantalla sin caducidad', null,
+   encode(digest('eeeeee', 'sha256'), 'hex'),
+   null, false, true, now()),
+  ('00000000-0000-4000-8000-000000000610'::uuid,
+   '00000000-0000-4000-8000-000000000001'::uuid,
+   'Pantalla revocada', null,
+   encode(digest('gggggg', 'sha256'), 'hex'),
+   now() + interval '1 year', true, true, now());
 
 set local role anon;
 select is(
@@ -170,32 +177,59 @@ select is(
   'get_device_monitors resolves a claimed device'
 );
 select is(
-  (select (public.claim_device('nnnnnn', 'never-claimed'))->>'error'),
-  'CODE_NOT_FOUND',
-  'an unknown config code is rejected'
+  (select (public.claim_device('abcdef', 'hijacker-device'))->>'error'),
+  'CLAIM_FAILED',
+  'consumed config code cannot be reused to hijack the bound device'
 );
 select is(
-  (select (public.claim_device('abcdef', 'demo-device-1'))->>'success'),
-  'true',
-  'a device may be re-claimed by the same identifier (re-linking allowed)'
+  (select (public.claim_device('abcdef', 'demo-device-1'))->>'error'),
+  'CLAIM_FAILED',
+  'consumed config code is invalidated after first use'
 );
 select is(
   (select pg_temp.privileged_count_rows(
      $$select count(*) from public.device_claims
         where device_identifier = 'demo-device-1'$$)),
-  2::bigint,
-  're-claiming writes a second audit row'
+  1::bigint,
+  'single-use claim writes exactly one audit row'
 );
 
--- ── Revoked / expired / inactive states ──
+-- ── Non-enumerable uniform errors across all invalid states ──
+select is(
+  (select (public.claim_device('nnnnnn', 'never-claimed'))->>'error'),
+  'CLAIM_FAILED',
+  'an unknown config code returns uniform CLAIM_FAILED'
+);
+select is(
+  (select (public.claim_device('gggggg', 'revoked-attempt'))->>'error'),
+  'CLAIM_FAILED',
+  'claiming a revoked device returns uniform CLAIM_FAILED'
+);
+select is(
+  (select (public.claim_device('cccccc', 'expired-device'))->>'error'),
+  'CLAIM_FAILED',
+  'claiming an expired config code returns uniform CLAIM_FAILED'
+);
+select is(
+  (select (public.claim_device('dddddd', 'inactive-device'))->>'error'),
+  'CLAIM_FAILED',
+  'claiming an inactive device returns uniform CLAIM_FAILED'
+);
+select is(
+  (select (public.claim_device('eeeeee', 'no-expiry-device'))->>'error'),
+  'CLAIM_FAILED',
+  'claiming a config code without expiration returns uniform CLAIM_FAILED'
+);
+select is(
+  (select (public.claim_device('bbbbbb', 'hijack-dev-b2'))->>'error'),
+  'CLAIM_FAILED',
+  'claiming a device already bound to another identifier is rejected'
+);
+
+-- ── Revoked state reflected by get_device_monitors ──
 set local role postgres;
 update public.devices set revoked = true where id = '00000000-0000-4000-8000-000000000603'::uuid;
 set local role anon;
-select is(
-  (select (public.claim_device('abcdef', 'demo-device-1'))->>'error'),
-  'DEVICE_REVOKED',
-  'claiming a revoked device is rejected'
-);
 select is(
   (select (public.get_device_monitors('demo-device-1'))->>'error'),
   'DEVICE_REVOKED',
@@ -204,27 +238,12 @@ select is(
 set local role postgres;
 update public.devices set revoked = false where id = '00000000-0000-4000-8000-000000000603'::uuid;
 set local role anon;
-select is(
-  (select (public.claim_device('abcdef', 'demo-device-1'))->>'success'),
-  'true',
-  'a device un-revoked by the school may be claimed again'
-);
-select is(
-  (select (public.claim_device('cccccc', 'expired-device'))->>'error'),
-  'CODE_EXPIRED',
-  'claiming an expired config code is rejected'
-);
-select is(
-  (select (public.claim_device('dddddd', 'inactive-device'))->>'error'),
-  'DEVICE_INACTIVE',
-  'claiming an inactive device is rejected'
-);
 
 -- ── Cross-school isolation ──
 select is(
   (select (public.claim_device('bbbbbb', 'dev-b2'))->>'success'),
   'true',
-  'a school B device claims with its own code'
+  'a school B device claims with its own code and matching identifier'
 );
 select ok(
   (select (public.get_device_monitors('dev-b2'))->>'school_id')
@@ -242,9 +261,6 @@ select is(
 );
 
 -- ── Identifier collision ──
--- A bound identifier may not be stolen to bind a different device. Device
--- ...607 holds the identifier "taken-ident"; device ...608 is unbound with
--- code "ffffff". Claiming ...608 with "taken-ident" must be a clean rejection.
 set local role postgres;
 insert into public.devices (
   id, school_id, name, identifier, config_code_hash,
@@ -261,14 +277,9 @@ insert into public.devices (
    now() + interval '1 year', false, true, now());
 set local role anon;
 select is(
-  (select (public.claim_device('ffffff', 'taken-ident'))->>'success'),
-  'false',
-  'claiming a code with an identifier bound to another device is rejected'
-);
-select is(
   (select (public.claim_device('ffffff', 'taken-ident'))->>'error'),
-  'IDENTIFIER_IN_USE',
-  'an identifier collision returns IDENTIFIER_IN_USE'
+  'CLAIM_FAILED',
+  'claiming a code with an identifier bound to another device returns uniform CLAIM_FAILED'
 );
 select lives_ok(
   $$select public.claim_device('ffffff', 'taken-ident')$$,
@@ -294,15 +305,8 @@ select is(
   'true',
   'the colliding code still claims with a free identifier'
 );
-select is(
-  (select (public.claim_device('ffffff', 'fresh-ident'))->>'success'),
-  'true',
-  're-claiming the same device with its own identifier still succeeds'
-);
 
--- ── Rate limits ──
--- Per-identifier: 5 attempts per 15-minute window. Four fresh failures count
--- up; the fifth is rejected before any code lookup.
+-- ── Rate limits (per-identifier + per-code-hash, no global DoS) ──
 set local role postgres;
 update public.device_setup_attempts
    set window_started_at = now() - interval '16 minutes',
@@ -312,61 +316,68 @@ set local role anon;
 do $$
 begin
   for i in 1..4 loop
-    perform public.claim_device('rotated', 'rl-ident');
+    perform public.claim_device('rotat1', 'rl-ident');
   end loop;
 end
 $$;
 select is(
-  (select (public.claim_device('rotated', 'rl-ident'))->>'error'),
+  (select (public.claim_device('rotat1', 'rl-ident'))->>'error'),
   'RATE_LIMITED',
   'per-device rate limit: the fifth attempt is rejected'
 );
-select is(
-  (select pg_temp.privileged_count_rows(
-     $$select attempt_count from public.device_setup_attempts
-        where device_identifier = 'rl-ident'$$)),
-  5::bigint,
-  'the per-device rate-limit counter persists at its maximum'
-);
 
--- Global: 30 attempts per 15-minute window across all identifiers.
 set local role postgres;
-update public.device_setup_global_attempts
-   set window_started_at = now() - interval '16 minutes',
-       attempt_count = 0
- where id;
+insert into public.devices (
+  id, school_id, name, identifier, config_code_hash,
+  config_code_expires_at, revoked, active, created_at
+) values
+  ('00000000-0000-4000-8000-000000000611'::uuid,
+   '00000000-0000-4000-8000-000000000001'::uuid,
+   'Pantalla legitima post-flood', null,
+   encode(digest('legit1', 'sha256'), 'hex'),
+   now() + interval '1 year', false, true, now());
 set local role anon;
 do $$
 declare
   i integer;
 begin
-  for i in 1..30 loop
-    perform public.claim_device('rotated', 'gx' || lpad(i::text, 8, '0'));
+  for i in 1..35 loop
+    perform public.claim_device('fld' || lpad(i::text, 3, '0'), 'gx' || lpad(i::text, 8, '0'));
   end loop;
 end
 $$;
 select is(
-  (select (public.claim_device('rotated', 'gx00000031'))->>'error'),
-  'GLOBAL_RATE_LIMITED',
-  'the global setup rate limit rejects attempt 31'
+  (select (public.claim_device('legit1', 'legit-ipad-after-flood'))->>'success'),
+  'true',
+  'attacker identifier flood does not cause global DoS for legitimate devices'
 );
-set local role postgres;
+
+do $$
+declare
+  i integer;
+begin
+  for i in 1..10 loop
+    perform public.claim_device('brute1', 'br' || lpad(i::text, 8, '0'));
+  end loop;
+end
+$$;
 select is(
-  (select attempt_count from public.device_setup_global_attempts where id),
-  30,
-  'the global rate-limit counter persists at its maximum'
+  (select (public.claim_device('brute1', 'br00000011'))->>'error'),
+  'RATE_LIMITED',
+  'per-code-hash rate limit blocks brute-force across rotated identifiers'
 );
 
 -- ── Atomicity: a bind failure rolls back the claim entirely ──
 set local role postgres;
-update public.device_setup_global_attempts
-   set window_started_at = now() - interval '16 minutes',
-       attempt_count = 0
- where id;
-update public.device_setup_attempts
-   set window_started_at = now() - interval '16 minutes',
-       attempt_count = 0
- where device_identifier = 'atom-roll';
+insert into public.devices (
+  id, school_id, name, identifier, config_code_hash,
+  config_code_expires_at, revoked, active, created_at
+) values
+  ('00000000-0000-4000-8000-000000000612'::uuid,
+   '00000000-0000-4000-8000-000000000001'::uuid,
+   'Pantalla atomicidad', null,
+   encode(digest('atom01', 'sha256'), 'hex'),
+   now() + interval '1 year', false, true, now());
 create function pg_temp.forbid_device_update()
 returns trigger
 language plpgsql
@@ -381,7 +392,7 @@ for each row execute function pg_temp.forbid_device_update();
 
 set local role anon;
 select throws_ok(
-  $$select public.claim_device('abcdef', 'atom-roll')$$,
+  $$select public.claim_device('atom01', 'atom-roll')$$,
   'P0001',
   null,
   'a failing device update aborts the claim'
@@ -398,9 +409,10 @@ select is(
 );
 select is(
   (select identifier from public.devices
-    where id = '00000000-0000-4000-8000-000000000603'::uuid),
-  'demo-device-1',
+    where id = '00000000-0000-4000-8000-000000000612'::uuid),
+  null,
   'a failed claim leaves the device binding unchanged'
 );
 
+select * from finish();
 rollback;

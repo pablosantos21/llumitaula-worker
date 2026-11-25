@@ -9,12 +9,18 @@
 -- downgrade; esta migración la registra con la definición remota exacta
 -- de forma idempotente. Aplicarla en remoto es un no-op.
 
-DROP POLICY IF EXISTS meal_records_select_parent ON public.meal_records;
-CREATE POLICY meal_records_select_parent ON public.meal_records
-  FOR SELECT TO authenticated
-  USING (
-    public.current_user_active()
-    AND public.current_user_role() = 'parent'
-    AND private.current_user_can_access_child(child_id)
-    AND private.family_meal_records_enabled_for_child(child_id)
-  );
+DO $$
+BEGIN
+  IF to_regprocedure('private.family_meal_records_enabled_for_child(uuid)') IS NOT NULL THEN
+    DROP POLICY IF EXISTS meal_records_select_parent ON public.meal_records;
+    CREATE POLICY meal_records_select_parent ON public.meal_records
+      FOR SELECT TO authenticated
+      USING (
+        public.current_user_active()
+        AND public.current_user_role() = 'parent'
+        AND private.current_user_can_access_child(child_id)
+        AND private.family_meal_records_enabled_for_child(child_id)
+      );
+  END IF;
+END
+$$;

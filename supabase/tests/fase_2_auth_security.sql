@@ -303,11 +303,11 @@ select throws_ok(
   $$insert into public.incidents (id, child_id, monitor_id, description, date)
     values ('00000000-0000-4000-8000-000000000504'::uuid,
             '00000000-0000-4000-8000-000000000201'::uuid,
-            '00000000-0000-4000-8000-000000000021'::uuid,
-            'Monitor incident', current_date)$$,
+            '00000000-0000-4000-8000-000000000022'::uuid,
+            'Monitor impersonation incident', current_date)$$,
   '42501',
   null,
-  'monitor A cannot create incidents directly; only through record_meal_incident'
+  'monitor A cannot create direct incidents impersonating another monitor'
 );
 
 select ok(
@@ -582,7 +582,7 @@ select set_config(
   )::text,
   true
 );
-select lives_ok(
+select throws_ok(
   $$insert into public.meal_records
       (id, child_id, meal_type_id, recorded_by, recorded_date, recorded_at, status)
     values
@@ -593,7 +593,9 @@ select lives_ok(
        (now() at time zone 'UTC')::date + 1,
        now(),
        'todo')$$,
-  'monitor A can insert a valid browser-local date ahead of UTC date'
+  '42501',
+  null,
+  'monitor A cannot insert a meal record outside CURRENT_DATE'
 );
 select throws_ok(
   $$insert into public.meal_records

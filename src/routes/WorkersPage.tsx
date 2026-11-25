@@ -313,6 +313,7 @@ export default function WorkersPage() {
         <MonitorPinInput
           key={selectedMonitor.id}
           monitor={selectedMonitor}
+          deviceIdentifier={getDeviceContext()?.device_identifier}
           onBack={() => setSelectedMonitor(null)}
           onSuccess={() => navigate("/", { replace: true })}
         />

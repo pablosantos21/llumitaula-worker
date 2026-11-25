@@ -625,7 +625,7 @@ export type Database = {
       }
       monitors: {
         Row: {
-          code: number
+          code: number | null
           created_at: string | null
           first_name: string
           id: string
@@ -634,7 +634,7 @@ export type Database = {
           user_id: string | null
         }
         Insert: {
-          code: number
+          code?: number | null
           created_at?: string | null
           first_name: string
           id?: string
@@ -643,7 +643,7 @@ export type Database = {
           user_id?: string | null
         }
         Update: {
-          code?: number
+          code?: number | null
           created_at?: string | null
           first_name?: string
           id?: string
@@ -857,9 +857,10 @@ export type Database = {
       }
       create_monitor: {
         Args: {
-          p_code: number
+          p_code?: number
           p_first_name: string
           p_last_name: string
+          p_pin: string
           p_school_id: string
         }
         Returns: Json
@@ -873,14 +874,18 @@ export type Database = {
         Args: { p_device_identifier: string }
         Returns: Json
       }
+      get_monitor_pin_lockout: {
+        Args: { p_device_identifier: string; p_monitor_id: string }
+        Returns: Json
+      }
       record_meal_incident: {
         Args: {
           p_child_id: string
-          p_description: string
+          p_description?: string
           p_meal_type_id: string
-          p_monitor_id: string
+          p_monitor_id?: string
           p_notes: string
-          p_recorded_at: string
+          p_recorded_at?: string
           p_recorded_date: string
           p_status: Database["public"]["Enums"]["meal_status"]
         }
@@ -903,6 +908,14 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      verify_monitor_pin: {
+        Args: {
+          p_device_identifier: string
+          p_monitor_id: string
+          p_pin: string
+        }
+        Returns: Json
       }
     }
     Enums: {

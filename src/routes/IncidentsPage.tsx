@@ -57,6 +57,10 @@ export default function IncidentsPage() {
   const [classes, setClasses] = useState<SchoolClass[]>([]);
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [monitorId, setMonitorId] = useState<string | null>(null);
+  const [schoolMonitors, setSchoolMonitors] = useState<
+    { id: string; first_name: string; last_name: string }[]
+  >([]);
+  const [selectedAdminMonitorId, setSelectedAdminMonitorId] = useState("");
   const [userRole, setUserRole] = useState<IncidentViewerRole | null>(null);
   const [parentChildIds, setParentChildIds] = useState<string[]>([]);
   const [markingSeen, setMarkingSeen] = useState<Record<string, boolean>>({});
@@ -69,6 +73,7 @@ export default function IncidentsPage() {
   );
   const [requiresConfirmation, setRequiresConfirmation] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
   const [toast, setToast] = useState<{
     message: string;
     type: "success" | "warning" | "error";
@@ -83,87 +88,137 @@ export default function IncidentsPage() {
     let active = true;
 
     async function loadData() {
-      const { data: sessionData } = await supabase.auth.getSession();
-      if (!active) return;
-      const session = sessionData.session;
-      if (!session) {
-        setState("signed-out");
-        return;
-      }
-
-      const userResult = await supabase
-        .from("users")
-        .select("role")
-        .eq("id", session.user.id)
-        .single();
-      if (!active) return;
-
-      const role = (userResult.data?.role ?? null) as IncidentViewerRole | null;
-      if (userResult.error || !role) {
-        const monitorFallback = await supabase
-          .from("monitors")
-          .select("id")
-          .eq("user_id", session.user.id)
-          .maybeSingle();
+      setState("loading");
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
         if (!active) return;
-        if (monitorFallback.error || !monitorFallback.data) {
-          setState("error");
+        const session = sessionData.session;
+        if (!session) {
+          setState("signed-out");
           return;
         }
-        setUserRole("monitor");
-        setMonitorId(monitorFallback.data.id);
-      } else {
-        setUserRole(role);
-        if (role === "monitor") {
-          const monitorResult = await supabase
+
+        const userResult = await supabase
+          .from("users")
+          .select("role")
+          .eq("id", session.user.id)
+          .single();
+        if (!active) return;
+
+        const role = (userResult.data?.role ??
+          null) as IncidentViewerRole | null;
+        if (userResult.error || !role) {
+          const monitorFallback = await supabase
             .from("monitors")
             .select("id")
             .eq("user_id", session.user.id)
             .maybeSingle();
           if (!active) return;
-          if (monitorResult.error || !monitorResult.data) {
+          if (monitorFallback.error || !monitorFallback.data) {
             setState("error");
             return;
           }
-          setMonitorId(monitorResult.data.id);
+          setUserRole("monitor");
+          setMonitorId(monitorFallback.data.id);
+        } else {
+          setUserRole(role);
+          if (role === "monitor") {
+            const monitorResult = await supabase
+              .from("monitors")
+              .select("id")
+              .eq("user_id", session.user.id)
+              .maybeSingle();
+            if (!active) return;
+            if (monitorResult.error || !monitorResult.data) {
+              setState("error");
+              return;
+            }
+            setMonitorId(monitorResult.data.id);
+          } else if (role === "admin") {
+            const monitorsResult = await supabase
+              .from("monitors")
+              .select("id, first_name, last_name")
+              .order("last_name");
+            if (!active) return;
+            if (monitorsResult.error) {
+              setState("error");
+              return;
+            }
+            const loadedMonitors = monitorsResult.data ?? [];
+            setSchoolMonitors(loadedMonitors);
+            setSelectedAdminMonitorId(loadedMonitors[0]?.id ?? "");
+          }
         }
-      }
 
-      const effectiveRole: IncidentViewerRole =
-        (userResult.data?.role as IncidentViewerRole | undefined) ?? "monitor";
+        const effectiveRole: IncidentViewerRole =
+          (userResult.data?.role as IncidentViewerRole | undefined) ??
+          "monitor";
 
-      if (effectiveRole === "padre") {
-        const linksResult = await supabase
-          .from("parents_children")
-          .select("child_id")
-          .eq("parent_id", session.user.id);
-        if (!active) return;
-        if (linksResult.error) {
-          setState("error");
-          return;
-        }
-        const ownedIds = (linksResult.data ?? []).map((row) => row.child_id);
-        setParentChildIds(ownedIds);
-        if (ownedIds.length === 0) {
-          setChildren([]);
-          setClasses([]);
-          setIncidents([]);
+        if (effectiveRole === "padre") {
+          const linksResult = await supabase
+            .from("parents_children")
+            .select("child_id")
+            .eq("parent_id", session.user.id);
+          if (!active) return;
+          if (linksResult.error) {
+            setState("error");
+            return;
+          }
+          const ownedIds = (linksResult.data ?? []).map((row) => row.child_id);
+          setParentChildIds(ownedIds);
+          if (ownedIds.length === 0) {
+            setChildren([]);
+            setClasses([]);
+            setIncidents([]);
+            setState("ready");
+            return;
+          }
+          const [childrenResult, classesResult, incidentsResult] =
+            await Promise.all([
+              supabase
+                .from("children")
+                .select("id, first_name, last_name, class_id, created_at")
+                .in("id", ownedIds)
+                .order("last_name"),
+              supabase.from("classes").select("id, name, school_id"),
+              supabase
+                .from("incidents")
+                .select(INCIDENT_SELECT)
+                .eq("date", localDateString())
+                .in("child_id", ownedIds),
+            ]);
+          if (!active) return;
+          if (
+            childrenResult.error ||
+            classesResult.error ||
+            incidentsResult.error
+          ) {
+            setState("error");
+            return;
+          }
+          const familyOnly = visibleIncidentsForRole(
+            (incidentsResult.data ?? []) as Incident[],
+            "padre",
+            ownedIds,
+          );
+          setChildren(childrenResult.data ?? []);
+          setClasses(classesResult.data ?? []);
+          setIncidents(familyOnly);
           setState("ready");
           return;
         }
+
         const [childrenResult, classesResult, incidentsResult] =
           await Promise.all([
             supabase
               .from("children")
               .select("id, first_name, last_name, class_id, created_at")
-              .in("id", ownedIds)
               .order("last_name"),
             supabase.from("classes").select("id, name, school_id"),
             supabase
               .from("incidents")
               .select(INCIDENT_SELECT)
-              .eq("date", localDateString())
-              .in("child_id", ownedIds),
+              .eq("date", localDateString()),
           ]);
         if (!active) return;
         if (
@@ -174,50 +229,22 @@ export default function IncidentsPage() {
           setState("error");
           return;
         }
-        const familyOnly = visibleIncidentsForRole(
-          (incidentsResult.data ?? []) as Incident[],
-          "padre",
-          ownedIds,
-        );
         setChildren(childrenResult.data ?? []);
         setClasses(classesResult.data ?? []);
-        setIncidents(familyOnly);
+        setIncidents(incidentsResult.data ?? []);
         setState("ready");
-        return;
+      } catch {
+        if (active) {
+          setState("error");
+        }
       }
-
-      const [childrenResult, classesResult, incidentsResult] =
-        await Promise.all([
-          supabase
-            .from("children")
-            .select("id, first_name, last_name, class_id, created_at")
-            .order("last_name"),
-          supabase.from("classes").select("id, name, school_id"),
-          supabase
-            .from("incidents")
-            .select(INCIDENT_SELECT)
-            .eq("date", localDateString()),
-        ]);
-      if (!active) return;
-      if (
-        childrenResult.error ||
-        classesResult.error ||
-        incidentsResult.error
-      ) {
-        setState("error");
-        return;
-      }
-      setChildren(childrenResult.data ?? []);
-      setClasses(classesResult.data ?? []);
-      setIncidents(incidentsResult.data ?? []);
-      setState("ready");
     }
 
     void loadData();
     return () => {
       active = false;
     };
-  }, []);
+  }, [reloadKey]);
 
   // El cambio a visto llega sin recargar: suscripción en vivo a incidencias.
   // Informativo, sin bloqueo operativo: solo fusiona el estado entrante.
@@ -317,7 +344,11 @@ export default function IncidentsPage() {
       });
       return;
     }
-    if (!monitorId) {
+    const activeMonitorId =
+      userRole === "admin"
+        ? selectedAdminMonitorId || schoolMonitors[0]?.id || null
+        : monitorId;
+    if (!activeMonitorId) {
       setToast({
         message: "No se ha podido guardar la incidencia",
         type: "error",
@@ -325,43 +356,53 @@ export default function IncidentsPage() {
       return;
     }
     setSaving(true);
-    const indicators = mapAudienceToIndicators(audience, requiresConfirmation);
-    const { data: sessionData } = await supabase.auth.getSession();
-    if (!sessionData.session) {
+    try {
+      const indicators = mapAudienceToIndicators(
+        audience,
+        requiresConfirmation,
+      );
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!sessionData.session) {
+        setToast({
+          message: "No se ha podido guardar la incidencia",
+          type: "error",
+        });
+        return;
+      }
+      const result = await supabase
+        .from("incidents")
+        .insert({
+          child_id: notifyChild.id,
+          monitor_id: activeMonitorId,
+          category,
+          date: todayStr,
+          description: description.trim() ? description.trim() : null,
+          requires_family_signature: indicators.requires_family_signature,
+          send_notification: indicators.send_notification,
+          reviewed: false,
+          family_seen: false,
+          monitor_validated: false,
+        })
+        .select(INCIDENT_SELECT)
+        .single();
+      if (result.error || !result.data) {
+        setToast({
+          message: "No se ha podido guardar la incidencia",
+          type: "error",
+        });
+        return;
+      }
+      setIncidents((current) => [result.data as Incident, ...current]);
+      setNotifyChild(null);
+      setToast({ message: "Incidència registrada", type: "success" });
+    } catch {
+      setToast({
+        message: "No se ha podido guardar la incidencia",
+        type: "error",
+      });
+    } finally {
       setSaving(false);
-      setToast({
-        message: "No se ha podido guardar la incidencia",
-        type: "error",
-      });
-      return;
     }
-    const result = await supabase
-      .from("incidents")
-      .insert({
-        child_id: notifyChild.id,
-        monitor_id: monitorId,
-        category,
-        date: todayStr,
-        description: description.trim() ? description.trim() : null,
-        requires_family_signature: indicators.requires_family_signature,
-        send_notification: indicators.send_notification,
-        reviewed: false,
-        family_seen: false,
-        monitor_validated: false,
-      })
-      .select(INCIDENT_SELECT)
-      .single();
-    setSaving(false);
-    if (result.error || !result.data) {
-      setToast({
-        message: "No se ha podido guardar la incidencia",
-        type: "error",
-      });
-      return;
-    }
-    setIncidents((current) => [result.data as Incident, ...current]);
-    setNotifyChild(null);
-    setToast({ message: "Incidència registrada", type: "success" });
   }
 
   async function markSeen(incident: Incident) {
@@ -369,27 +410,35 @@ export default function IncidentsPage() {
     // Solo la familia confirma cuando se le exige; gesto único sin respuesta.
     if (!incidentTargetsFamily(incident)) return;
     setMarkingSeen((current) => ({ ...current, [incident.id]: true }));
-    const nowIso = new Date().toISOString();
-    const update = buildMarkSeenUpdate(nowIso);
-    const result = await supabase
-      .from("incidents")
-      .update(update)
-      .eq("id", incident.id)
-      .select(INCIDENT_SELECT)
-      .single();
-    setMarkingSeen((current) => ({ ...current, [incident.id]: false }));
-    if (result.error || !result.data) {
+    try {
+      const nowIso = new Date().toISOString();
+      const update = buildMarkSeenUpdate(nowIso);
+      const result = await supabase
+        .from("incidents")
+        .update(update)
+        .eq("id", incident.id)
+        .select(INCIDENT_SELECT)
+        .single();
+      if (result.error || !result.data) {
+        setToast({
+          message: "No se ha podido marcar como visto",
+          type: "error",
+        });
+        return;
+      }
+      const updated = result.data as Incident;
+      setIncidents((current) =>
+        current.map((item) => (item.id === updated.id ? updated : item)),
+      );
+      setToast({ message: "Visto registrado", type: "success" });
+    } catch {
       setToast({
         message: "No se ha podido marcar como visto",
         type: "error",
       });
-      return;
+    } finally {
+      setMarkingSeen((current) => ({ ...current, [incident.id]: false }));
     }
-    const updated = result.data as Incident;
-    setIncidents((current) =>
-      current.map((item) => (item.id === updated.id ? updated : item)),
-    );
-    setToast({ message: "Visto registrado", type: "success" });
   }
 
   function renderIncidentHistory(incident: Incident, showAck: boolean) {
@@ -481,16 +530,25 @@ export default function IncidentsPage() {
     return (
       <section
         aria-label="Incidencias"
-        className="flex flex-1 flex-col px-4 py-6"
+        className="flex flex-1 flex-col items-center justify-center gap-4 px-4 py-10 text-center"
       >
-        <p className="p-6 text-sm text-slate-500">
+        <p className="text-sm text-slate-500" role="alert">
           No se han podido cargar los datos autorizados.
         </p>
+        <button
+          type="button"
+          onClick={() => setReloadKey((current) => current + 1)}
+          className="inline-flex rounded-xl bg-emerald-600 px-5 py-3 text-sm font-medium text-white hover:bg-emerald-700"
+        >
+          Reintentar
+        </button>
       </section>
     );
 
   const isFamily = userRole === "padre";
-  const canNotify = userRole === "monitor" && monitorId != null;
+  const canNotify =
+    (userRole === "monitor" && monitorId != null) ||
+    (userRole === "admin" && schoolMonitors.length > 0);
 
   if (isFamily) {
     const ownedChildren = children.filter((child) =>
@@ -688,6 +746,33 @@ export default function IncidentsPage() {
             <p className="mt-1 text-xs text-slate-500">
               Fecha de hoy {todayStr}
             </p>
+
+            {userRole === "admin" && (
+              <>
+                <label
+                  htmlFor="incident-monitor"
+                  className="mt-4 text-sm font-medium text-slate-700"
+                >
+                  Monitor responsable
+                </label>
+                <select
+                  id="incident-monitor"
+                  name="monitorId"
+                  required
+                  value={selectedAdminMonitorId || schoolMonitors[0]?.id || ""}
+                  onChange={(event) =>
+                    setSelectedAdminMonitorId(event.target.value)
+                  }
+                  className="mt-1 h-12 rounded-xl border border-slate-200 bg-white px-4 text-slate-900 outline-none focus:border-emerald-500"
+                >
+                  {schoolMonitors.map((monitor) => (
+                    <option key={monitor.id} value={monitor.id}>
+                      {monitor.first_name} {monitor.last_name}
+                    </option>
+                  ))}
+                </select>
+              </>
+            )}
 
             <label
               htmlFor="incident-category"
