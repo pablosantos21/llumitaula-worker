@@ -128,13 +128,20 @@ create policy classes_select_monitor on public.classes
 -- child_lunch_days: el monitor solo lee horarios de niños permitidos.
 -- La policy base es por escuela; aquí se añade el gate por niño para que
 -- la consulta directa de una clase deshabilitada se rechace.
-drop policy if exists child_lunch_days_select on public.child_lunch_days;
-create policy child_lunch_days_select on public.child_lunch_days
-  for select to authenticated
-  using (
-    private.current_user_can_read_child_lunch_days(school_id)
-    and (
-      public.current_user_role() <> 'monitor'
-      or private.monitor_daily_summary_enabled_for_child(child_id)
-    )
-  );
+do $$
+begin
+  if to_regclass('public.child_lunch_days') is not null
+     and to_regprocedure('private.current_user_can_read_child_lunch_days(uuid)') is not null then
+    drop policy if exists child_lunch_days_select on public.child_lunch_days;
+    create policy child_lunch_days_select on public.child_lunch_days
+      for select to authenticated
+      using (
+        private.current_user_can_read_child_lunch_days(school_id)
+        and (
+          public.current_user_role() <> 'monitor'
+          or private.monitor_daily_summary_enabled_for_child(child_id)
+        )
+      );
+  end if;
+end
+$$;

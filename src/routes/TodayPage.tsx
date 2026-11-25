@@ -76,69 +76,126 @@ export default function TodayPage() {
     let active = true;
 
     async function loadData() {
-      const { data: sessionData } = await supabase.auth.getSession();
-      if (!active) return;
-      const session = sessionData.session;
-      if (!session) {
-        setState("signed-out");
-        return;
-      }
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        if (!active) return;
+        const session = sessionData.session;
+        if (!session) {
+          setState("signed-out");
+          return;
+        }
 
-      const [
-        childrenResult,
-        classesResult,
-        incidentsResult,
-        lunchDaysResult,
-        allergensResult,
-        childAllergensResult,
-        schoolNoticesResult,
-        catalogResult,
-        schoolCapabilitiesResult,
-        classOverridesResult,
-      ] = await Promise.all([
-        supabase
-          .from("children")
-          .select("id, first_name, last_name, class_id, created_at")
-          .order("last_name"),
-        supabase.from("classes").select("id, name, school_id"),
-        supabase
-          .from("incidents")
-          .select(
-            "id, child_id, category, created_at, date, description, family_responded_at, family_response, family_seen, monitor_id, monitor_validated, requires_family_signature, reviewed, send_notification",
-          )
-          .eq("date", localDateString()),
-        supabase.from("child_lunch_days").select("child_id, weekdays"),
-        supabase.from("allergens").select("id, name"),
-        supabase.from("child_allergens").select("child_id, allergen_id"),
-        supabase
-          .from("school_notices")
-          .select("id, school_id, title, body, status, created_at")
-          .eq("status", "published")
-          .order("created_at", { ascending: false }),
-        supabase
-          .from("capability_catalog")
-          .select("capability, default_enabled")
-          .eq("capability", DAILY_SUMMARY_CAPABILITY)
-          .maybeSingle(),
-        supabase
-          .from("school_capabilities")
-          .select("school_id, capability, enabled")
-          .eq("capability", DAILY_SUMMARY_CAPABILITY),
-        supabase
-          .from("class_capability_overrides")
-          .select("class_id, capability, enabled")
-          .eq("capability", DAILY_SUMMARY_CAPABILITY),
-      ]);
-      if (!active) return;
-      if (
-        childrenResult.error ||
-        classesResult.error ||
-        incidentsResult.error ||
-        lunchDaysResult.error ||
-        allergensResult.error ||
-        childAllergensResult.error ||
-        schoolNoticesResult.error
-      ) {
+        const [
+          childrenResult,
+          classesResult,
+          incidentsResult,
+          lunchDaysResult,
+          allergensResult,
+          childAllergensResult,
+          schoolNoticesResult,
+          catalogResult,
+          schoolCapabilitiesResult,
+          classOverridesResult,
+        ] = await Promise.all([
+          supabase
+            .from("children")
+            .select("id, first_name, last_name, class_id, created_at")
+            .order("last_name"),
+          supabase.from("classes").select("id, name, school_id"),
+          supabase
+            .from("incidents")
+            .select(
+              "id, child_id, category, created_at, date, description, family_responded_at, family_response, family_seen, monitor_id, monitor_validated, requires_family_signature, reviewed, send_notification",
+            )
+            .eq("date", localDateString()),
+          supabase.from("child_lunch_days").select("child_id, weekdays"),
+          supabase.from("allergens").select("id, name"),
+          supabase.from("child_allergens").select("child_id, allergen_id"),
+          supabase
+            .from("school_notices")
+            .select("id, school_id, title, body, status, created_at")
+            .eq("status", "published")
+            .order("created_at", { ascending: false }),
+          supabase
+            .from("capability_catalog")
+            .select("capability, default_enabled")
+            .eq("capability", DAILY_SUMMARY_CAPABILITY)
+            .maybeSingle(),
+          supabase
+            .from("school_capabilities")
+            .select("school_id, capability, enabled")
+            .eq("capability", DAILY_SUMMARY_CAPABILITY),
+          supabase
+            .from("class_capability_overrides")
+            .select("class_id, capability, enabled")
+            .eq("capability", DAILY_SUMMARY_CAPABILITY),
+        ]);
+        if (!active) return;
+        if (
+          childrenResult.error ||
+          classesResult.error ||
+          incidentsResult.error ||
+          lunchDaysResult.error ||
+          allergensResult.error ||
+          childAllergensResult.error ||
+          schoolNoticesResult.error
+        ) {
+          if (typeof navigator !== "undefined" && !navigator.onLine) {
+            setIsOffline(true);
+          }
+          setChildren([]);
+          setClasses([]);
+          setIncidents([]);
+          setLunchByChild({});
+          setAllergens([]);
+          setChildAllergens([]);
+          setSchoolNotices([]);
+          setClassSummaryOverrides({});
+          setSchoolSummaryEnabled({});
+          setSummaryDefaultEnabled(null);
+          setSummaryCapabilitiesFailed(false);
+          setState("error");
+          return;
+        }
+        setChildren(childrenResult.data ?? []);
+        setClasses(classesResult.data ?? []);
+        setIncidents(incidentsResult.data ?? []);
+        const lunchMap: Record<string, number[]> = {};
+        for (const row of lunchDaysResult.data ?? []) {
+          lunchMap[row.child_id] = [...(row.weekdays ?? [])];
+        }
+        setLunchByChild(lunchMap);
+        setAllergens(allergensResult.data ?? []);
+        setChildAllergens(childAllergensResult.data ?? []);
+        setSchoolNotices(schoolNoticesResult.data ?? []);
+        const capabilitiesFailed =
+          catalogResult.error != null ||
+          schoolCapabilitiesResult.error != null ||
+          classOverridesResult.error != null;
+        setSummaryCapabilitiesFailed(capabilitiesFailed);
+        const catalogDefault =
+          catalogResult.error || !catalogResult.data
+            ? null
+            : (catalogResult.data.default_enabled ?? null);
+        setSummaryDefaultEnabled(catalogDefault);
+        const schoolMap: Record<string, boolean> = {};
+        if (!schoolCapabilitiesResult.error) {
+          for (const row of schoolCapabilitiesResult.data ?? []) {
+            if (row.school_id) schoolMap[row.school_id] = row.enabled;
+          }
+        }
+        setSchoolSummaryEnabled(schoolMap);
+        const overrideMap: Record<string, boolean> = {};
+        if (!classOverridesResult.error) {
+          for (const row of classOverridesResult.data ?? []) {
+            if (row.class_id) overrideMap[row.class_id] = row.enabled;
+          }
+        }
+        setClassSummaryOverrides(overrideMap);
+
+        setState("ready");
+      } catch {
+        if (!active) return;
         if (typeof navigator !== "undefined" && !navigator.onLine) {
           setIsOffline(true);
         }
@@ -154,45 +211,7 @@ export default function TodayPage() {
         setSummaryDefaultEnabled(null);
         setSummaryCapabilitiesFailed(false);
         setState("error");
-        return;
       }
-      setChildren(childrenResult.data ?? []);
-      setClasses(classesResult.data ?? []);
-      setIncidents(incidentsResult.data ?? []);
-      const lunchMap: Record<string, number[]> = {};
-      for (const row of lunchDaysResult.data ?? []) {
-        lunchMap[row.child_id] = [...(row.weekdays ?? [])];
-      }
-      setLunchByChild(lunchMap);
-      setAllergens(allergensResult.data ?? []);
-      setChildAllergens(childAllergensResult.data ?? []);
-      setSchoolNotices(schoolNoticesResult.data ?? []);
-      const capabilitiesFailed =
-        catalogResult.error != null ||
-        schoolCapabilitiesResult.error != null ||
-        classOverridesResult.error != null;
-      setSummaryCapabilitiesFailed(capabilitiesFailed);
-      const catalogDefault =
-        catalogResult.error || !catalogResult.data
-          ? null
-          : (catalogResult.data.default_enabled ?? null);
-      setSummaryDefaultEnabled(catalogDefault);
-      const schoolMap: Record<string, boolean> = {};
-      if (!schoolCapabilitiesResult.error) {
-        for (const row of schoolCapabilitiesResult.data ?? []) {
-          if (row.school_id) schoolMap[row.school_id] = row.enabled;
-        }
-      }
-      setSchoolSummaryEnabled(schoolMap);
-      const overrideMap: Record<string, boolean> = {};
-      if (!classOverridesResult.error) {
-        for (const row of classOverridesResult.data ?? []) {
-          if (row.class_id) overrideMap[row.class_id] = row.enabled;
-        }
-      }
-      setClassSummaryOverrides(overrideMap);
-
-      setState("ready");
     }
 
     void loadData();

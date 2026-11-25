@@ -387,24 +387,25 @@ insert into auth.users (
 )
 select account.id, '00000000-0000-0000-0000-000000000000'::uuid,
        'authenticated', 'authenticated', account.email,
-       '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy',
+       account.encrypted_password,
        timestamp '2026-01-01 00:00:00+00',
        jsonb_build_object('provider', 'email', 'providers', jsonb_build_array('email')),
        jsonb_build_object('full_name', account.full_name),
        timestamp '2026-01-01 00:00:00+00', timestamp '2026-01-01 00:00:00+00'
   from (values
-    ('00000000-0000-4000-8000-000000000101'::uuid, 'parent.1@local.test', 'Parent One'),
-    ('00000000-0000-4000-8000-000000000102'::uuid, 'parent.2@local.test', 'Parent Two'),
-    ('00000000-0000-4000-8000-000000000103'::uuid, 'parent.3@local.test', 'Parent Three'),
-    ('00000000-0000-4000-8000-000000000104'::uuid, 'parent.4@local.test', 'Parent Four'),
-    ('00000000-0000-4000-8000-000000000113'::uuid, 'admin.a@local.test', 'Admin A'),
-    ('00000000-0000-4000-8000-000000000115'::uuid, 'admin.b@local.test', 'Admin B'),
-    ('00000000-0000-4000-8000-000000000121'::uuid, 'monitor.101@llumitaula.local', 'Ana Serra'),
-    ('00000000-0000-4000-8000-000000000122'::uuid, 'monitor.102@llumitaula.local', 'Bruno Vidal'),
-    ('00000000-0000-4000-8000-000000000123'::uuid, 'monitor.103@llumitaula.local', 'Carla Moya'),
-    ('00000000-0000-4000-8000-000000000124'::uuid, 'monitor.104@llumitaula.local', 'Diego Roca'),
-    ('00000000-0000-4000-8000-000000000125'::uuid, 'monitor.105@llumitaula.local', 'Elena Costa')
-  ) as account(id, email, full_name)
+    ('00000000-0000-4000-8000-000000000101'::uuid, 'parent.1@local.test', 'Parent One', '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy'),
+    ('00000000-0000-4000-8000-000000000102'::uuid, 'parent.2@local.test', 'Parent Two', '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy'),
+    ('00000000-0000-4000-8000-000000000103'::uuid, 'parent.3@local.test', 'Parent Three', '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy'),
+    ('00000000-0000-4000-8000-000000000104'::uuid, 'parent.4@local.test', 'Parent Four', '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy'),
+    ('00000000-0000-4000-8000-000000000113'::uuid, 'admin.a@local.test', 'Admin A', '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy'),
+    ('00000000-0000-4000-8000-000000000115'::uuid, 'admin.b@local.test', 'Admin B', '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy'),
+    -- Local dev monitors use 6-digit numeric PINs (000101..000105) compatible with MonitorPinInput and minimum_password_length = 6.
+    ('00000000-0000-4000-8000-000000000121'::uuid, 'monitor.101@llumitaula.local', 'Ana Serra', crypt('000101', gen_salt('bf'))),
+    ('00000000-0000-4000-8000-000000000122'::uuid, 'monitor.102@llumitaula.local', 'Bruno Vidal', crypt('000102', gen_salt('bf'))),
+    ('00000000-0000-4000-8000-000000000123'::uuid, 'monitor.103@llumitaula.local', 'Carla Moya', crypt('000103', gen_salt('bf'))),
+    ('00000000-0000-4000-8000-000000000124'::uuid, 'monitor.104@llumitaula.local', 'Diego Roca', crypt('000104', gen_salt('bf'))),
+    ('00000000-0000-4000-8000-000000000125'::uuid, 'monitor.105@llumitaula.local', 'Elena Costa', crypt('000105', gen_salt('bf')))
+  ) as account(id, email, full_name, encrypted_password)
 on conflict (id) do nothing;
 
 insert into public.schools (id, name) values

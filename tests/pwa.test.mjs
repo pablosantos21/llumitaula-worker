@@ -145,7 +145,7 @@ test("PWA artwork and asset generation contract is present", async () => {
   const portraitSplash = await source("public/splash/ipad-portrait.svg");
   const landscapeSplash = await source("public/splash/ipad-landscape.svg");
 
-  assert.equal(packageJson.devDependencies.sharp, "0.35.3");
+  assert.equal(packageJson.devDependencies.sharp, "0.35.5");
   assert.equal(
     packageJson.scripts["generate:pwa-assets"],
     "node scripts/generate-pwa-assets.mjs",

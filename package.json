@@ -33,6 +33,7 @@
     "test:workers-pin": "node --test tests/workers-pin.test.mjs",
     "test:classes-route": "node --test tests/classes-route.test.mjs",
     "test:daily-summary": "node --test tests/daily-summary.test.mjs",
+    "test:security": "node --test tests/security-audit-57.test.mjs",
     "test:public-data": "node scripts/check-public-build.mjs",
     "format": "prettier . --write",
     "format:check": "prettier . --check"
@@ -44,7 +45,7 @@
     "react-dom": "^19.3.0",
     "react-router": "^8.4.0",
     "tailwindcss": "^4.3.3",
-    "zod": "^3.25.76"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -54,14 +55,14 @@
     "eslint": "^10.9.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "prettier": "^3.9.6",
-    "sharp": "0.35.3",
+    "sharp": "0.35.5",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.67.0",
     "vite": "^8.0.16"
   },
   "pnpm": {
     "overrides": {
-      "sharp": "0.35.3"
+      "sharp": "0.35.5"
     },
     "onlyBuiltDependencies": [
       "esbuild"

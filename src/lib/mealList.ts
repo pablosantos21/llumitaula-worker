@@ -117,7 +117,7 @@ export interface MealListRow {
   meal_type_id: string;
   recorded_date: string;
   recorded_by: string;
-  recorded_at: string;
+  recorded_at?: string;
   status: MealStatus;
   first_course: MealStatus;
   second_course: MealStatus;
@@ -131,7 +131,7 @@ interface MealListRowsInput {
   mealTypeId: string;
   recordedDate: string;
   recordedBy: string;
-  recordedAt: string;
+  recordedAt?: string;
 }
 
 function cleanNotes(notes: string): string | null {
@@ -165,7 +165,9 @@ export function buildMealListRows(input: MealListRowsInput): MealListRow[] {
       meal_type_id: input.mealTypeId,
       recorded_date: input.recordedDate,
       recorded_by: input.recordedBy,
-      recorded_at: input.recordedAt,
+      ...(input.recordedAt !== undefined
+        ? { recorded_at: input.recordedAt }
+        : null),
       status: overallMealStatus(courses),
       first_course: courses.firstCourse,
       second_course: courses.secondCourse,

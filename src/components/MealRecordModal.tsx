@@ -21,7 +21,9 @@ interface MealRecordModalProps {
   initialCourses?: MealCourses;
   initialNotes?: string;
   onClose: () => void;
-  onSave: (payload: ReturnType<typeof buildMealRecordPayload>) => void;
+  onSave: (
+    payload: ReturnType<typeof buildMealRecordPayload>,
+  ) => Promise<boolean | void> | boolean | void;
 }
 
 function baseInitialValues(
@@ -46,6 +48,7 @@ export default function MealRecordModal({
   const [values, setValues] = useState(() =>
     baseInitialValues(initialCourses, initialNotes),
   );
+  const [submitting, setSubmitting] = useState(false);
   const firstFieldRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -62,22 +65,32 @@ export default function MealRecordModal({
       [key]: current[key] === value ? "todo" : value,
     }));
 
-  function submit(event: { preventDefault: () => void }) {
+  async function submit(event: { preventDefault: () => void }) {
     event.preventDefault();
-    onSave(
-      buildMealRecordPayload({
-        childId: activeChild.id,
-        ...values,
-      }),
-    );
-    onClose();
+    if (submitting) return;
+    setSubmitting(true);
+    try {
+      const result = await onSave(
+        buildMealRecordPayload({
+          childId: activeChild.id,
+          ...values,
+        }),
+      );
+      if (result !== false) {
+        onClose();
+      }
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
     <div
       className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/40 p-0 backdrop-blur-sm md:items-center md:p-4"
       role="presentation"
-      onMouseDown={(event) => event.target === event.currentTarget && onClose()}
+      onMouseDown={(event) =>
+        !submitting && event.target === event.currentTarget && onClose()
+      }
     >
       <section
         className="max-h-[92vh] w-full overflow-y-auto rounded-t-3xl bg-white p-6 shadow-2xl md:max-w-xl md:rounded-3xl"
@@ -195,9 +208,10 @@ export default function MealRecordModal({
 
           <button
             type="submit"
-            className="w-full rounded-xl bg-emerald-600 px-4 py-3 font-bold text-white shadow-sm hover:bg-emerald-700"
+            disabled={submitting}
+            className="w-full rounded-xl bg-emerald-600 px-4 py-3 font-bold text-white shadow-sm hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Guardar registro
+            {submitting ? "Guardando..." : "Guardar registro"}
           </button>
         </form>
       </section>
